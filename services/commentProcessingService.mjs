@@ -69,6 +69,7 @@ import { classifyComment, analyzeVideo } from './aiService.mjs';
 import { detectWhatsAppNumber, createLead } from './leadService.mjs';
 import { sendWhatsAppMessage } from './gowhatsService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
+import { generateAndPostAutoReply } from './autoReplyService.mjs';
 
 // Helper to log automation actions
 const logAutomation = async (userId, actionType, description, details = {}) => {
@@ -237,16 +238,15 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       }
     }
 
-    // Auto-Reply logic (replies ONLY to genuine questions or buying-intent comments, never reply to toxic/spam/deleted comments)
+    // Auto-Reply logic (replies to all good comments, never reply to toxic/spam/deleted comments)
     let replyStatus = 'none';
     let replyError = null;
     let replyText = null;
+    let suggestedReply = aiResult.suggestedReply;
 
-    const isQuestionOrLead = !!(rawAnalysis.question || rawAnalysis.buyingIntent || classification === 'Question' || classification === 'Lead');
     const isNormalComment = !isToxicOrBad && status !== 'deleted' && status !== 'flagged' && !wasHidden;
-    const hasSuggestedReply = !!aiResult.suggestedReply;
 
-    if (isNormalComment && isQuestionOrLead && hasSuggestedReply) {
+    if (isNormalComment) {
       if (channel.apiKey) {
         replyStatus = 'failed';
         replyError = 'Authentication via API Key does not permit write actions (OAuth required)';
@@ -263,17 +263,27 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply sent or pending. Skipping reply.`);
         } else {
           logger.info(`[REPLY] Sending auto-reply to comment ${commentDoc.youtubeId}`);
-          const repRes = await replyToComment(youtube, targetParentId, aiResult.suggestedReply);
+          const repRes = await generateAndPostAutoReply({
+            youtube,
+            parentId: targetParentId,
+            commentText: commentDoc.text,
+            commentId: commentDoc.youtubeId,
+            videoId: commentDoc.videoId,
+            userId: channel.userId,
+            userKey
+          });
           logger.info(`[REPLY] Auto-reply API response: ${JSON.stringify(repRes)}`);
 
           if (repRes.success) {
             replyStatus = 'sent';
             aiActionTaken = true;
-            replyText = aiResult.suggestedReply;
+            replyText = repRes.replyText;
+            suggestedReply = repRes.replyText;
             await logAutomation(channel.userId, 'comment_reply', `Auto-replied to comment: ${replyText}`, { commentId: commentDoc.youtubeId, apiResponse: repRes });
           } else {
             replyStatus = 'failed';
             replyError = repRes.reason;
+            suggestedReply = repRes.replyText || suggestedReply;
           }
         }
       }
@@ -368,7 +378,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         likeError: likeError,
         aiActionTaken: true, // Mark classification complete
         classification,
-        suggestedReply: aiResult.suggestedReply,
+        suggestedReply: suggestedReply,
         replyText,
         replyStatus,
         replyError,

@@ -43,6 +43,10 @@ dotenv.config({
   path: path.resolve(__dirname, '.env')
 });
 
+if (process.env.MONGO_URI && !process.env.MONGODB_URI) {
+  process.env.MONGODB_URI = process.env.MONGO_URI;
+}
+
 // Debug
 console.log('================================');
 console.log('ENV FILE:', path.resolve(__dirname, '.env'));
@@ -78,10 +82,12 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'https://youtubeai-client.vercel.app',
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ...(process.env.EXTRA_ORIGINS
     ? process.env.EXTRA_ORIGINS.split(',')
     : [])
-];
+].map(origin => origin.trim().replace(/\/$/, ''));
 
 const io = new Server(server, {
   cors: {

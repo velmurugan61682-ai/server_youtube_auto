@@ -37,10 +37,11 @@ export const login = async (req, res) => {
 
     const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
 
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie('token', token, {
       httpOnly: true,
-      secure: true, // Required for SameSite=none
-      sameSite: 'none',
+      secure: isProd, // Required for SameSite=none
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
@@ -58,7 +59,11 @@ export const login = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
+    let token = authHeader && authHeader.split(' ')[1];
+    
+    if (token === 'null' || token === 'undefined') {
+      token = null;
+    }
     
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
 

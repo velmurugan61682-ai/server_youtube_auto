@@ -134,20 +134,51 @@ export const generateReply = async (commentText, videoContext = {}) => {
 Video title: ${title}
 Video description (short): ${description}
 
-Write a short, warm, natural reply (1-2 sentences max) to the comment below.
-- Sound human, not corporate or robotic.
-- Do not repeat the commenter's words back verbatim.
-- Do not use hashtags, emojis excessively (max 1 emoji, optional), or generic phrases like "Thanks for watching!" on every reply — vary the tone.
-- If the comment is a question, answer it briefly and helpfully if the video context allows; otherwise acknowledge it genuinely and invite them to ask more.
-- Never mention that you are an AI.
+First, detect the language/script the comment is written in (Tamil, English, Tanglish, Hindi, or other).
+Then write a short, warm, natural reply (1-2 sentences max) in the SAME language and SAME script as the comment.
+- If it's Tanglish (Tamil words in English letters), reply in Tanglish too, not formal Tamil script.
+- Sound human, not robotic or corporate.
+- Do not use hashtags. Max 1 emoji, optional.
+- Never mention you are an AI.
 
-Respond with ONLY the reply text, nothing else — no quotes, no labels.`;
+Respond with ONLY a JSON object (no markdown, no other text) in this format:
+{
+  "detectedLanguage": "Tamil | English | Tanglish | Hindi | other",
+  "reply": "your reply text here"
+}`;
 
   try {
     const rawReply = await callDeepSeek(systemPrompt, commentText, 0.7);
     
+    let reply = '';
+    let detectedLanguage = 'unknown';
+
+    const cleanedRaw = rawReply.trim();
+    let parsedObj = null;
+
+    try {
+      parsedObj = JSON.parse(cleanedRaw);
+    } catch (e) {
+      // Try to extract JSON structure from potential markdown or surrounding text
+      const jsonMatch = cleanedRaw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsedObj = JSON.parse(jsonMatch[0]);
+        } catch (e2) {
+          // ignore parsing error
+        }
+      }
+    }
+
+    if (parsedObj && typeof parsedObj === 'object') {
+      reply = parsedObj.reply || '';
+      detectedLanguage = parsedObj.detectedLanguage || 'unknown';
+    } else {
+      reply = cleanedRaw;
+    }
+
     // Trim and strip surrounding quotes
-    let reply = rawReply.trim();
+    reply = reply.trim();
     reply = reply.replace(/^["']|["']$/g, '').trim();
 
     // Enforce max length safeguard (~300 characters)
@@ -167,7 +198,10 @@ Respond with ONLY the reply text, nothing else — no quotes, no labels.`;
       }
     }
 
-    return reply;
+    return {
+      reply,
+      detectedLanguage
+    };
   } catch (error) {
     logger.error(`[DeepSeek Service] Error generating reply: ${error.message}`);
     throw error;

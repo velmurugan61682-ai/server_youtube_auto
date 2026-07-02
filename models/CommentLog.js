@@ -32,7 +32,16 @@ const commentLogSchema = new mongoose.Schema({
     default: 'none' 
   },
   replyText: { 
-    type: String 
+    type: String,
+    set: function(val) {
+      if (val && typeof val === 'object' && val.detectedLanguage) {
+        this.detectedLanguage = val.detectedLanguage;
+      }
+      return val;
+    }
+  },
+  detectedLanguage: {
+    type: String
   },
   whatsappSent: { 
     type: Boolean, 

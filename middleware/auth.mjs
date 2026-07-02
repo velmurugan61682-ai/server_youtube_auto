@@ -12,6 +12,11 @@ export const authMiddleware = (req, res, next) => {
     token = req.cookies.token;
   }
 
+  // Sanitize malformed token strings
+  if (token === 'null' || token === 'undefined') {
+    token = null;
+  }
+
   console.log(`🛡️ [Auth Middleware] ${req.method} ${req.path} - Token source: ${authHeader ? 'Header' : (token ? 'Cookie' : 'NONE')}`);
 
   if (!token) {

@@ -10,6 +10,7 @@ import {
 } from '../services/youtubeService.js';
 import { classifyComment, generateReply } from '../services/deepseekService.js';
 import { sendWhatsAppAlert } from '../services/whatsappService.js';
+import { generateAndPostAutoReply } from '../services/autoReplyService.mjs';
 
 // Cache to prevent duplicate video details queries within the same job run
 const videoDetailsCache = new Map();
@@ -74,6 +75,7 @@ export const runCommentAutomation = async () => {
       let replyNeeded = false;
       let actionTaken = 'none';
       let replyText = null;
+      let detectedLanguage = null;
       let whatsappSent = false;
 
       // Process single comment inside its own try-catch block to guarantee that failures do not crash the pipeline
@@ -115,19 +117,25 @@ export const runCommentAutomation = async () => {
 
         } else {
           // C. Handle auto-reply logic for normal/review comments
-          if (replyNeeded) {
-            try {
-              const videoDetails = await getCachedVideoDetails(videoId);
-              replyText = await generateReply(commentText, videoDetails || {});
+          try {
+            const replyResult = await generateAndPostAutoReply({
+              parentId: commentId,
+              commentText,
+              commentId,
+              videoId,
+              userId: null
+            });
 
-              if (replyText) {
-                await insertCommentReply(commentId, replyText);
-                actionTaken = 'reply_posted';
-                logger.info(`[Comment Automation] Replied to comment ${commentId}: "${replyText}"`);
-              }
-            } catch (replyError) {
-              logger.error(`[Comment Automation] Failed to post auto-reply to comment ${commentId}: ${replyError.message}`);
+            if (replyResult.success) {
+              replyText = replyResult.replyText;
+              detectedLanguage = replyResult.detectedLanguage;
+              actionTaken = 'reply_posted';
+              logger.info(`[Comment Automation] Replied to comment ${commentId}: "${replyText}" (Language: ${detectedLanguage})`);
+            } else {
+              logger.warn(`[Comment Automation] Auto-reply was not posted: ${replyResult.reason}`);
             }
+          } catch (replyError) {
+            logger.error(`[Comment Automation] Failed to post auto-reply to comment ${commentId}: ${replyError.message}`);
           }
         }
 
@@ -141,6 +149,7 @@ export const runCommentAutomation = async () => {
           reason,
           actionTaken,
           replyText: replyText || undefined,
+          detectedLanguage: detectedLanguage || undefined,
           whatsappSent,
           timestamp: new Date()
         });
@@ -149,7 +158,7 @@ export const runCommentAutomation = async () => {
         processedCount++;
 
         // E. Politeness delay to prevent hitting API rate limit bounds
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (singleCommentError) {
         logger.error(`[Comment Automation] Error while processing comment ${commentId}: ${singleCommentError.message}`);

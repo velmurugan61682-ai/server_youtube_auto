@@ -10,6 +10,9 @@ import { processComments } from '../services/commentProcessingService.mjs';
 import { getSettings, saveCredentials } from '../controllers/settingsController.mjs';
 import { getVideos } from '../controllers/youtubeController.mjs';
 import { initCommentJob } from '../jobs/commentJob.mjs';
+import AutoReplyLog from '../models/AutoReplyLog.mjs';
+import { generateAndPostAutoReply } from '../services/autoReplyService.mjs';
+import { runCommentAutomation } from '../jobs/commentAutomation.js';
 
 console.log('✅ ALL IMPORTS AND SYNTAX CHECKS PASSED!');
 process.exit(0);
