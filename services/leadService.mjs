@@ -58,7 +58,7 @@ export const isDuplicateLead = async (number, userId) => {
 /**
  * Create a new lead
  */
-export const createLead = async (leadData) => {
+export const createLead = async (leadData, options = {}) => {
   try {
     const isDuplicate = await isDuplicateLead(leadData.whatsappNumber, leadData.userId);
     
@@ -67,7 +67,7 @@ export const createLead = async (leadData) => {
       status: isDuplicate ? 'duplicate' : 'pending'
     });
 
-    await lead.save();
+    await lead.save(options);
     return { lead, isDuplicate };
   } catch (error) {
     logger.error(`Error creating lead: ${error.message}`);

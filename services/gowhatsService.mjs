@@ -9,9 +9,9 @@ import logger from '../utils/logger.mjs';
  * GOWHATS_API_URL
  */
 
-export const sendWhatsAppMessage = async (number, message, retries = 3) => {
-  const apiKey = process.env.GOWHATS_API_KEY;
-  const apiUrl = process.env.GOWHATS_API_URL;
+export const sendWhatsAppMessage = async (number, message, retries = 3, customApiKey = null, customApiUrl = null) => {
+  const apiKey = customApiKey || process.env.GOWHATS_API_KEY;
+  const apiUrl = customApiUrl || process.env.GOWHATS_API_URL;
 
   if (!apiKey || !apiUrl) {
     logger.error('WhatsApp API Configuration Missing: GOWHATS_API_KEY or GOWHATS_API_URL not set.');

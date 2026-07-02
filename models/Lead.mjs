@@ -7,7 +7,12 @@ const leadSchema = new mongoose.Schema({
   commentId: { type: String, required: true, unique: true },
   authorName: { type: String, required: true },
   originalComment: { type: String, required: true },
-  whatsappNumber: { type: String, required: true },
+  whatsappNumber: { type: String },
+  email: String,
+  intent: String,
+  productInterest: String,
+  language: String,
+  notes: String,
   status: { 
     type: String, 
     enum: ['pending', 'sent', 'failed', 'duplicate'], 

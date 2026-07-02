@@ -2,9 +2,12 @@ import User from '../models/User.mjs';
 import Channel from '../models/Channel.mjs';
 import logger from '../utils/logger.mjs';
 import { getYouTubeClientWithApiKey } from '../services/youtubeService.mjs';
+import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 
-const maskKey = (key) =>
-  key ? `${key.substring(0, 6)}...${key.slice(-4)}` : '';
+const maskKey = (key) => {
+  const decrypted = decrypt(key);
+  return decrypted ? `${decrypted.substring(0, 6)}...${decrypted.slice(-4)}` : '';
+};
 
 export const getSettings = async (req, res) => {
   try {
@@ -44,9 +47,9 @@ export const saveCredentials = async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Only update a field if it was supplied and is NOT a masked placeholder
-    if (youtubeApiKey && !youtubeApiKey.includes('...')) user.youtubeApiKey = youtubeApiKey;
-    if (openaiApiKey  && !openaiApiKey.includes('...'))  user.openaiApiKey  = openaiApiKey;
-    if (gowhatsApiKey && !gowhatsApiKey.includes('...')) user.gowhatsApiKey = gowhatsApiKey;
+    if (youtubeApiKey && !youtubeApiKey.includes('...')) user.youtubeApiKey = encrypt(youtubeApiKey);
+    if (openaiApiKey  && !openaiApiKey.includes('...'))  user.openaiApiKey  = encrypt(openaiApiKey);
+    if (gowhatsApiKey && !gowhatsApiKey.includes('...')) user.gowhatsApiKey = encrypt(gowhatsApiKey);
     if (gowhatsUrl  !== undefined) user.gowhatsUrl  = gowhatsUrl;
     if (productLink !== undefined) user.productLink = productLink;
 
@@ -66,7 +69,7 @@ export const updateYouTubeSettings = async (req, res) => {
     let finalApiKey = apiKey;
 
     if (apiKey && apiKey.includes('...')) {
-      finalApiKey = user.youtubeApiKey;
+      finalApiKey = decrypt(user.youtubeApiKey);
     }
 
     if (!finalApiKey) {
@@ -78,23 +81,28 @@ export const updateYouTubeSettings = async (req, res) => {
     }
 
     const youtube = getYouTubeClientWithApiKey(finalApiKey);
-    const response = await youtube.channels.list({ part: 'snippet,contentDetails', id: channelId });
+    const response = await youtube.channels.list({ part: 'snippet,contentDetails,statistics', id: channelId });
     if (!response.data.items?.length) return res.status(400).json({ error: 'Channel not found' });
 
     const channelData = response.data.items[0];
-    user.youtubeApiKey = finalApiKey;
+    user.youtubeApiKey = encrypt(finalApiKey);
     user.youtubeChannelId = channelId;
     await user.save();
 
     const uploadsPlaylistId = channelData.contentDetails?.relatedPlaylists?.uploads || '';
-    await Channel.findOneAndUpdate({ userId: req.user.id, channelId }, {
+    await Channel.findOneAndUpdate({ channelId }, {
       $set: {
         userId: req.user.id,
         channelId,
         title: channelData.snippet.title,
         thumbnailUrl: channelData.snippet.thumbnails?.default?.url || '',
-        apiKey: finalApiKey,
-        uploadsPlaylistId
+        apiKey: encrypt(finalApiKey),
+        uploadsPlaylistId,
+        statistics: {
+          subscriberCount: channelData.statistics?.subscriberCount || '0',
+          videoCount: channelData.statistics?.videoCount || '0',
+          viewCount: channelData.statistics?.viewCount || '0',
+        }
       }
     }, { upsert: true });
 

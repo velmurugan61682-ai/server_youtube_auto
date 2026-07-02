@@ -9,6 +9,7 @@ import {
 } from '../services/youtubeService.mjs';
 import { classifyComment } from '../services/aiService.mjs';
 import { processComments } from '../services/commentProcessingService.mjs';
+import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 
 export const getComments = async (req, res) => {
   try {
@@ -49,13 +50,13 @@ export const takeAction = async (req, res) => {
     let youtube;
     if (!channel.apiKey) {
       youtube = getYouTubeClient({
-        access_token: channel.accessToken,
-        refresh_token: channel.refreshToken,
+        access_token: decrypt(channel.accessToken),
+        refresh_token: decrypt(channel.refreshToken),
         expiry_date: channel.expiryDate,
       }, async (newTokens) => {
         await Channel.findOneAndUpdate({ channelId: channel.channelId, userId: req.user.id }, {
-          accessToken: newTokens.access_token,
-          refreshToken: newTokens.refresh_token || channel.refreshToken,
+          accessToken: encrypt(newTokens.access_token),
+          refreshToken: encrypt(newTokens.refresh_token || decrypt(channel.refreshToken)),
           expiryDate: newTokens.expiry_date
         });
       });
@@ -174,11 +175,11 @@ export const manualSync = async (req, res) => {
 
     const io = req.app.get('io');
     if (channel.apiKey) {
-      await processComments(channel, null, channel.apiKey, io, videoId);
+      await processComments(channel, null, decrypt(channel.apiKey), io, videoId);
     } else {
       await processComments(channel, {
-        access_token: channel.accessToken,
-        refresh_token: channel.refreshToken,
+        access_token: decrypt(channel.accessToken),
+        refresh_token: decrypt(channel.refreshToken),
         expiry_date: channel.expiryDate,
       }, null, io, videoId);
     }

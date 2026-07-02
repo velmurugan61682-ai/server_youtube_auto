@@ -5,12 +5,18 @@ const channelSchema = new mongoose.Schema({
   channelId: { type: String, required: true },
   title: String,
   customUrl: String,
+  description: String,
   thumbnailUrl: String,
   accessToken: String,
   refreshToken: String,
   expiryDate: Number,
   apiKey: String,
   uploadsPlaylistId: String,
+  statistics: {
+    subscriberCount: { type: String, default: '0' },
+    videoCount: { type: String, default: '0' },
+    viewCount: { type: String, default: '0' }
+  },
   settings: {
     autoLikePositive: { type: Boolean, default: true },
     autoReplyPositive: { type: Boolean, default: false },
@@ -18,6 +24,7 @@ const channelSchema = new mongoose.Schema({
     confidenceThreshold: { type: Number, default: 0.85 },
     toxicThreshold: { type: Number, default: 0.7 },
   },
+  playlists: { type: Array, default: [] },
   lastSyncedAt: Date,
 }, { timestamps: true });
 
