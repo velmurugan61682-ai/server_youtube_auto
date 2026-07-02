@@ -7,6 +7,7 @@ import Video from '../models/Video.mjs';
 import GoWhatsLog from '../models/GoWhatsLog.mjs';
 import AutomationLog from '../models/AutomationLog.mjs';
 import logger from '../utils/logger.mjs';
+import moment from 'moment-timezone';
 import { 
   getYouTubeClient, 
   getYouTubeClientWithApiKey, 
@@ -17,8 +18,53 @@ import {
   replyToComment,
   fetchVideos,
   fetchAllVideos,
-  fetchAllCommentsAndRepliesForVideo
+  fetchAllCommentsAndRepliesForVideo,
+  isQuotaError
 } from './youtubeService.mjs';
+
+// In-memory backoff tracking
+const channelBackoffs = new Map();
+
+const getNextSyncTime = (channelId) => {
+  const backoff = channelBackoffs.get(channelId);
+  if (!backoff) return null;
+  
+  // Check if YouTube quota reset time (midnight Pacific Time) has passed since the failure
+  const now = moment().tz('America/Los_Angeles');
+  const lastFailure = moment(backoff.lastFailureTime).tz('America/Los_Angeles');
+  const resetTime = moment().tz('America/Los_Angeles').startOf('day'); // Midnight today
+  
+  // If last failure was before midnight PT, the quota has reset
+  if (lastFailure.isBefore(resetTime)) {
+    channelBackoffs.delete(channelId);
+    return null;
+  }
+  
+  return backoff.nextSyncTime;
+};
+
+const handleQuotaError = (channelId) => {
+  const backoff = channelBackoffs.get(channelId) || { attemptCount: 0 };
+  
+  if (backoff.attemptCount >= 8) {
+    logger.error(`[SYNC] Maximum quota retry limit reached for channel ${channelId}. Skipping further retries until daily reset.`);
+    return;
+  }
+  
+  backoff.attemptCount += 1;
+  backoff.lastFailureTime = new Date();
+  
+  // Exponential backoff starting at 1 hour (3600000 ms)
+  const delay = Math.min(3600000 * Math.pow(2, backoff.attemptCount - 1), 24 * 3600000);
+  backoff.nextSyncTime = new Date(Date.now() + delay);
+  
+  channelBackoffs.set(channelId, backoff);
+  logger.warn(`[SYNC] Quota exceeded for channel ${channelId}. Exponential backoff applied: next sync allowed after ${backoff.nextSyncTime.toISOString()}`);
+};
+
+const clearQuotaBackoff = (channelId) => {
+  channelBackoffs.delete(channelId);
+};
 import { classifyComment, analyzeVideo } from './aiService.mjs';
 import { detectWhatsAppNumber, createLead } from './leadService.mjs';
 import { sendWhatsAppMessage } from './gowhatsService.mjs';
@@ -210,7 +256,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         const lockedComment = await Comment.findOneAndUpdate(
           { _id: commentDoc._id, replyStatus: { $nin: ['sent', 'pending'] } },
           { $set: { replyStatus: 'pending' } },
-          { new: true }
+          { returnDocument: 'after' }
         );
 
         if (!lockedComment) {
@@ -332,7 +378,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         actionTaken,
         moderationReason
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
     logger.info("MongoDB updated");
 
@@ -364,15 +410,41 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       return;
     }
 
-    const hasTokens = tokens && (tokens.access_token || tokens.refresh_token);
-    const hasChannelCreds = channel.apiKey || channel.accessToken;
-    
-    if (!apiKey && !hasTokens && !hasChannelCreds) {
-      logger.warn(`Channel ${channel.channelId || channel.title} has no credentials (accessToken or apiKey) saved. Sync skipped.`);
+    let latestChannel = await Channel.findById(channel._id);
+    if (!latestChannel) {
+      logger.error(`[SYNC] Channel not found in database: ${channel._id}`);
+      return;
+    }
+    if (latestChannel.reconnectRequired) {
+      logger.info(`[SYNC] Skipping reconnect-required channel: ${latestChannel.title || latestChannel.channelId}`);
       return;
     }
 
-    logger.info(`[SYNC] Starting comment/video sync pipeline for channel: ${channel.title} (ID: ${channel.channelId})`);
+    // Quota backoff check
+    const nextSyncTime = getNextSyncTime(latestChannel._id.toString());
+    if (nextSyncTime && new Date() < nextSyncTime) {
+      logger.info(`[SYNC] Skipping channel ${latestChannel.title || latestChannel.channelId} due to active quota backoff. Next sync allowed after ${nextSyncTime.toISOString()}`);
+      return;
+    }
+
+    // Cooldown check (5 minutes / 300,000 ms) - bypassed if videoId is provided (manual sync)
+    if (!videoId && latestChannel.lastSyncedAt) {
+      const timeSinceLastSync = Date.now() - latestChannel.lastSyncedAt.getTime();
+      if (timeSinceLastSync < 300000) {
+        logger.info(`[SYNC] Skipping channel ${latestChannel.title || latestChannel.channelId} - synced recently (${Math.round(timeSinceLastSync / 1000)}s ago).`);
+        return;
+      }
+    }
+
+    const hasTokens = tokens && (tokens.access_token || tokens.refresh_token);
+    const hasChannelCreds = latestChannel.apiKey || latestChannel.accessToken;
+    
+    if (!apiKey && !hasTokens && !hasChannelCreds) {
+      logger.warn(`Channel ${latestChannel.channelId || latestChannel.title} has no credentials (accessToken or apiKey) saved. Sync skipped.`);
+      return;
+    }
+
+    logger.info(`[SYNC] Starting comment/video sync pipeline for channel: ${latestChannel.title} (ID: ${latestChannel.channelId})`);
 
     let youtube;
     if (apiKey) {
@@ -385,29 +457,29 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         expiry_date: tokens.expiry_date
       };
       youtube = getYouTubeClient(decryptedTokens, async (newTokens) => {
-        logger.info(`[SYNC] Tokens refreshed for channel ${channel.channelId}`);
-        await Channel.findOneAndUpdate({ channelId: channel.channelId, userId: channel.userId }, {
+        logger.info(`[SYNC] Tokens refreshed for channel ${latestChannel.channelId}`);
+        await Channel.findOneAndUpdate({ channelId: latestChannel.channelId, userId: latestChannel.userId }, {
           accessToken: encrypt(newTokens.access_token),
-          refreshToken: encrypt(newTokens.refresh_token || decrypt(channel.refreshToken)),
+          refreshToken: encrypt(newTokens.refresh_token || decrypt(latestChannel.refreshToken)),
           expiryDate: newTokens.expiry_date
-        });
-      });
+        }, { returnDocument: 'after' });
+      }, latestChannel._id);
     } else {
-      if (channel.apiKey) {
-        youtube = getYouTubeClientWithApiKey(decrypt(channel.apiKey));
+      if (latestChannel.apiKey) {
+        youtube = getYouTubeClientWithApiKey(decrypt(latestChannel.apiKey));
       } else {
         youtube = getYouTubeClient({
-          access_token: decrypt(channel.accessToken),
-          refresh_token: decrypt(channel.refreshToken),
-          expiry_date: channel.expiryDate
+          access_token: decrypt(latestChannel.accessToken),
+          refresh_token: decrypt(latestChannel.refreshToken),
+          expiry_date: latestChannel.expiryDate
         }, async (newTokens) => {
-          logger.info(`[SYNC] Tokens refreshed for channel ${channel.channelId}`);
-          await Channel.findOneAndUpdate({ channelId: channel.channelId, userId: channel.userId }, {
+          logger.info(`[SYNC] Tokens refreshed for channel ${latestChannel.channelId}`);
+          await Channel.findOneAndUpdate({ channelId: latestChannel.channelId, userId: latestChannel.userId }, {
             accessToken: encrypt(newTokens.access_token),
-            refreshToken: encrypt(newTokens.refresh_token || decrypt(channel.refreshToken)),
+            refreshToken: encrypt(newTokens.refresh_token || decrypt(latestChannel.refreshToken)),
             expiryDate: newTokens.expiry_date
-          });
-        });
+          }, { returnDocument: 'after' });
+        }, latestChannel._id);
       }
     }
     if (youtube) {
@@ -520,7 +592,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
     // ──────────────────────────────────────────────────────────
     // 2. CHANNELS SYNC SEQUENCE
     // ──────────────────────────────────────────────────────────
-    const latestChannel = await Channel.findById(channel._id);
+    latestChannel = await Channel.findById(channel._id);
     
     // Check if initial full sync is in progress
     if (latestChannel.lastSyncedAt && latestChannel.lastSyncedAt.getTime() === 0) {
@@ -591,6 +663,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         logger.error(`[INITIAL SYNC] Failed sync for channel ${channel.title}:`, syncErr);
         // Release lock on sync error to retry
         await Channel.findByIdAndUpdate(channel._id, { lastSyncedAt: null });
+        if (isQuotaError(syncErr)) throw syncErr;
         return;
       }
     } else {
@@ -601,7 +674,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         // Sync new uploads
         try {
           logger.info("Fetching videos");
-          const fetchedVideos = await fetchVideos(youtube, channel.channelId);
+          const fetchedVideos = await fetchVideos(youtube, channel.channelId, channel.uploadsPlaylistId);
           for (const v of fetchedVideos) {
             const existingVideo = await Video.findOne({ userId: channel.userId, videoId: v.videoId });
             if (!existingVideo) {
@@ -634,6 +707,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
           }
         } catch (err) {
           logger.error('Error syncing new videos:', err);
+          if (isQuotaError(err)) throw err;
         }
       }
 
@@ -663,6 +737,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         }
       } catch (err) {
         logger.error('Error syncing latest comments:', err);
+        if (isQuotaError(err)) throw err;
       }
     }
 
@@ -683,7 +758,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         const lockedDoc = await Comment.findOneAndUpdate(
           { _id: cDoc._id, aiActionTaken: false, aiStatus: { $nin: ['processing', 'completed'] } },
           { $set: { aiStatus: 'processing' } },
-          { new: true }
+          { returnDocument: 'after' }
         );
 
         if (!lockedDoc) {
@@ -710,7 +785,16 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
     if (io) {
       io.to(channel.userId.toString()).emit('stats_updated');
     }
+
+    // Update lastSyncedAt to now, marking sync successful, and clear quota backoff
+    await Channel.updateOne({ _id: channel._id }, { $set: { lastSyncedAt: new Date() } });
+    clearQuotaBackoff(channel._id.toString());
   } catch (error) {
-    logger.error('Worker error:', error);
+    if (isQuotaError(error)) {
+      logger.warn(`[SYNC] Quota exceeded for channel ${channel.title || channel.channelId}: ${error.message}`);
+      handleQuotaError(channel._id.toString());
+    } else {
+      logger.error('Worker error:', error);
+    }
   }
 };

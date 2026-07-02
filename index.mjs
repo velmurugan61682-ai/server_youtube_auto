@@ -15,6 +15,8 @@ import User from './models/User.mjs';
 import routes from './routes/index.mjs';
 import jwt from 'jsonwebtoken';
 import { initCommentJob } from './jobs/commentJob.mjs';
+import './jobs/commentAutomation.js';
+
 
 // ── Global Error Handlers ─────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -278,7 +280,7 @@ async function startServer() {
           $setOnInsert: { name: 'System Admin' },
           $set: { password: hashedPassword }
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       logger.info(

@@ -33,7 +33,7 @@ export const getSettings = async (req, res) => {
 export const updateSettings = async (req, res) => {
   try {
     const { settings } = req.body;
-    const user = await User.findByIdAndUpdate(req.user.id, { $set: { settings } }, { new: true });
+    const user = await User.findByIdAndUpdate(req.user.id, { $set: { settings } }, { returnDocument: 'after' });
     res.json({ success: true, settings: user.settings });
   } catch (error) {
     res.status(500).json({ error: error.message });

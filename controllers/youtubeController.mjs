@@ -8,7 +8,8 @@ import {
   getYouTubeClient, 
   getYouTubeClientWithApiKey, 
   fetchVideos,
-  fetchPlaylists
+  fetchPlaylists,
+  getAuthFromClient
 } from '../services/youtubeService.mjs';
 import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
@@ -65,7 +66,7 @@ export const handleCallback = async (req, res) => {
     client.setCredentials(tokens);
     logger.info('OAuth Token exchange successful');
 
-    const youtube = getYouTubeClient(tokens);
+    const youtube = getYouTubeClient(tokens, null, null);
     channelRes = await youtube.channels.list({ part: 'snippet,contentDetails,statistics', mine: true });
     const items = channelRes.data.items;
 
@@ -75,6 +76,11 @@ export const handleCallback = async (req, res) => {
     }
 
     const channelData = items[0];
+    let existingChannel = await Channel.findOne({ channelId: channelData.id });
+    const auth = getAuthFromClient(youtube);
+    if (existingChannel && auth) {
+      auth.channelDbId = existingChannel._id;
+    }
     const uploadsPlaylistId = channelData.contentDetails?.relatedPlaylists?.uploads || '';
 
     // Fetch all playlists for the channel
@@ -90,6 +96,8 @@ export const handleCallback = async (req, res) => {
       accessToken: encrypt(tokens.access_token),
       uploadsPlaylistId,
       playlists,
+      reconnectRequired: false,
+      reconnectReason: '',
       statistics: {
         subscriberCount: channelData.statistics?.subscriberCount || '0',
         videoCount: channelData.statistics?.videoCount || '0',
@@ -103,7 +111,7 @@ export const handleCallback = async (req, res) => {
     channel = await Channel.findOneAndUpdate(
       { channelId: channelData.id },
       { $set: updateData },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     logger.info(`Channel saved to MongoDB: ${channel.title} (ID: ${channel.channelId})`);
 

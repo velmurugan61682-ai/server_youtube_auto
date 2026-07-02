@@ -26,6 +26,8 @@ const channelSchema = new mongoose.Schema({
   },
   playlists: { type: Array, default: [] },
   lastSyncedAt: Date,
+  reconnectRequired: { type: Boolean, default: false },
+  reconnectReason: String,
 }, { timestamps: true });
 
 channelSchema.index({ userId: 1, channelId: 1 }, { unique: true });

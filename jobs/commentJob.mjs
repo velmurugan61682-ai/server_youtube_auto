@@ -8,6 +8,22 @@ const runRecoveryAndSync = async (io) => {
   try {
     logger.info('🚀 Startup Recovery: Initiating recovery scan for stuck jobs...');
     
+    // 0. Deduplicate channel records safely
+    logger.info('🧹 Startup Recovery: Deduplicating channel records in MongoDB...');
+    const channelsList = await Channel.find().sort({ updatedAt: -1 });
+    const seen = new Set();
+    let deletedCount = 0;
+    for (const chan of channelsList) {
+      if (seen.has(chan.channelId)) {
+        logger.info(`🧹 Startup Recovery: Removing duplicate channel record: ${chan.title} (ID: ${chan.channelId}, MongoDB ID: ${chan._id})`);
+        await Channel.deleteOne({ _id: chan._id });
+        deletedCount++;
+      } else {
+        seen.add(chan.channelId);
+      }
+    }
+    logger.info(`🧹 Startup Recovery: Channel deduplication complete. Removed ${deletedCount} duplicate records.`);
+
     // 1. Reset stuck channel initial sync locks (where lastSyncedAt was set to Jan 1, 1970 00:00:00)
     const lockedChannels = await Channel.find({
       lastSyncedAt: new Date(0)
@@ -43,6 +59,15 @@ const runRecoveryAndSync = async (io) => {
     logger.info('🚀 Startup Recovery: Triggering sync for all channels...');
     const channels = await Channel.find();
     for (const channel of channels) {
+      if (channel.reconnectRequired) {
+        logger.info(`🚀 Startup Recovery: Skipping reconnect-required channel ${channel.title || channel.channelId}`);
+        continue;
+      }
+      if (channel.channelId && (channel.channelId.startsWith('PENDING_') || channel.channelId === 'pending')) {
+        logger.info(`🚀 Startup Recovery: Skipping pending channel ${channel.title || channel.channelId}`);
+        continue;
+      }
+
       if (channel.apiKey) {
         processComments(channel, null, channel.apiKey, io).catch(err => 
           logger.error(`Startup sync failed for channel ${channel.channelId}:`, err)
@@ -72,6 +97,15 @@ export const initCommentJob = (io) => {
       logger.info('Running scheduled 30-second comment analysis...');
       const channels = await Channel.find();
       for (const channel of channels) {
+        if (channel.reconnectRequired) {
+          logger.info(`[CRON] Skipping reconnect-required channel ${channel.title || channel.channelId}`);
+          continue;
+        }
+        if (channel.channelId && (channel.channelId.startsWith('PENDING_') || channel.channelId === 'pending')) {
+          logger.info(`[CRON] Skipping pending channel ${channel.title || channel.channelId}`);
+          continue;
+        }
+
         if (channel.apiKey) {
           await processComments(channel, null, channel.apiKey, io);
         } else {

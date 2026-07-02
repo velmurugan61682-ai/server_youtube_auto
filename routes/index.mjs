@@ -5,6 +5,7 @@ import commentRoutes from './commentRoutes.mjs';
 import analyticsRoutes from './analyticsRoutes.mjs';
 import leadRoutes from './leadRoutes.mjs';
 import settingsRoutes from './settingsRoutes.mjs';
+import automationRoutes from './automation.js';
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use('/comments', commentRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/leads', leadRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/automation', automationRoutes);
 
 export default router;

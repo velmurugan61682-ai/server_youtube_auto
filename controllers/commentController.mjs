@@ -58,8 +58,8 @@ export const takeAction = async (req, res) => {
           accessToken: encrypt(newTokens.access_token),
           refreshToken: encrypt(newTokens.refresh_token || decrypt(channel.refreshToken)),
           expiryDate: newTokens.expiry_date
-        });
-      });
+        }, { returnDocument: 'after' });
+      }, channel._id);
     }
 
     let success = false;

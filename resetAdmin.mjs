@@ -14,7 +14,7 @@ async function test() {
     await User.findOneAndUpdate(
       { email },
       { password: hashedPassword },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     
     console.log('✅ Admin password reset to: Admin@123');
