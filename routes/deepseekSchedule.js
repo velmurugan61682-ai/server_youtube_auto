@@ -2,7 +2,7 @@ import express from 'express';
 import cron from 'node-cron';
 import ScheduledUpload from '../models/ScheduledUpload.mjs';
 import Channel from '../models/Channel.mjs';
-import { getYouTubeClient } from '../services/youtubeService.mjs';
+import { getYouTubeClient, ensureAuthToken } from '../services/youtubeService.mjs';
 import { decrypt } from '../utils/cryptoHelper.mjs';
 import { google } from 'googleapis';
 import axios from 'axios';
@@ -10,6 +10,13 @@ import logger from '../utils/logger.mjs';
 import { authMiddleware } from '../middleware/auth.mjs';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
+import os from 'os';
+
+const upload = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB limit
+});
 
 const router = express.Router();
 
@@ -56,13 +63,95 @@ const getWatchTimeData = async (youtubeAuth, channelId) => {
 };
 
 /**
+ * POST /api/deepseek/upload-video
+ */
+router.post('/upload-video', authMiddleware, upload.single('video'), async (req, res) => {
+  const file = req.file;
+  if (!file) {
+    return res.status(400).json({ error: 'No video file provided' });
+  }
+
+  const { channelId, title, description } = req.body;
+  if (!channelId) {
+    if (file.path && fs.existsSync(file.path)) {
+      try { await fs.promises.unlink(file.path); } catch (e) {}
+    }
+    return res.status(400).json({ error: 'channelId is required' });
+  }
+
+  try {
+    const channel = await Channel.findOne({ channelId, userId: req.user.id });
+    if (!channel) {
+      throw new Error('Channel not found');
+    }
+
+    // Initialize YouTube client
+    const decryptedTokens = {
+      access_token: decrypt(channel.accessToken),
+      refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+      expiry_date: channel.expiryDate
+    };
+    const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+    const auth = youtube.context?._options?.auth || youtube.auth;
+
+    // Refresh if needed
+    await ensureAuthToken(auth, channel._id);
+
+    logger.info(`[Auto-Schedule Upload] Starting resumable upload of ${file.originalname} to YouTube channel: ${channelId}`);
+
+    // Call youtube.videos.insert with resumable upload
+    const insertRes = await youtube.videos.insert({
+      part: 'snippet,status',
+      requestBody: {
+        snippet: {
+          title: title || path.basename(file.originalname, path.extname(file.originalname)).replace(/[_-]/g, ' '),
+          description: description || 'Uploaded and scheduled automatically by AI agent.'
+        },
+        status: {
+          privacyStatus: 'private'
+        }
+      },
+      media: {
+        body: fs.createReadStream(file.path)
+      }
+    });
+
+    // Clean up local temp file
+    if (fs.existsSync(file.path)) {
+      await fs.promises.unlink(file.path);
+    }
+
+    if (insertRes.data && insertRes.data.id) {
+      logger.info(`[Auto-Schedule Upload] Resumable upload complete. Video ID: ${insertRes.data.id}`);
+      return res.json({ videoId: insertRes.data.id, title: insertRes.data.snippet?.title || title });
+    } else {
+      throw new Error('YouTube API insert call did not return a valid video ID.');
+    }
+  } catch (error) {
+    logger.error(`[Auto-Schedule Upload] Resumable upload failed: ${error.message}`);
+    // Clean up local temp file even on failure
+    if (file.path && fs.existsSync(file.path)) {
+      try {
+        await fs.promises.unlink(file.path);
+      } catch (unlinkErr) {
+        logger.error(`[Auto-Schedule Upload] Failed to delete temp file on error: ${unlinkErr.message}`);
+      }
+    }
+    return res.status(500).json({ error: error.message || 'Resumable upload failed' });
+  }
+});
+
+/**
  * POST /api/deepseek/analyze-schedule
  */
 router.post('/analyze-schedule', authMiddleware, async (req, res) => {
   try {
-    const { channelId, title, description, fileName, videoId } = req.body;
+    const { channelId, videoId } = req.body;
     if (!channelId) {
       return res.status(400).json({ error: 'channelId is required' });
+    }
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId is required' });
     }
 
     const channel = await Channel.findOne({ channelId, userId: req.user.id });
@@ -78,6 +167,23 @@ router.post('/analyze-schedule', authMiddleware, async (req, res) => {
     };
     const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
     const youtubeAuth = youtube.context?._options?.auth || youtube.auth;
+
+    // Refresh token if needed
+    await ensureAuthToken(youtubeAuth, channel._id);
+
+    // Fetch video snippet directly from YouTube
+    const videoListResponse = await youtube.videos.list({
+      id: videoId,
+      part: 'snippet'
+    });
+
+    const videoItem = videoListResponse.data?.items?.[0];
+    if (!videoItem) {
+      return res.status(404).json({ error: `Video with ID ${videoId} not found on YouTube.` });
+    }
+
+    const title = videoItem.snippet?.title || '';
+    const description = videoItem.snippet?.description || '';
 
     // Get watch time data
     const watchTimeData = await getWatchTimeData(youtubeAuth, channelId);
@@ -150,8 +256,8 @@ Hourly Watch-time Data: ${JSON.stringify(watchTimeData)}`;
 
     // Save scheduled upload in MongoDB
     const scheduledUpload = await ScheduledUpload.create({
-      videoId: videoId || null,
-      fileName: fileName || null,
+      videoId,
+      fileName: null,
       channelId,
       mode: 'auto',
       scheduledTime: recommendedTime,
@@ -172,14 +278,14 @@ Hourly Watch-time Data: ${JSON.stringify(watchTimeData)}`;
  */
 router.post('/confirm-schedule', authMiddleware, async (req, res) => {
   try {
-    const { channelId, fileName, videoId, scheduledTime } = req.body;
-    if (!channelId || !scheduledTime) {
-      return res.status(400).json({ error: 'channelId and scheduledTime are required' });
+    const { channelId, videoId, scheduledTime } = req.body;
+    if (!channelId || !scheduledTime || !videoId) {
+      return res.status(400).json({ error: 'channelId, videoId, and scheduledTime are required' });
     }
 
     const scheduledUpload = await ScheduledUpload.create({
-      videoId: videoId || null,
-      fileName: fileName || null,
+      videoId,
+      fileName: null,
       channelId,
       mode: 'manual',
       scheduledTime: new Date(scheduledTime),
@@ -194,6 +300,7 @@ router.post('/confirm-schedule', authMiddleware, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 /**
  * GET /api/deepseek/schedule-queue
@@ -230,10 +337,10 @@ cron.schedule('* * * * *', async () => {
     logger.info(`[Auto-Schedule Cron] Found ${pendingUploads.length} scheduled uploads to publish.`);
 
     for (const upload of pendingUploads) {
-      // Optimistically mark as pending to prevent double-publish
+      // Optimistic lock: atomically flip to 'publishing' BEFORE calling the YouTube API
       const lockedUpload = await ScheduledUpload.findOneAndUpdate(
         { _id: upload._id, status: 'scheduled' },
-        { status: 'pending' },
+        { $set: { status: 'publishing' } },
         { new: true }
       );
 
@@ -257,73 +364,29 @@ cron.schedule('* * * * *', async () => {
           expiry_date: channel.expiryDate
         };
         const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+        const auth = youtube.context?._options?.auth || youtube.auth;
 
-        if (lockedUpload.videoId) {
-          // Case 1: Publish existing YouTube draft by updating privacyStatus to public
-          logger.info(`[Auto-Schedule Cron] Publishing existing draft videoId: ${lockedUpload.videoId}`);
-          await youtube.videos.update({
-            part: 'status',
-            requestBody: {
-              id: lockedUpload.videoId,
-              status: {
-                privacyStatus: 'public'
-              }
-            }
-          });
-          lockedUpload.status = 'published';
-          lockedUpload.errorMessage = null;
-        } else if (lockedUpload.fileName) {
-          // Case 2: Upload local file to YouTube
-          logger.info(`[Auto-Schedule Cron] Uploading local file: ${lockedUpload.fileName}`);
-          // Look in a few standard locations
-          const checkPaths = [
-            path.resolve(process.cwd(), lockedUpload.fileName),
-            path.resolve(process.cwd(), 'uploads', lockedUpload.fileName),
-            path.resolve(process.cwd(), 'scratch', lockedUpload.fileName)
-          ];
-          
-          let filePath = null;
-          for (const p of checkPaths) {
-            if (fs.existsSync(p)) {
-              filePath = p;
-              break;
-            }
-          }
+        // Refresh if needed
+        await ensureAuthToken(auth, channel._id);
 
-          if (!filePath) {
-            throw new Error(`Local file not found on disk at any of the following paths: ${checkPaths.join(', ')}`);
-          }
-
-          const media = {
-            body: fs.createReadStream(filePath)
-          };
-
-          const insertRes = await youtube.videos.insert({
-            part: 'snippet,status',
-            requestBody: {
-              snippet: {
-                title: path.basename(lockedUpload.fileName, path.extname(lockedUpload.fileName)).replace(/[_-]/g, ' '),
-                description: 'Uploaded and scheduled automatically by AI agent.'
-              },
-              status: {
-                privacyStatus: 'public'
-              }
-            },
-            media
-          });
-
-          if (insertRes.data && insertRes.data.id) {
-            lockedUpload.videoId = insertRes.data.id;
-            lockedUpload.status = 'published';
-            lockedUpload.errorMessage = null;
-            logger.info(`[Auto-Schedule Cron] Video uploaded successfully. New Video ID: ${insertRes.data.id}`);
-          } else {
-            throw new Error('YouTube API insert call did not return a valid video ID.');
-          }
-        } else {
-          throw new Error('Invalid scheduled upload record: Neither videoId nor fileName was specified.');
+        if (!lockedUpload.videoId) {
+          throw new Error('Invalid scheduled upload record: videoId is required.');
         }
 
+        logger.info(`[Auto-Schedule Cron] Flipping videoId ${lockedUpload.videoId} privacy to public`);
+        
+        await youtube.videos.update({
+          part: 'status',
+          requestBody: {
+            id: lockedUpload.videoId,
+            status: {
+              privacyStatus: 'public'
+            }
+          }
+        });
+
+        lockedUpload.status = 'published';
+        lockedUpload.errorMessage = null;
         await lockedUpload.save();
         logger.info(`[Auto-Schedule Cron] Successfully published scheduled upload ${lockedUpload._id}`);
       } catch (err) {

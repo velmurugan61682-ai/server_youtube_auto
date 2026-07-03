@@ -28,7 +28,7 @@ const scheduledUploadSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'scheduled', 'published', 'failed'],
+    enum: ['pending', 'scheduled', 'publishing', 'published', 'failed'],
     default: 'scheduled'
   },
   errorMessage: {
