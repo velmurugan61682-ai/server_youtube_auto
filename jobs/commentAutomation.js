@@ -286,21 +286,14 @@ export const runCommentAutomation = async () => {
 
 /**
  * Initializes the node-cron scheduler to run every 5 minutes.
+ * (DISABLED in favor of unified commentJob.mjs)
  */
 export const initCommentAutomation = () => {
-  logger.info('[Comment Automation] Initializing cron job (every 5 minutes)...');
-  
-  // Register recurring cron task: */5 * * * *
-  cron.schedule('*/5 * * * *', async () => {
-    try {
-      await runCommentAutomation();
-    } catch (cronError) {
-      logger.error(`[Comment Automation] Scheduled cron execution failed: ${cronError.message}`);
-    }
-  });
+  logger.info('[Comment Automation] Scheduler is disabled in favor of centralized commentJob.mjs.');
 };
 
-// Auto-bootstrap once Mongoose connects
+// Auto-bootstrap once Mongoose connects (DISABLED to prevent duplicate background workers)
+/*
 if (mongoose.connection.readyState === 1) {
   logger.info('[Comment Automation] MongoDB is already connected. Starting scheduler...');
   initCommentAutomation();
@@ -316,3 +309,4 @@ if (mongoose.connection.readyState === 1) {
     });
   });
 }
+*/

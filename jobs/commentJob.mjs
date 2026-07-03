@@ -3,8 +3,15 @@ import Channel from '../models/Channel.mjs';
 import Comment from '../models/Comment.mjs';
 import { processComments } from '../services/commentProcessingService.mjs';
 import logger from '../utils/logger.mjs';
+import { acquireLock, releaseLock } from '../utils/lockHelper.mjs';
 
 const runRecoveryAndSync = async (io) => {
+  const lockKey = 'comment_job_recovery_sync';
+  const hasLock = await acquireLock(lockKey, 600000); // 10 minutes lock for startup recovery
+  if (!hasLock) {
+    logger.info('[RECOVERY] Startup Recovery: Recovery/sync already running on another instance. Skipping.');
+    return;
+  }
   try {
     logger.info('🚀 Startup Recovery: Initiating recovery scan for stuck jobs...');
     
@@ -84,6 +91,8 @@ const runRecoveryAndSync = async (io) => {
     }
   } catch (error) {
     logger.error('Startup recovery error:', error);
+  } finally {
+    await releaseLock(lockKey);
   }
 };
 
@@ -93,6 +102,12 @@ export const initCommentJob = (io) => {
 
   // Schedule the scan to run every 30 seconds
   cron.schedule('*/30 * * * * *', async () => {
+    const lockKey = 'comment_job_cron_sync';
+    const hasLock = await acquireLock(lockKey, 180000); // 3 minutes lock
+    if (!hasLock) {
+      logger.info('[CRON] Scheduled comment sync is already running on another instance. Skipping.');
+      return;
+    }
     try {
       logger.info('Running scheduled 30-second comment analysis...');
       const channels = await Channel.find();
@@ -118,6 +133,8 @@ export const initCommentJob = (io) => {
       }
     } catch (error) {
       logger.error('Cron error:', error);
+    } finally {
+      await releaseLock(lockKey);
     }
   });
   logger.info('Scheduled comment analysis job initialized (Every 30s)');

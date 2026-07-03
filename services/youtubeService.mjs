@@ -557,3 +557,39 @@ export const fetchPlaylists = async (youtube, channelId) => {
     return [];
   }
 };
+
+export const fetchVideoStatisticsBatch = async (youtube, videoIds) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    
+    const chunks = [];
+    const chunkSize = 50;
+    for (let i = 0; i < videoIds.length; i += chunkSize) {
+      chunks.push(videoIds.slice(i, i + chunkSize));
+    }
+    
+    let allItems = [];
+    for (const chunk of chunks) {
+      logger.info(`[YOUTUBE API] Request: videos.list statistics for chunk of ${chunk.length} videos`);
+      const response = await youtube.videos.list({
+        part: 'snippet,statistics',
+        id: chunk.join(',')
+      });
+      logger.info(`[YOUTUBE API] Response: videos.list succeeded with status ${response.status}`);
+      if (response.data.items) {
+        allItems = allItems.concat(response.data.items);
+      }
+    }
+    return allItems;
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error: fetchVideoStatisticsBatch failed: ${errorMsg}`);
+    if (isUnauthorizedClientError(error) && auth?.channelDbId) {
+      await markChannelAsReconnectRequired(auth.channelDbId, errorMsg);
+    }
+    return [];
+  }
+};
+

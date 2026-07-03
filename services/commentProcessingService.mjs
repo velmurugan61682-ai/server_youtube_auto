@@ -6,6 +6,7 @@ import Lead from '../models/Lead.mjs';
 import Video from '../models/Video.mjs';
 import GoWhatsLog from '../models/GoWhatsLog.mjs';
 import AutomationLog from '../models/AutomationLog.mjs';
+import AutoReplyLog from '../models/AutoReplyLog.mjs';
 import logger from '../utils/logger.mjs';
 import moment from 'moment-timezone';
 import { 
@@ -239,10 +240,10 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     }
 
     // Auto-Reply logic (replies to all good comments, never reply to toxic/spam/deleted comments)
-    let replyStatus = 'none';
-    let replyError = null;
-    let replyText = null;
-    let suggestedReply = aiResult.suggestedReply;
+    let replyStatus = commentDoc.replyStatus || 'none';
+    let replyError = commentDoc.replyError || null;
+    let replyText = commentDoc.replyText || null;
+    let suggestedReply = commentDoc.suggestedReply || aiResult.suggestedReply;
 
     const isNormalComment = !isToxicOrBad && status !== 'deleted' && status !== 'flagged' && !wasHidden;
 
@@ -262,6 +263,23 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         if (!lockedComment) {
           logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply sent or pending. Skipping reply.`);
         } else {
+          // Double check AutoReplyLog first to prevent any duplicate posting in same or parallel cycle
+          const existing = await AutoReplyLog.findOne({ commentId: commentDoc.youtubeId });
+          if (existing && (existing.status === 'success' || existing.status === 'pending')) {
+            logger.warn(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply logged/pending in AutoReplyLog. Syncing state and skipping.`);
+            await Comment.updateOne(
+              { _id: commentDoc._id },
+              {
+                $set: {
+                  replyStatus: existing.status === 'success' ? 'sent' : 'pending',
+                  replyText: existing.status === 'success' ? existing.replyText : null,
+                  aiActionTaken: true
+                }
+              }
+            );
+            return;
+          }
+
           logger.info(`[REPLY] Sending auto-reply to comment ${commentDoc.youtubeId}`);
           const repRes = await generateAndPostAutoReply({
             youtube,
@@ -549,6 +567,35 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         for (const fr of failedReplies) {
           logger.info(`[RETRY] Retrying failed reply for comment: ${fr.youtubeId}`);
           const targetParentId = fr.youtubeId.includes('.') ? fr.youtubeId.split('.')[0] : fr.youtubeId;
+
+          // Double check AutoReplyLog first before retrying
+          const existing = await AutoReplyLog.findOne({ commentId: fr.youtubeId });
+          if (existing && (existing.status === 'success' || existing.status === 'pending')) {
+            logger.warn(`[RETRY] Comment ${fr.youtubeId} already has a reply logged/pending in AutoReplyLog. Syncing state and skipping.`);
+            if (existing.status === 'success') {
+              fr.replyStatus = 'sent';
+              fr.replyText = existing.replyText;
+              fr.aiActionTaken = true;
+              await fr.save();
+            }
+            continue;
+          }
+
+          // Create a pending lock
+          try {
+            await AutoReplyLog.create({
+              commentId: fr.youtubeId,
+              videoId: fr.videoId,
+              userId: channel.userId,
+              detectedLanguage: fr.language || 'English',
+              replyText: fr.suggestedReply,
+              status: 'pending'
+            });
+          } catch (lockErr) {
+            logger.warn(`[RETRY] Could not acquire lock for comment ${fr.youtubeId} during retry. Skipping.`);
+            continue;
+          }
+
           const repRes = await replyToComment(youtube, targetParentId, fr.suggestedReply);
           if (repRes.success) {
             fr.replyStatus = 'sent';
@@ -556,10 +603,20 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
             fr.aiActionTaken = true;
             fr.replyText = fr.suggestedReply;
             await fr.save();
+
+            // Mark lock as success
+            await AutoReplyLog.updateOne(
+              { commentId: fr.youtubeId },
+              { $set: { status: 'success' } }
+            );
+
             await logAutomation(channel.userId, 'comment_reply', `Retried and successfully replied to comment: ${fr.youtubeId}`, { commentId: fr.youtubeId, apiResponse: repRes });
           } else {
             fr.replyError = repRes.reason;
             await fr.save();
+
+            // Delete pending lock so it can be retried again
+            await AutoReplyLog.deleteOne({ commentId: fr.youtubeId });
           }
         }
 
@@ -759,7 +816,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       channelId: channel.channelId, 
       aiActionTaken: false,
       aiStatus: { $nin: ['processing', 'completed'] }
-    }).sort({ publishedAt: -1 });
+    }).sort({ publishedAt: -1 }).limit(10);
 
     if (unprocessed.length > 0) {
       logger.info(`[DEEPSEEK PROCESSOR] Analyzing ${unprocessed.length} pending comments for channel: ${channel.title}...`);

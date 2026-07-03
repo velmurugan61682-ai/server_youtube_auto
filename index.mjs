@@ -89,7 +89,10 @@ const allowedOrigins = [
 ].map(origin => origin.trim().replace(/\/$/, ''));
 
 const checkOrigin = (origin, callback) => {
-  if (!origin) return callback(null, true);
+  if (!origin) {
+    logger.info('🌐 [CORS Check] Allowed request with no origin header');
+    return callback(null, true);
+  }
   const isAllowed = allowedOrigins.some(allowedOrigin => {
     if (allowedOrigin === origin) return true;
     // Allow any vercel subdomains dynamically
@@ -97,8 +100,10 @@ const checkOrigin = (origin, callback) => {
     return false;
   });
   if (isAllowed || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+    logger.info(`🌐 [CORS Check] Allowed origin: ${origin}`);
     callback(null, true);
   } else {
+    logger.warn(`⚠️ [CORS Check] Rejected origin: ${origin}`);
     callback(null, false);
   }
 };
@@ -106,9 +111,13 @@ const checkOrigin = (origin, callback) => {
 const io = new Server(server, {
   cors: {
     origin: checkOrigin,
-    credentials: true
-  }
+    credentials: true,
+    methods: ["GET", "POST"]
+  },
+  pingInterval: 10000, // Send a ping every 10 seconds to keep Render connection alive
+  pingTimeout: 5000    // Timeout if no response in 5 seconds
 });
+logger.info('🚀 Socket.IO Server Initialized with Custom Ping/Pong (10s/5s) & CORS settings');
 
 const JWT_SECRET =
   process.env.JWT_SECRET ||
@@ -118,6 +127,7 @@ io.use((socket, next) => {
   const token = socket.handshake.auth.token;
 
   if (!token) {
+    logger.warn(`🔑 [Socket Auth Failure] Connection rejected: No auth token provided. Socket ID: ${socket.id}`);
     return next(
       new Error('Authentication error')
     );
@@ -130,9 +140,10 @@ io.use((socket, next) => {
     );
 
     socket.user = decoded;
-
+    logger.info(`🔑 [Socket Auth Success] Token verified for User: ${decoded.id || decoded.email || 'Unknown'}. Socket ID: ${socket.id}`);
     next();
   } catch (err) {
+    logger.warn(`🔑 [Socket Auth Failure] Token verification failed: ${err.message}. Socket ID: ${socket.id}`);
     next(
       new Error('Authentication error')
     );
@@ -142,11 +153,39 @@ io.use((socket, next) => {
 app.set('io', io);
 
 io.on('connection', (socket) => {
+  logger.info(`🔌 [Socket Connection] Client connected. Socket ID: ${socket.id}. IP: ${socket.handshake.address}. Origin: ${socket.handshake.headers.origin || 'None'}`);
+
   if (socket.user && socket.user.id) {
     const roomName = socket.user.id.toString();
     socket.join(roomName);
-    logger.info(`Socket connected: ${socket.id} joined room: ${roomName}`);
+    logger.info(`🏠 [Socket Room] Socket ${socket.id} joined room: ${roomName}`);
   }
+
+  // Log transport upgrades
+  socket.conn.on('upgrade', (transport) => {
+    logger.info(`🚀 [Socket Transport Upgrade] Client ${socket.id} upgraded transport to: ${transport.name}`);
+  });
+
+  // Log packet exchanges (e.g. low-level ping/pong heartbeats)
+  socket.conn.on('packet', (packet) => {
+    if (packet.type === 'pong') {
+      logger.info(`⚡ [Socket Heartbeat] Pong received from client ${socket.id}`);
+    }
+  });
+
+  socket.conn.on('packetCreate', (packet) => {
+    if (packet.type === 'ping') {
+      logger.info(`⚡ [Socket Heartbeat] Ping sent to client ${socket.id}`);
+    }
+  });
+
+  socket.on('error', (err) => {
+    logger.error(`❌ [Socket Error] Error on socket ${socket.id}: ${err.message}`);
+  });
+
+  socket.on('disconnect', (reason) => {
+    logger.info(`🔌 [Socket Disconnection] Client disconnected. Socket ID: ${socket.id}. Reason: ${reason}`);
+  });
 });
 
 async function watchDatabaseChanges(io) {

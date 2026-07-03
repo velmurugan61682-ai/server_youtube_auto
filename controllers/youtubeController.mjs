@@ -11,7 +11,8 @@ import {
   getYouTubeClientWithApiKey, 
   fetchVideos,
   fetchPlaylists,
-  getAuthFromClient
+  getAuthFromClient,
+  fetchVideoStatisticsBatch
 } from '../services/youtubeService.mjs';
 import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
@@ -189,13 +190,161 @@ export const getVideos = async (req, res) => {
     const channel = await Channel.findOne({ userId: req.user.id, channelId });
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
-    // Fetch videos from MongoDB to prevent YouTube API quota limit exhaustion and load them instantly
+    // Fetch videos from MongoDB
     logger.info(`Fetching videos from MongoDB for channel: ${channelId}`);
-    const videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
+    let videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
+
+    const staleTime = Date.now() - 60000; // 60 seconds TTL cache
+    const needsStatsRefresh = videos.length > 0 && (
+      videos.some(v => !v.lastFetchedAt || !v.statistics || !v.statistics.viewCount || v.lastFetchedAt.getTime() < staleTime)
+    );
+
+    if (needsStatsRefresh) {
+      logger.info(`Stale/missing statistics detected for channel: ${channelId}. Syncing from YouTube Data API...`);
+      try {
+        let youtube;
+        if (channel.apiKey) {
+          youtube = getYouTubeClientWithApiKey(decrypt(channel.apiKey));
+        } else {
+          const decryptedTokens = {
+            access_token: decrypt(channel.accessToken),
+            refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+            expiry_date: channel.expiryDate
+          };
+          youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+        }
+
+        const videoIds = videos.map(v => v.videoId);
+        const apiStatsItems = await fetchVideoStatisticsBatch(youtube, videoIds);
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        for (const item of apiStatsItems) {
+          const viewCount = parseInt(item.statistics?.viewCount || 0);
+          const likeCount = parseInt(item.statistics?.likeCount || 0);
+          const commentCount = parseInt(item.statistics?.commentCount || 0);
+          const engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
+
+          const video = videos.find(v => v.videoId === item.id);
+          if (video) {
+            let history = video.likesHistory || [];
+            if (history.length > 0) {
+              const lastEntry = history[history.length - 1];
+              const lastEntryDateStr = new Date(lastEntry.date).toISOString().split('T')[0];
+              if (lastEntryDateStr === todayStr) {
+                lastEntry.likeCount = likeCount;
+              } else {
+                history.push({ date: new Date(), likeCount });
+              }
+            } else {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              history = [
+                { date: yesterday, likeCount: Math.max(0, likeCount - Math.floor(Math.random() * 5)) },
+                { date: new Date(), likeCount }
+              ];
+            }
+            if (history.length > 30) history.shift();
+
+            await Video.updateOne(
+              { _id: video._id },
+              {
+                $set: {
+                  statistics: { viewCount, likeCount, commentCount },
+                  engagementRate,
+                  likesHistory: history,
+                  lastFetchedAt: new Date()
+                }
+              }
+            );
+          }
+        }
+        
+        // Re-fetch updated list
+        videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
+      } catch (apiErr) {
+        logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
+      }
+    }
     
     res.json({ videos });
   } catch (error) {
     logger.error(`Error in getVideos: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getVideoAnalytics = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const video = await Video.findOne({ userId: req.user.id, videoId: id });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    res.json({ video });
+  } catch (error) {
+    logger.error(`Error in getVideoAnalytics: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const likeVideoDashboard = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    
+    const video = await Video.findOne({ userId, videoId: id });
+    if (!video) return res.status(404).json({ error: 'Video not found' });
+    
+    // Check if duplicate
+    if (video.likedByUsers && video.likedByUsers.includes(userId)) {
+      return res.status(400).json({ error: 'You have already liked this video' });
+    }
+    
+    if (!video.likedByUsers) video.likedByUsers = [];
+    video.likedByUsers.push(userId);
+    
+    if (!video.statistics) {
+      video.statistics = { viewCount: 0, likeCount: 0, commentCount: 0 };
+    }
+    
+    video.statistics.likeCount = (video.statistics.likeCount || 0) + 1;
+    
+    const viewCount = video.statistics.viewCount || 0;
+    const likeCount = video.statistics.likeCount;
+    const commentCount = video.statistics.commentCount || 0;
+    video.engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
+    
+    const todayStr = new Date().toISOString().split('T')[0];
+    let history = video.likesHistory || [];
+    if (history.length > 0) {
+      const lastEntry = history[history.length - 1];
+      const lastEntryDateStr = new Date(lastEntry.date).toISOString().split('T')[0];
+      if (lastEntryDateStr === todayStr) {
+        lastEntry.likeCount = likeCount;
+      } else {
+        history.push({ date: new Date(), likeCount });
+      }
+    } else {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      history = [
+        { date: yesterday, likeCount: Math.max(0, likeCount - 1) },
+        { date: new Date(), likeCount }
+      ];
+    }
+    if (history.length > 30) history.shift();
+    video.likesHistory = history;
+    
+    await video.save();
+    
+    res.json({
+      success: true,
+      statistics: video.statistics,
+      engagementRate: video.engagementRate,
+      likesHistory: video.likesHistory,
+      likedByUsers: video.likedByUsers
+    });
+  } catch (error) {
+    logger.error(`Error in likeVideoDashboard: ${error.message}`);
     res.status(500).json({ error: error.message });
   }
 };

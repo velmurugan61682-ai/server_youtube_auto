@@ -15,11 +15,16 @@ const autoReplyLogSchema = new mongoose.Schema({
   },
   detectedLanguage: {
     type: String,
-    required: true
+    required: false
   },
   replyText: {
     type: String,
-    required: true
+    required: false
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'success', 'failed'],
+    default: 'success'
   },
   timestamp: {
     type: Date,
@@ -29,7 +34,7 @@ const autoReplyLogSchema = new mongoose.Schema({
   timestamps: true
 });
 
-autoReplyLogSchema.index({ commentId: 1 });
+autoReplyLogSchema.index({ commentId: 1 }, { unique: true });
 autoReplyLogSchema.index({ userId: 1 });
 
 export default mongoose.model('AutoReplyLog', autoReplyLogSchema);

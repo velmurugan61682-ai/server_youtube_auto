@@ -26,8 +26,8 @@ export const sendWhatsAppMessage = async (number, message, retries = 3, customAp
       logger.info(`Attempting to send WhatsApp message to ${cleanNumber} (Attempt ${attempt}/${retries})`);
       
       const response = await axios.post(apiUrl, {
-        number: cleanNumber,
-        message: message
+        to: cleanNumber,
+        text: message
       }, {
         params: {
           access_token: apiKey // Some APIs use query params for tokens

@@ -20,7 +20,22 @@ const videoSchema = new mongoose.Schema({
     seoQuality: String,
     summary: String,
     analyzedAt: Date
-  }
+  },
+  // Video Analytics Stats & Caching
+  statistics: {
+    viewCount: { type: Number, default: 0 },
+    likeCount: { type: Number, default: 0 },
+    commentCount: { type: Number, default: 0 }
+  },
+  likesHistory: [
+    {
+      date: { type: Date, default: Date.now },
+      likeCount: { type: Number, default: 0 }
+    }
+  ],
+  engagementRate: { type: Number, default: 0 },
+  likedByUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  lastFetchedAt: Date
 }, { timestamps: true });
 
 videoSchema.index({ userId: 1, videoId: 1 }, { unique: true });
