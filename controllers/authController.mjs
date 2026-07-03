@@ -58,22 +58,13 @@ export const login = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    let token = authHeader && authHeader.split(' ')[1];
-    
-    if (token === 'null' || token === 'undefined') {
-      token = null;
-    }
-    
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json(user);
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    logger.error('getMe Error:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 

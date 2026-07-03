@@ -88,9 +88,24 @@ const allowedOrigins = [
     : [])
 ].map(origin => origin.trim().replace(/\/$/, ''));
 
+const checkOrigin = (origin, callback) => {
+  if (!origin) return callback(null, true);
+  const isAllowed = allowedOrigins.some(allowedOrigin => {
+    if (allowedOrigin === origin) return true;
+    // Allow any vercel subdomains dynamically
+    if (origin.endsWith('.vercel.app')) return true;
+    return false;
+  });
+  if (isAllowed || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+    callback(null, true);
+  } else {
+    callback(null, false);
+  }
+};
+
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: checkOrigin,
     credentials: true
   }
 });
@@ -228,7 +243,7 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: checkOrigin,
     credentials: true
   })
 );
@@ -240,7 +255,7 @@ app.use(cookieParser());
 app.use('/api', routes);
 
 app.get('/auth', (_req, res) => {
-  res.redirect('/api/youtube/auth');
+  res.redirect(process.env.FRONTEND_URL || 'http://localhost:5173');
 });
 
 app.get('/auth/google/callback', (req, res) => {

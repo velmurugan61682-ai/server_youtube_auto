@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth.mjs';
 
 const router = express.Router();
 
-router.get('/auth', initiateAuth);
+router.post('/auth/initiate', authMiddleware, initiateAuth);
 router.get('/callback', handleCallback);
 router.get('/channels', authMiddleware, getChannels);
 router.delete('/channels/:channelId', authMiddleware, deleteChannel);

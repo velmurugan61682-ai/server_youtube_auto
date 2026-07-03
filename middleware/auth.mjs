@@ -20,7 +20,7 @@ export const authMiddleware = (req, res, next) => {
   console.log(`🛡️ [Auth Middleware] ${req.method} ${req.path} - Token source: ${authHeader ? 'Header' : (token ? 'Cookie' : 'NONE')}`);
 
   if (!token) {
-    return res.status(401).json({ error: 'No token, authorization denied' });
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   try {
@@ -29,6 +29,9 @@ export const authMiddleware = (req, res, next) => {
     next();
   } catch (err) {
     logger.warn(`Invalid token attempt: ${err.message}`);
-    res.status(401).json({ error: 'Token is not valid' });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired', expired: true });
+    }
+    return res.status(403).json({ error: 'Forbidden' });
   }
 };

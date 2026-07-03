@@ -3,6 +3,8 @@ import Comment from '../models/Comment.mjs';
 import Video from '../models/Video.mjs';
 import logger from '../utils/logger.mjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import OAuthState from '../models/OAuthState.mjs';
 import { 
   getYouTubeAuth, 
   getYouTubeClient, 
@@ -17,24 +19,19 @@ import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_fallback';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-export const initiateAuth = (req, res) => {
+export const initiateAuth = async (req, res) => {
   try {
-    let token = req.query.token || req.cookies?.token;
+    const userId = req.user.id;
+    const state = crypto.randomUUID();
 
-    if (!token && req.headers.authorization) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-
-    if (!token) {
-      logger.error('initiateAuth: No authentication token found');
-      return res.status(401).json({ error: 'Authentication token required' });
-    }
+    // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
+    await OAuthState.create({ state, userId });
 
     const client = getYouTubeAuth();
     const authUrl = client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
-      state: token, // Pass the JWT token as state to survive cross-site redirect cookie blocking
+      state: state, // Secure random UUID state
       scope: [
         'openid',
         'email',
@@ -43,7 +40,7 @@ export const initiateAuth = (req, res) => {
         'https://www.googleapis.com/auth/youtube.force-ssl'
       ],
     });
-    res.redirect(authUrl);
+    res.json({ redirectUrl: authUrl });
   } catch (err) {
     logger.error(`Failed to generate OAuth URL: ${err.message}`);
     res.status(500).json({ error: 'OAuth Configuration Error' });
@@ -55,21 +52,19 @@ export const handleCallback = async (req, res) => {
 
   if (oauthError) return res.redirect(`${FRONTEND_URL}/?error=access_denied`);
 
-  // Extract JWT token from state parameter (passed back by Google) or cookies fallback
-  const token = state || req.cookies?.token;
-  if (!token) {
-    logger.error('handleCallback: Missing authentication token in state or cookie');
-    return res.redirect(`${FRONTEND_URL}/?error=unauthorized`);
+  if (!state) {
+    logger.error('handleCallback: Missing state parameter from Google redirect');
+    return res.redirect(`${FRONTEND_URL}/?error=invalid_state`);
   }
 
-  let userId;
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    userId = decoded.id;
-  } catch (err) {
-    logger.error(`handleCallback: Invalid JWT session: ${err.message}`);
-    return res.redirect(`${FRONTEND_URL}/?error=invalid_session`);
+  // Look up and delete single-use state mapping
+  const stateRecord = await OAuthState.findOneAndDelete({ state });
+  if (!stateRecord) {
+    logger.error('handleCallback: Invalid or expired OAuth state parameter');
+    return res.redirect(`${FRONTEND_URL}/?error=invalid_state`);
   }
+
+  const userId = stateRecord.userId;
 
   let tokens = null;
   let channelRes = null;
