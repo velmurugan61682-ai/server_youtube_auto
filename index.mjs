@@ -293,6 +293,14 @@ app.use(cookieParser());
 // ── Routes ───────────────────────────────────────────────────
 app.use('/api', routes);
 
+try {
+  const deepseekRoutes = (await import('./routes/deepseekSchedule.js')).default;
+  app.use('/api/deepseek', deepseekRoutes);
+  console.log('Deepseek routes registered successfully');
+} catch (err) {
+  console.error('FAILED to register deepseek routes:', err);
+}
+
 app.get('/auth', (_req, res) => {
   res.redirect(process.env.FRONTEND_URL || 'http://localhost:5173');
 });
