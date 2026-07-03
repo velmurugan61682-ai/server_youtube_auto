@@ -55,7 +55,6 @@ const commentLogSchema = new mongoose.Schema({
   timestamps: true 
 });
 
-commentLogSchema.index({ commentId: 1 });
 commentLogSchema.index({ videoId: 1 });
 
 export default mongoose.model('CommentLog', commentLogSchema);

@@ -115,17 +115,26 @@ export const ensureAuthToken = async (auth, channelDbId) => {
 };
 
 export const getYouTubeAuth = () => {
-  const redirectUri = process.env.REDIRECT_URI?.trim();
-  
+  const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
+  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || process.env.REDIRECT_URI || '').trim().replace(/^["']|["']$/g, '');
+
+  console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+
   if (!redirectUri) {
-    const error = 'CRITICAL: REDIRECT_URI is not defined in environment variables!';
+    const error = 'CRITICAL: GOOGLE_REDIRECT_URI is not defined in environment variables!';
     logger.error(error);
     throw new Error(error);
   }
-  
+  if (!clientId || !clientSecret) {
+    const error = 'CRITICAL: Google Client ID or Client Secret is not defined in environment variables!';
+    logger.error(error);
+    throw new Error(error);
+  }
+
   return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
+    clientId,
+    clientSecret,
     redirectUri
   );
 };

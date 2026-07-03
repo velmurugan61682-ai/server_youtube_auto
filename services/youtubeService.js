@@ -7,13 +7,15 @@ import logger from '../utils/logger.mjs';
  * @returns {object} google.auth.OAuth2 client
  */
 export const getOAuth2Client = () => {
-  const clientId = (process.env.YOUTUBE_OAUTH_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
-  const clientSecret = (process.env.YOUTUBE_OAUTH_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
-  const redirectUri = (process.env.REDIRECT_URI || 'http://localhost:5000/auth/google/callback').trim().replace(/^["']|["']$/g, '');
+  const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
+  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || process.env.REDIRECT_URI || 'http://localhost:5000/api/youtube/callback').trim().replace(/^["']|["']$/g, '');
   const refreshToken = (process.env.YOUTUBE_OAUTH_REFRESH_TOKEN || '').trim().replace(/^["']|["']$/g, '');
 
+  console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+
   if (!clientId || !clientSecret) {
-    throw new Error('OAuth2 credentials (YOUTUBE_OAUTH_CLIENT_ID/GOOGLE_CLIENT_ID and YOUTUBE_OAUTH_CLIENT_SECRET/GOOGLE_CLIENT_SECRET) must be set in environment variables.');
+    throw new Error('OAuth2 credentials (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) must be set in environment variables.');
   }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);

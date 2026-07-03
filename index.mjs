@@ -15,7 +15,6 @@ import User from './models/User.mjs';
 import routes from './routes/index.mjs';
 import jwt from 'jsonwebtoken';
 import { initCommentJob } from './jobs/commentJob.mjs';
-import './jobs/commentAutomation.js';
 
 
 // ── Global Error Handlers ─────────────────────────────────────

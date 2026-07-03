@@ -17,12 +17,24 @@ import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_fallback';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-export const initiateAuth = (_req, res) => {
+export const initiateAuth = (req, res) => {
   try {
+    let token = req.query.token || req.cookies?.token;
+
+    if (!token && req.headers.authorization) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+      logger.error('initiateAuth: No authentication token found');
+      return res.status(401).json({ error: 'Authentication token required' });
+    }
+
     const client = getYouTubeAuth();
     const authUrl = client.generateAuthUrl({
       access_type: 'offline',
       prompt: 'consent',
+      state: token, // Pass the JWT token as state to survive cross-site redirect cookie blocking
       scope: [
         'openid',
         'email',
@@ -39,18 +51,23 @@ export const initiateAuth = (_req, res) => {
 };
 
 export const handleCallback = async (req, res) => {
-  const { code, error: oauthError } = req.query;
+  const { code, state, error: oauthError } = req.query;
 
   if (oauthError) return res.redirect(`${FRONTEND_URL}/?error=access_denied`);
 
-  const token = req.cookies.token;
-  if (!token) return res.redirect(`${FRONTEND_URL}/?error=unauthorized`);
+  // Extract JWT token from state parameter (passed back by Google) or cookies fallback
+  const token = state || req.cookies?.token;
+  if (!token) {
+    logger.error('handleCallback: Missing authentication token in state or cookie');
+    return res.redirect(`${FRONTEND_URL}/?error=unauthorized`);
+  }
 
   let userId;
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     userId = decoded.id;
   } catch (err) {
+    logger.error(`handleCallback: Invalid JWT session: ${err.message}`);
     return res.redirect(`${FRONTEND_URL}/?error=invalid_session`);
   }
 
@@ -148,7 +165,7 @@ export const handleCallback = async (req, res) => {
 
 export const getChannels = async (req, res) => {
   try {
-    const channels = await Channel.find({ userId: req.user.id }).select('title channelId thumbnailUrl apiKey');
+    const channels = await Channel.find({ userId: req.user.id }).select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason');
     res.json(channels);
   } catch (error) {
     res.status(500).json({ error: error.message });
