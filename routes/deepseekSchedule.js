@@ -66,6 +66,9 @@ const getWatchTimeData = async (youtubeAuth, channelId) => {
  * POST /api/deepseek/upload-video
  */
 router.post('/upload-video', authMiddleware, upload.single('video'), async (req, res) => {
+  req.setTimeout(30 * 60 * 1000); // 30 minutes
+  res.setTimeout(30 * 60 * 1000); // 30 minutes
+
   const file = req.file;
   if (!file) {
     return res.status(400).json({ error: 'No video file provided' });
