@@ -80,7 +80,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
-  'https://youtubeai-client.vercel.app',
+  'https://client-youtube-automation.vercel.app/',
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ...(process.env.EXTRA_ORIGINS
