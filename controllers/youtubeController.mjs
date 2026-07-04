@@ -28,7 +28,11 @@ export const initiateAuth = async (req, res) => {
     console.log(`[OAuth State Gen] Generating OAuth state for user ${userId}: ${state}`);
 
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
-    await OAuthState.create({ state, userId });
+    await OAuthState.findOneAndUpdate(
+      { state },
+      { state, userId },
+      { upsert: true, new: true }
+    );
 
     const client = getYouTubeAuth();
     const authUrl = client.generateAuthUrl({
@@ -55,11 +59,11 @@ export const handleCallback = async (req, res) => {
 
   console.log(`[OAuth State Ver] Received callback with state: ${state}, code: ${code ? 'exists' : 'none'}, error: ${oauthError || 'none'}`);
 
-  if (oauthError) return res.redirect(`${FRONTEND_URL}/?error=access_denied`);
+  if (oauthError) return res.status(400).json({ error: 'access_denied', message: oauthError });
 
   if (!state) {
     logger.error('handleCallback: Missing state parameter from Google redirect');
-    return res.redirect(`${FRONTEND_URL}/?error=invalid_state`);
+    return res.status(400).json({ error: 'invalid_state', message: 'Missing state parameter' });
   }
 
   // Look up and delete single-use state mapping
@@ -67,7 +71,7 @@ export const handleCallback = async (req, res) => {
   if (!stateRecord) {
     console.log(`[OAuth State Ver] State record not found or expired for state: ${state}`);
     logger.error('handleCallback: Invalid or expired OAuth state parameter');
-    return res.redirect(`${FRONTEND_URL}/?error=invalid_state`);
+    return res.status(400).json({ error: 'invalid_state', message: 'Invalid or expired state parameter' });
   }
 
   const userId = stateRecord.userId;
@@ -90,11 +94,11 @@ export const handleCallback = async (req, res) => {
 
     if (!items || items.length === 0) {
       logger.error('YouTube Channel Response empty items');
-      return res.redirect(`${FRONTEND_URL}/?error=no_channel`);
+      return res.status(400).json({ error: 'no_channel', message: 'No YouTube channel found' });
     }
 
     const channelData = items[0];
-    let existingChannel = await Channel.findOne({ userId, channelId: channelData.id });
+    let existingChannel = await Channel.findOne({ channelId: channelData.id });
     const auth = getAuthFromClient(youtube);
     if (existingChannel && auth) {
       auth.channelDbId = existingChannel._id;
@@ -132,7 +136,7 @@ export const handleCallback = async (req, res) => {
     if (tokens.expiry_date) updateData.expiryDate = tokens.expiry_date;
 
     channel = await Channel.findOneAndUpdate(
-      { userId, channelId: channelData.id },
+      { channelId: channelData.id },
       { $set: updateData },
       { upsert: true, returnDocument: 'after' }
     );
@@ -144,8 +148,23 @@ export const handleCallback = async (req, res) => {
       logger.error('Initial processComments error:', err)
     );
 
-    res.redirect(`${FRONTEND_URL}/?status=success`);
+    res.redirect(`${FRONTEND_URL}/?status=success&channelId=${channel.channelId}`);
   } catch (error) {
+    if (error.code === 11000) {
+      logger.error('COMPLETE_MONGODB_DUPLICATE_KEY_ERROR:', {
+        code: error.code,
+        keyPattern: error.keyPattern,
+        keyValue: error.keyValue,
+        message: error.message,
+        stack: error.stack
+      });
+      console.error('COMPLETE MongoDB Duplicate Key Error:', {
+        code: error.code,
+        keyPattern: error.keyPattern,
+        keyValue: error.keyValue
+      });
+    }
+
     logger.error('Authentication/Callback Failure:', {
       message: error.message,
       stack: error.stack,
@@ -175,7 +194,13 @@ export const handleCallback = async (req, res) => {
       console.error('Failed to stringify error object:', error);
     }
 
-    res.redirect(`${FRONTEND_URL}/?error=auth_failed&message=${encodeURIComponent(error.message)}`);
+    res.status(500).json({
+      error: 'auth_failed',
+      message: error.message,
+      code: error.code,
+      keyPattern: error.keyPattern,
+      keyValue: error.keyValue
+    });
   }
 };
 

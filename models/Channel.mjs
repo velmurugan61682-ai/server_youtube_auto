@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const channelSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  channelId: { type: String, required: true },
+  channelId: { type: String, required: true, unique: true },
   title: String,
   customUrl: String,
   description: String,
