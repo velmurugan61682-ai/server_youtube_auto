@@ -15,18 +15,19 @@ const runRecoveryAndSync = async (io) => {
   try {
     logger.info('🚀 Startup Recovery: Initiating recovery scan for stuck jobs...');
     
-    // 0. Deduplicate channel records safely
+    // 0. Deduplicate channel records safely within user scopes
     logger.info('🧹 Startup Recovery: Deduplicating channel records in MongoDB...');
     const channelsList = await Channel.find().sort({ updatedAt: -1 });
     const seen = new Set();
     let deletedCount = 0;
     for (const chan of channelsList) {
-      if (seen.has(chan.channelId)) {
-        logger.info(`🧹 Startup Recovery: Removing duplicate channel record: ${chan.title} (ID: ${chan.channelId}, MongoDB ID: ${chan._id})`);
+      const uniqueKey = `${chan.userId ? chan.userId.toString() : 'unknown'}_${chan.channelId}`;
+      if (seen.has(uniqueKey)) {
+        logger.info(`🧹 Startup Recovery: Removing duplicate channel record: ${chan.title} (ID: ${chan.channelId}, User: ${chan.userId}, MongoDB ID: ${chan._id})`);
         await Channel.deleteOne({ _id: chan._id });
         deletedCount++;
       } else {
-        seen.add(chan.channelId);
+        seen.add(uniqueKey);
       }
     }
     logger.info(`🧹 Startup Recovery: Channel deduplication complete. Removed ${deletedCount} duplicate records.`);

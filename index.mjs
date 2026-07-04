@@ -20,18 +20,33 @@ import { initCommentJob } from './jobs/commentJob.mjs';
 // ── Global Error Handlers ─────────────────────────────────────
 process.on('uncaughtException', (err) => {
   logger.error({
-    error: err.message,
+    error: err.message || String(err),
     stack: err.stack,
     worker: 'global-uncaught-exception'
   });
+  console.error('[Uncaught Exception]', err);
 });
 
 process.on('unhandledRejection', (reason) => {
+  let errorMsg = '';
+  if (reason instanceof Error) {
+    errorMsg = reason.message;
+  } else if (reason && typeof reason === 'object') {
+    try {
+      errorMsg = JSON.stringify(reason);
+    } catch (_) {
+      errorMsg = String(reason);
+    }
+  } else {
+    errorMsg = String(reason);
+  }
+
   logger.error({
-    error: reason?.message || reason,
+    error: errorMsg,
     stack: reason?.stack,
     worker: 'global-unhandled-rejection'
   });
+  console.error('[Unhandled Rejection]', reason);
 });
 
 const __filename = fileURLToPath(import.meta.url);

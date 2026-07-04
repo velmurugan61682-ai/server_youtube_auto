@@ -25,6 +25,8 @@ export const initiateAuth = async (req, res) => {
     const userId = req.user.id;
     const state = crypto.randomUUID();
 
+    console.log(`[OAuth State Gen] Generating OAuth state for user ${userId}: ${state}`);
+
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
     await OAuthState.create({ state, userId });
 
@@ -51,6 +53,8 @@ export const initiateAuth = async (req, res) => {
 export const handleCallback = async (req, res) => {
   const { code, state, error: oauthError } = req.query;
 
+  console.log(`[OAuth State Ver] Received callback with state: ${state}, code: ${code ? 'exists' : 'none'}, error: ${oauthError || 'none'}`);
+
   if (oauthError) return res.redirect(`${FRONTEND_URL}/?error=access_denied`);
 
   if (!state) {
@@ -61,6 +65,7 @@ export const handleCallback = async (req, res) => {
   // Look up and delete single-use state mapping
   const stateRecord = await OAuthState.findOneAndDelete({ state });
   if (!stateRecord) {
+    console.log(`[OAuth State Ver] State record not found or expired for state: ${state}`);
     logger.error('handleCallback: Invalid or expired OAuth state parameter');
     return res.redirect(`${FRONTEND_URL}/?error=invalid_state`);
   }
@@ -89,7 +94,7 @@ export const handleCallback = async (req, res) => {
     }
 
     const channelData = items[0];
-    let existingChannel = await Channel.findOne({ channelId: channelData.id });
+    let existingChannel = await Channel.findOne({ userId, channelId: channelData.id });
     const auth = getAuthFromClient(youtube);
     if (existingChannel && auth) {
       auth.channelDbId = existingChannel._id;
@@ -118,11 +123,16 @@ export const handleCallback = async (req, res) => {
       }
     };
 
-    if (tokens.refresh_token) updateData.refreshToken = encrypt(tokens.refresh_token);
+    if (tokens.refresh_token) {
+      updateData.refreshToken = encrypt(tokens.refresh_token);
+    } else if (existingChannel && existingChannel.refreshToken) {
+      updateData.refreshToken = existingChannel.refreshToken;
+    }
+
     if (tokens.expiry_date) updateData.expiryDate = tokens.expiry_date;
 
     channel = await Channel.findOneAndUpdate(
-      { channelId: channelData.id },
+      { userId, channelId: channelData.id },
       { $set: updateData },
       { upsert: true, returnDocument: 'after' }
     );
@@ -155,6 +165,16 @@ export const handleCallback = async (req, res) => {
       } : null,
       googleResponseError: error.response?.data || null
     });
+    
+    // Explicit production-grade error logging as requested
+    console.error(error);
+    if (error.stack) console.error(error.stack);
+    try {
+      console.error(JSON.stringify(error, null, 2));
+    } catch (jsonErr) {
+      console.error('Failed to stringify error object:', error);
+    }
+
     res.redirect(`${FRONTEND_URL}/?error=auth_failed&message=${encodeURIComponent(error.message)}`);
   }
 };

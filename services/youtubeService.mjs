@@ -79,6 +79,17 @@ export const ensureAuthToken = async (auth, channelDbId) => {
 
   if (isExpired) {
     logger.info(`[YOUTUBE OAUTH] Access token expired or expiring soon (Expiry: ${expiryDate ? new Date(expiryDate).toISOString() : 'None'}). Refreshing...`);
+    
+    // Check if refresh token is missing
+    if (!credentials.refresh_token) {
+      const reason = 'Google refresh token is missing. Re-connection/re-authorization is required to regain offline access.';
+      logger.error(`[YOUTUBE OAUTH] ${reason}`);
+      if (channelDbId) {
+        await markChannelAsReconnectRequired(channelDbId, reason);
+      }
+      throw new Error(reason);
+    }
+
     try {
       const response = await auth.refreshAccessToken();
       const newTokens = response.credentials;
@@ -101,6 +112,16 @@ export const ensureAuthToken = async (auth, channelDbId) => {
       }
     } catch (error) {
       logger.error(`[YOUTUBE OAUTH] Failed to refresh access token: ${error.message}`);
+      
+      // Explicit production-grade error logging as requested
+      console.error(error);
+      if (error.stack) console.error(error.stack);
+      try {
+        console.error(JSON.stringify(error, null, 2));
+      } catch (jsonErr) {
+        console.error('Failed to stringify error object:', error);
+      }
+
       if (isUnauthorizedClientError(error)) {
         const reason = error.response?.data?.error_description || error.message || 'Unauthorized client / Invalid grant';
         if (channelDbId) {
@@ -376,21 +397,31 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
       return [];
     }
 
-    logger.info(`[YOUTUBE API] Request: playlistItems.list for uploads playlist: ${targetPlaylistId}`);
-    const playlistRes = await youtube.playlistItems.list({
-      part: 'snippet,contentDetails',
-      playlistId: targetPlaylistId,
-      maxResults: 50
-    });
-    logger.info(`[YOUTUBE API] Response: playlistItems.list succeeded with status ${playlistRes.status}. Found ${playlistRes.data.items?.length || 0} items.`);
+    let allVideos = [];
+    let nextPageToken = null;
 
-    return (playlistRes.data.items || []).map(item => ({
-      videoId: item.contentDetails.videoId,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-      publishedAt: item.snippet.publishedAt
-    }));
+    do {
+      logger.info(`[YOUTUBE API] Request: playlistItems.list for uploads playlist: ${targetPlaylistId} (Token: ${nextPageToken || 'first page'})`);
+      const playlistRes = await youtube.playlistItems.list({
+        part: 'snippet,contentDetails',
+        playlistId: targetPlaylistId,
+        maxResults: 50,
+        pageToken: nextPageToken || undefined
+      });
+      logger.info(`[YOUTUBE API] Response: playlistItems.list page succeeded with status ${playlistRes.status}. Found ${playlistRes.data.items?.length || 0} items.`);
+
+      const items = (playlistRes.data.items || []).map(item => ({
+        videoId: item.contentDetails.videoId,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+        publishedAt: item.snippet.publishedAt
+      }));
+      allVideos = allVideos.concat(items);
+      nextPageToken = playlistRes.data.nextPageToken;
+    } while (nextPageToken);
+
+    return allVideos;
   } catch (error) {
     if (isQuotaError(error)) throw error;
     const errorMsg = error.response?.data?.error?.message || error.message;

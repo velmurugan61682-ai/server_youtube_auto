@@ -6,6 +6,7 @@ import analyticsRoutes from './analyticsRoutes.mjs';
 import leadRoutes from './leadRoutes.mjs';
 import settingsRoutes from './settingsRoutes.mjs';
 import automationRoutes from './automation.js';
+import autoDmRoutes from './autoDm.js';
 
 const router = express.Router();
 
@@ -16,5 +17,6 @@ router.use('/analytics', analyticsRoutes);
 router.use('/leads', leadRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/automation', automationRoutes);
+router.use('/auto-dm', autoDmRoutes);
 
 export default router;
