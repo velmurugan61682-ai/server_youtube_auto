@@ -62,8 +62,13 @@ export const processVideo = async (videoId) => {
 
   const video = await Video.findOne({ videoId });
   if (!video) {
-    logger.warn(`[Auto DM Service] Video document not found in DB for: ${videoId}`);
-    return { success: false, reason: 'Video not found in DB' };
+    logger.warn(`[Auto DM Service] Video document not found in DB for: ${videoId}. Auto-disabling this config to prevent repeated retries.`);
+    // Auto-disable the config so the cron stops trying every 5 minutes
+    config.enabled = false;
+    await config.save().catch((saveErr) =>
+      logger.error(`[Auto DM Service] Failed to auto-disable config for ${videoId}: ${saveErr.message}`)
+    );
+    return { success: false, reason: 'Video not found in DB — config auto-disabled' };
   }
 
   const channel = await Channel.findOne({ channelId: config.channelId });

@@ -15,38 +15,36 @@ import User from './models/User.mjs';
 import routes from './routes/index.mjs';
 import jwt from 'jsonwebtoken';
 import { initCommentJob } from './jobs/commentJob.mjs';
+import { initAutoDmCron } from './jobs/autoDmCron.js';
 
 
 // ── Global Error Handlers ─────────────────────────────────────
 process.on('uncaughtException', (err) => {
-  logger.error({
-    error: err.message || String(err),
-    stack: err.stack,
-    worker: 'global-uncaught-exception'
-  });
-  console.error('[Uncaught Exception]', err);
+  const errorMsg = err instanceof Error ? err.message : String(err);
+  const errorStack = err instanceof Error ? err.stack : undefined;
+  logger.error(`[Uncaught Exception] ${errorMsg}`, { stack: errorStack, worker: 'global-uncaught-exception' });
+  console.error('[Uncaught Exception]', errorMsg, errorStack || '');
+  // Give logger time to flush, then exit
+  setTimeout(() => process.exit(1), 1000);
 });
 
 process.on('unhandledRejection', (reason) => {
   let errorMsg = '';
+  let errorStack;
   if (reason instanceof Error) {
     errorMsg = reason.message;
+    errorStack = reason.stack;
   } else if (reason && typeof reason === 'object') {
     try {
-      errorMsg = JSON.stringify(reason);
+      errorMsg = JSON.stringify(reason, null, 2);
     } catch (_) {
       errorMsg = String(reason);
     }
   } else {
     errorMsg = String(reason);
   }
-
-  logger.error({
-    error: errorMsg,
-    stack: reason?.stack,
-    worker: 'global-unhandled-rejection'
-  });
-  console.error('[Unhandled Rejection]', reason);
+  logger.error(`[Unhandled Rejection] ${errorMsg}`, { stack: errorStack, worker: 'global-unhandled-rejection' });
+  console.error('[Unhandled Rejection]', errorMsg, errorStack || '');
 });
 
 const __filename = fileURLToPath(import.meta.url);
@@ -176,22 +174,9 @@ io.on('connection', (socket) => {
     logger.info(`🏠 [Socket Room] Socket ${socket.id} joined room: ${roomName}`);
   }
 
-  // Log transport upgrades
+  // Log transport upgrades (but NOT every heartbeat — those flood the logs)
   socket.conn.on('upgrade', (transport) => {
     logger.info(`🚀 [Socket Transport Upgrade] Client ${socket.id} upgraded transport to: ${transport.name}`);
-  });
-
-  // Log packet exchanges (e.g. low-level ping/pong heartbeats)
-  socket.conn.on('packet', (packet) => {
-    if (packet.type === 'pong') {
-      logger.info(`⚡ [Socket Heartbeat] Pong received from client ${socket.id}`);
-    }
-  });
-
-  socket.conn.on('packetCreate', (packet) => {
-    if (packet.type === 'ping') {
-      logger.info(`⚡ [Socket Heartbeat] Ping sent to client ${socket.id}`);
-    }
   });
 
   socket.on('error', (err) => {
@@ -385,13 +370,13 @@ async function startServer() {
         );
 
         initCommentJob(io);
+        initAutoDmCron();
       }
     );
   } catch (err) {
     logger.error(
-      '❌ Critical Startup Error:',
+      `❌ Critical Startup Error: ${err.message}`,
       {
-        message: err.message,
         stack: err.stack
       }
     );
@@ -399,5 +384,38 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// ── Graceful Shutdown ─────────────────────────────────────────
+// Prevents EADDRINUSE on nodemon restarts by properly closing
+// the HTTP server and MongoDB connection before exiting.
+const gracefulShutdown = (signal) => {
+  logger.info(`\n🛑 ${signal} received. Starting graceful shutdown...`);
+
+  server.close((err) => {
+    if (err) {
+      logger.error(`Error closing HTTP server: ${err.message}`);
+    } else {
+      logger.info('✅ HTTP server closed.');
+    }
+
+    mongoose.connection.close(false).then(() => {
+      logger.info('✅ MongoDB connection closed.');
+      logger.info('✅ Graceful shutdown complete.');
+      process.exit(0);
+    }).catch((mongoErr) => {
+      logger.error(`Error closing MongoDB: ${mongoErr.message}`);
+      process.exit(1);
+    });
+  });
+
+  // Force kill after 10 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    logger.error('⚠️ Graceful shutdown timed out. Forcing exit.');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 startServer();

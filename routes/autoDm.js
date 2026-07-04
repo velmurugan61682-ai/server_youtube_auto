@@ -4,9 +4,10 @@ import AutoDmConfig from '../models/AutoDmConfig.js';
 import RepliedComment from '../models/RepliedComment.js';
 import { processVideo } from '../services/autoDmService.js';
 import logger from '../utils/logger.mjs';
+import Video from '../models/Video.mjs';
 
-// Import the cron job to initialize it automatically on startup
-import '../jobs/autoDmCron.js';
+// NOTE: Auto DM cron is initialized from index.mjs after MongoDB connects.
+// Do NOT import '../jobs/autoDmCron.js' here — it caused side-effect initialization.
 
 const router = express.Router();
 
@@ -53,6 +54,14 @@ router.post('/config', authMiddleware, async (req, res) => {
     
     if (!channelId || !videoId || !whatsappNumber) {
       return res.status(400).json({ error: 'channelId, videoId, and whatsappNumber are required' });
+    }
+
+    // Validate: video must actually exist in DB to prevent ghost/placeholder configs
+    const videoExists = await Video.exists({ videoId });
+    if (!videoExists) {
+      return res.status(400).json({ 
+        error: `Video "${videoId}" does not exist in the database. Please select a valid video from your channel.` 
+      });
     }
 
     const config = await AutoDmConfig.findOneAndUpdate(
