@@ -18,21 +18,43 @@ import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_fallback';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// ✅ FIX: Intelligent FRONTEND_URL selection based on NODE_ENV
+const getFrontendUrl = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction) {
+    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://client-youtube-automation.vercel.app';
+    console.log(`[Frontend URL] Production mode - using: ${frontendUrl}`);
+    return frontendUrl;
+  } else {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    console.log(`[Frontend URL] Development mode - using: ${frontendUrl}`);
+    return frontendUrl;
+  }
+};
+
+const FRONTEND_URL = getFrontendUrl();
 
 export const initiateAuth = async (req, res) => {
   try {
     const userId = req.user.id;
     const state = crypto.randomUUID();
 
-    console.log(`[OAuth State Gen] Generating OAuth state for user ${userId}: ${state}`);
+    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId}`);
+    console.log(`[OAuth State Gen] State value: ${state}`);
+    console.log(`[OAuth State Gen] TTL: 5 minutes`);
 
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
-    await OAuthState.findOneAndUpdate(
+    const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
       { state, userId },
       { upsert: true, new: true }
     );
+
+    console.log(`[OAuth State Gen] ✅ State stored in MongoDB`);
+    console.log(`[OAuth State Gen] Document ID: ${stateDoc._id}`);
+    console.log(`[OAuth State Gen] Will expire at: ${new Date(stateDoc.createdAt.getTime() + 5 * 60 * 1000).toISOString()}`);
 
     const client = getYouTubeAuth();
     const authUrl = client.generateAuthUrl({
@@ -47,31 +69,63 @@ export const initiateAuth = async (req, res) => {
         'https://www.googleapis.com/auth/youtube.force-ssl'
       ],
     });
+
+    console.log(`[OAuth State Gen] ✅ Auth URL generated`);
+    console.log(`[OAuth State Gen] Redirect will happen to Google OAuth`);
+    
     res.json({ redirectUrl: authUrl });
   } catch (err) {
-    logger.error(`Failed to generate OAuth URL: ${err.message}`);
-    res.status(500).json({ error: 'OAuth Configuration Error' });
+    logger.error(`[OAuth State Gen] ❌ Failed to generate OAuth URL: ${err.message}`);
+    console.error(`[OAuth State Gen] Error Stack:`, err.stack);
+    res.status(500).json({ error: 'OAuth Configuration Error', details: err.message });
   }
 };
 
 export const handleCallback = async (req, res) => {
   const { code, state, error: oauthError } = req.query;
 
-  console.log(`[OAuth State Ver] Received callback with state: ${state}, code: ${code ? 'exists' : 'none'}, error: ${oauthError || 'none'}`);
+  // ✅ FIX: Detailed logging for OAuth state debugging
+  console.log(`[OAuth State Ver] Callback received:`);
+  console.log(`  - State: ${state}`);
+  console.log(`  - Code: ${code ? code.substring(0, 10) + '...' : 'MISSING'}`);
+  console.log(`  - OAuth Error: ${oauthError || 'none'}`);
+  console.log(`  - Full URL: ${req.originalUrl}`);
 
-  if (oauthError) return res.status(400).json({ error: 'access_denied', message: oauthError });
+  if (oauthError) {
+    logger.error(`[OAuth Error] Google OAuth error received: ${oauthError}`);
+    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent(oauthError)}`);
+  }
 
   if (!state) {
-    logger.error('handleCallback: Missing state parameter from Google redirect');
-    return res.status(400).json({ error: 'invalid_state', message: 'Missing state parameter' });
+    logger.error('[OAuth Error] Missing state parameter from Google redirect');
+    console.error('[OAuth Error] Missing state parameter - this is a critical OAuth security violation');
+    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Missing state parameter')}`);
+  }
+
+  if (!code) {
+    logger.error('[OAuth Error] Missing authorization code from Google');
+    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Missing authorization code')}`);
   }
 
   // Look up and delete single-use state mapping
-  const stateRecord = await OAuthState.findOneAndDelete({ state });
-  if (!stateRecord) {
-    console.log(`[OAuth State Ver] State record not found or expired for state: ${state}`);
-    logger.error('handleCallback: Invalid or expired OAuth state parameter');
-    return res.status(400).json({ error: 'invalid_state', message: 'Invalid or expired state parameter' });
+  let stateRecord = null;
+  try {
+    stateRecord = await OAuthState.findOneAndDelete({ state });
+    if (!stateRecord) {
+      console.log(`[OAuth State Ver] State record NOT found for state: ${state}`);
+      console.log(`[OAuth State Ver] This could mean:`);
+      console.log(`  1. State parameter was incorrect/tampered`);
+      console.log(`  2. State expired (5-minute TTL)`);
+      console.log(`  3. State was already used (single-use only)`);
+      console.log(`  4. Database connection issue`);
+      
+      logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
+      return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
+    }
+    console.log(`[OAuth State Ver] ✅ State verified successfully for user: ${stateRecord.userId}`);
+  } catch (dbErr) {
+    logger.error(`[OAuth Error] Database error during state verification: ${dbErr.message}`);
+    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Database error during verification')}`);
   }
 
   const userId = stateRecord.userId;

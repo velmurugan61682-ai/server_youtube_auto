@@ -138,15 +138,29 @@ export const ensureAuthToken = async (auth, channelDbId) => {
 export const getYouTubeAuth = () => {
   const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
   const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
-  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || process.env.REDIRECT_URI || '').trim().replace(/^["']|["']$/g, '');
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
+  // ✅ FIX: Intelligent redirect URI selection based on NODE_ENV
+  let redirectUri = '';
+  
+  if (isProduction) {
+    // Production: Use the Render/deployed URL
+    redirectUri = (process.env.GOOGLE_REDIRECT_URI_PROD || process.env.GOOGLE_REDIRECT_URI || '').trim().replace(/^["']|["']$/g, '');
+  } else {
+    // Development: Use localhost
+    redirectUri = (process.env.GOOGLE_REDIRECT_URI_DEV || process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/youtube/callback').trim().replace(/^["']|["']$/g, '');
+  }
+
+  console.log(`[OAuth Setup] Mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log(`[OAuth Setup] Redirect URI: ${redirectUri}`);
+  console.log(`[OAuth Setup] GOOGLE_CLIENT_ID: ${clientId.substring(0, 20)}...`);
 
   if (!redirectUri) {
-    const error = 'CRITICAL: GOOGLE_REDIRECT_URI is not defined in environment variables!';
+    const error = `CRITICAL: No GOOGLE_REDIRECT_URI configured for ${isProduction ? 'production' : 'development'}! Set GOOGLE_REDIRECT_URI_PROD or GOOGLE_REDIRECT_URI_DEV.`;
     logger.error(error);
     throw new Error(error);
   }
+  
   if (!clientId || !clientSecret) {
     const error = 'CRITICAL: Google Client ID or Client Secret is not defined in environment variables!';
     logger.error(error);
