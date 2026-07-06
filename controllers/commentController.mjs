@@ -10,10 +10,11 @@ import {
 import { classifyComment } from '../services/aiService.mjs';
 import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
+import { debouncedEmit } from '../utils/socketDebouncer.mjs';
 
 export const getComments = async (req, res) => {
   try {
-    const { status, sentiment, autoLiked, videoId, channelId } = req.query;
+    const { status, sentiment, autoLiked, videoId, channelId, page = 1, limit = 50 } = req.query;
     const query = { userId: req.user.id };
     
     if (channelId) query.channelId = channelId;
@@ -22,8 +23,24 @@ export const getComments = async (req, res) => {
     if (autoLiked !== undefined) query.autoLiked = autoLiked === 'true';
     if (videoId) query.videoId = videoId;
 
-    const comments = await Comment.find(query).sort({ publishedAt: -1 }).limit(100);
-    res.json(comments);
+    // ✅ PERFORMANCE: Added pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const comments = await Comment.find(query)
+      .sort({ publishedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const total = await Comment.countDocuments(query);
+    
+    res.json({
+      comments,
+      pagination: {
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
+        currentPage: parseInt(page),
+        limit: parseInt(limit)
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -108,7 +125,8 @@ export const takeAction = async (req, res) => {
 
     await comment.save();
     const io = req.app.get('io');
-    if (io) io.emit('stats_updated');
+    // ✅ PERFORMANCE: Use debounced emission (max once per second)
+    if (io) debouncedEmit(io, 'stats_updated');
 
     if (!success && action !== 'approve') {
       return res.json({ success: false, error: actionError || 'Operation failed' });
@@ -136,7 +154,8 @@ export const editComment = async (req, res) => {
 
     await comment.save();
     const io = req.app.get('io');
-    if (io) io.emit('stats_updated');
+    // ✅ PERFORMANCE: Use debounced emission (max once per second)
+    if (io) debouncedEmit(io, 'stats_updated');
     
     res.json({ success: true, comment });
   } catch (error) {

@@ -53,7 +53,14 @@ const commentSchema = new mongoose.Schema({
   moderationReason: String,
 }, { timestamps: true });
 
+// ✅ PERFORMANCE: Added indexes for fast queries
 commentSchema.index({ userId: 1, youtubeId: 1 }, { unique: true });
+commentSchema.index({ userId: 1, status: 1 });              // For status filtering
+commentSchema.index({ userId: 1, sentiment: 1 });           // For sentiment analysis
+commentSchema.index({ userId: 1, language: 1 });            // For language breakdown
+commentSchema.index({ userId: 1, autoLiked: 1 });           // For liked comments
+commentSchema.index({ userId: 1, publishedAt: -1 });        // For sorting by date
+commentSchema.index({ channelId: 1 });                      // For channel filtering
 
 export default mongoose.model('Comment', commentSchema);
 // [FIX APPLIED] Bug #2 & #3 — Added authorChannelId, isBotReply, hasReplied, repliedAt fields to Comment model (models/Comment.mjs)
