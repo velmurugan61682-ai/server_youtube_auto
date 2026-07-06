@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import logger from '../utils/logger.mjs';
 import AutoReplyLog from '../models/AutoReplyLog.mjs';
+import Comment from '../models/Comment.mjs';
 import { replyToComment } from './youtubeService.mjs';
 import { google } from 'googleapis';
 
@@ -239,11 +240,19 @@ Respond with ONLY a JSON object:
         }
       });
       logger.info(`[Auto-Reply Service] System client comments.insert succeeded with status ${response.status}.`);
-      repRes = { success: true };
+      // FIX #2: Capture new comment ID from fallback path too
+      const newCommentId = response.data?.id || null;
+      const newCommentAuthorChannelId = response.data?.snippet?.authorChannelId?.value || null;
+      repRes = { success: true, newCommentId, newCommentAuthorChannelId };
     }
 
     if (repRes.success) {
       postSuccess = true;
+      // FIX #2: Store new bot reply ID for downstream isBotReply tagging
+      if (repRes.newCommentId) {
+        auditLog.newCommentId = repRes.newCommentId;
+        auditLog.newCommentAuthorChannelId = repRes.newCommentAuthorChannelId;
+      }
     } else {
       errorReason = repRes.reason || 'Unknown error';
     }
@@ -273,7 +282,7 @@ Respond with ONLY a JSON object:
       logger.error(`[Auto-Reply Service] Failed to update audit log:`, dbErr);
     }
 
-    return { success: true, replyText, detectedLanguage };
+    return { success: true, replyText, detectedLanguage, newCommentId: auditLog.newCommentId || null };
   } else {
     logger.error(`[Auto-Reply Service] Failed to post auto-reply: ${errorReason}`);
     

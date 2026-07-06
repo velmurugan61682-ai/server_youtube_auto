@@ -8,6 +8,8 @@ const commentSchema = new mongoose.Schema({
   text: { type: String, required: true },
   author: { type: String, required: true },
   authorProfileImageUrl: String,
+  // FIX #2: Channel ID of the comment author — used to detect bot's own replies
+  authorChannelId: { type: String, default: null },
   publishedAt: { type: Date, required: true },
   sentiment: { type: String, default: 'neutral' },
   toxicityScore: { type: Number, default: 0 },
@@ -27,7 +29,16 @@ const commentSchema = new mongoose.Schema({
   moderatedBy: String,
   moderatedAt: Date,
   note: { type: String, default: '' },
-  
+
+  // FIX #2: True when THIS comment was posted by the bot as an auto-reply.
+  // Bot-authored comments are always skipped from toxicity moderation.
+  isBotReply: { type: Boolean, default: false },
+
+  // FIX #3: True once a successful bot reply has been posted for THIS comment.
+  // Used to prevent duplicate DeepSeek calls and duplicate YouTube replies.
+  hasReplied: { type: Boolean, default: false },
+  repliedAt: { type: Date, default: null },
+
   // AI Automation additions
   classification: String,
   suggestedReply: String,
@@ -45,3 +56,4 @@ const commentSchema = new mongoose.Schema({
 commentSchema.index({ userId: 1, youtubeId: 1 }, { unique: true });
 
 export default mongoose.model('Comment', commentSchema);
+// [FIX APPLIED] Bug #2 & #3 — Added authorChannelId, isBotReply, hasReplied, repliedAt fields to Comment model (models/Comment.mjs)

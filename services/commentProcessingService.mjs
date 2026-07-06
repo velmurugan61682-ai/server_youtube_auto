@@ -124,15 +124,50 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
   try {
     const confidenceThresholdDecimal = (userSettings.confidenceThreshold || 85) / 100;
     const targetParentId = commentDoc.youtubeId.includes('.') ? commentDoc.youtubeId.split('.')[0] : commentDoc.youtubeId;
-    
+
     // Guard: Prevent duplicate processing and replies
     if (commentDoc.aiActionTaken || commentDoc.replyStatus === 'sent' || commentDoc.replyStatus === 'pending' || commentDoc.replyText) {
       logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} already processed or replied to. Skipping.`);
       return;
     }
-    
+
+    // ── FIX #2: Skip bot's own auto-reply comments from moderation pipeline ──────
+    // Bot-authored comments (isBotReply flag OR authorChannelId matches this channel)
+    // must never be sent to DeepSeek, never flagged toxic, and never deleted.
+    const isBotOwnComment = commentDoc.isBotReply === true ||
+      (commentDoc.authorChannelId &&
+        channel.channelId &&
+        commentDoc.authorChannelId === channel.channelId);
+
+    if (isBotOwnComment) {
+      logger.info(`[MODERATION] [FIX #2] Comment ${commentDoc.youtubeId} is a bot auto-reply. Marking safe and skipping moderation. (commentProcessingService.mjs)`);
+      await Comment.updateOne(
+        { _id: commentDoc._id },
+        {
+          $set: {
+            aiActionTaken: true,
+            aiStatus: 'completed',
+            status: 'approved',
+            classification: 'bot_reply',
+            moderationStatus: 'safe',
+            actionTaken: 'skip_bot',
+            isBotReply: true
+          }
+        }
+      );
+      return;
+    }
+    // ── END FIX #2 ──────────────────────────────────────────────────────────────
+
+    // ── FIX #3: Skip if this comment has already been replied to ────────────────
+    if (commentDoc.hasReplied === true) {
+      logger.info(`[MODERATION] [FIX #3] Comment ${commentDoc.youtubeId} already has hasReplied=true. Skipping duplicate reply. (commentProcessingService.mjs)`);
+      return;
+    }
+    // ── END FIX #3 (hasReplied pre-check) ───────────────────────────────────────
+
     logger.info(`[MODERATION] Initiating DeepSeek analysis for comment ID ${commentDoc.youtubeId} by ${commentDoc.author}: "${commentDoc.text}"`);
-    
+
     // DeepSeek Classifier
     const aiResult = await classifyComment(commentDoc.text, userKey);
     logger.info("DeepSeek analysis completed");
@@ -297,6 +332,57 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
             aiActionTaken = true;
             replyText = repRes.replyText;
             suggestedReply = repRes.replyText;
+            // ── FIX #3: Atomically mark the original comment as replied to ───────
+            // Use findOneAndUpdate so concurrent workers cannot both proceed past this
+            await Comment.findOneAndUpdate(
+              { _id: commentDoc._id, hasReplied: { $ne: true } },
+              {
+                $set: {
+                  hasReplied: true,
+                  repliedAt: new Date()
+                }
+              }
+            );
+            logger.info(`[REPLY] [FIX #3] Marked comment ${commentDoc.youtubeId} hasReplied=true to prevent duplicates. (commentProcessingService.mjs)`);
+            // ── END FIX #3 ──────────────────────────────────────────────────────
+
+            // ── FIX #2: Save the bot reply comment in MongoDB with isBotReply=true ─
+            // This prevents the next sync from picking up and moderating this reply.
+            if (repRes.newCommentId) {
+              try {
+                await Comment.findOneAndUpdate(
+                  { youtubeId: repRes.newCommentId, userId: channel.userId },
+                  {
+                    $setOnInsert: {
+                      userId: channel.userId,
+                      youtubeId: repRes.newCommentId,
+                      channelId: channel.channelId,
+                      videoId: commentDoc.videoId,
+                      text: replyText,
+                      author: 'Bot (Auto-Reply)',
+                      authorChannelId: channel.channelId,
+                      publishedAt: new Date(),
+                    },
+                    $set: {
+                      isBotReply: true,
+                      hasReplied: false,
+                      status: 'approved',
+                      aiActionTaken: true,
+                      aiStatus: 'completed',
+                      classification: 'bot_reply',
+                      moderationStatus: 'safe',
+                      actionTaken: 'skip_bot',
+                    }
+                  },
+                  { upsert: true, new: true }
+                );
+                logger.info(`[REPLY] [FIX #2] Saved bot reply ${repRes.newCommentId} in MongoDB with isBotReply=true. (commentProcessingService.mjs)`);
+              } catch (botSaveErr) {
+                logger.error(`[REPLY] [FIX #2] Failed to save bot reply comment in MongoDB: ${botSaveErr.message}`);
+              }
+            }
+            // ── END FIX #2 ──────────────────────────────────────────────────────
+
             await logAutomation(channel.userId, 'comment_reply', `Auto-replied to comment: ${replyText}`, { commentId: commentDoc.youtubeId, apiResponse: repRes });
           } else {
             replyStatus = 'failed';
@@ -712,6 +798,9 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
                 text: c.text,
                 author: c.author,
                 authorProfileImageUrl: c.authorProfileImageUrl,
+                // Gap fix: same authorChannelId capture that the recurring sync already does —
+                // needed so processSingleComment can detect and skip bot-authored replies.
+                authorChannelId: c.authorChannelId || null,
                 publishedAt: c.publishedAt,
                 status: 'pending',
                 aiActionTaken: false
@@ -794,6 +883,9 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
                 text: c.text,
                 author: c.author,
                 authorProfileImageUrl: c.authorProfileImageUrl,
+                // FIX #2: Save the comment author's channel ID so the moderation
+                // pipeline can detect and skip bot-authored replies.
+                authorChannelId: c.authorChannelId || null,
                 publishedAt: c.publishedAt,
                 status: 'pending',
                 aiActionTaken: false

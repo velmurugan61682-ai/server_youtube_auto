@@ -4,13 +4,14 @@ import AutoDmConfig from '../models/AutoDmConfig.js';
 import RepliedComment from '../models/RepliedComment.js';
 import Video from '../models/Video.mjs';
 import Channel from '../models/Channel.mjs';
+import Comment from '../models/Comment.mjs';
 import { decrypt, encrypt } from '../utils/cryptoHelper.mjs';
-import { 
-  getYouTubeClient, 
-  getYouTubeClientWithApiKey, 
-  getYouTubeAuth, 
-  fetchLatestComments, 
-  replyToComment 
+import {
+  getYouTubeClient,
+  getYouTubeClientWithApiKey,
+  getYouTubeAuth,
+  fetchLatestComments,
+  replyToComment
 } from './youtubeService.mjs';
 
 /**
@@ -174,6 +175,40 @@ export const processVideo = async (videoId) => {
           );
           repliesSent++;
           logger.info(`[Auto DM Service] Posted reply to comment ${comment.youtubeId} successfully.`);
+
+          // FIX #2: Save the bot reply comment in MongoDB with isBotReply=true
+          // so the moderation pipeline skips it instead of flagging it as toxic.
+          if (replyResult.newCommentId) {
+            try {
+              await Comment.findOneAndUpdate(
+                { youtubeId: replyResult.newCommentId, userId: config.userId },
+                {
+                  $setOnInsert: {
+                    userId: config.userId,
+                    youtubeId: replyResult.newCommentId,
+                    channelId: config.channelId,
+                    videoId: config.videoId,
+                    text: replyText,
+                    author: 'Bot (Auto-Reply)',
+                    authorChannelId: channel.channelId,
+                    publishedAt: new Date(),
+                    status: 'approved',
+                    aiActionTaken: true,
+                    aiStatus: 'completed',
+                    classification: 'bot_reply',
+                    moderationStatus: 'safe',
+                    actionTaken: 'skip_bot',
+                  },
+                  $set: { isBotReply: true, hasReplied: false }
+                },
+                { upsert: true, new: true }
+              );
+              logger.info(`[Auto DM Service] [FIX #2] Saved bot reply ${replyResult.newCommentId} in MongoDB with isBotReply=true to prevent self-moderation. (autoDmService.js)`);
+            } catch (saveErr) {
+              logger.error(`[Auto DM Service] [FIX #2] Failed to save bot reply in Comment model: ${saveErr.message}`);
+            }
+          }
+          // END FIX #2
 
           // Wait random delay between 30-60 seconds before next reply
           const delayMs = Math.floor(Math.random() * (60000 - 30000 + 1)) + 30000;

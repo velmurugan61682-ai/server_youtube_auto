@@ -64,6 +64,20 @@ router.post('/config', authMiddleware, async (req, res) => {
       });
     }
 
+    // FIX #4: Sanitize reply templates — replace any hardcoded {https://...} or {http://...}
+    // URL-in-braces patterns with the correct {whatsapp_link} placeholder.
+    // This fixes the broken WhatsApp link / %7D encoding issue.
+    const HARDCODED_URL_IN_BRACES_ROUTE = /\{https?:\/\/[^}]*\}/g;
+    const sanitizedTemplates = (replyTemplates || []).map((tpl) => {
+      if (typeof tpl !== 'string') return tpl;
+      const fixed = tpl.replace(HARDCODED_URL_IN_BRACES_ROUTE, '{whatsapp_link}');
+      if (fixed !== tpl) {
+        console.log(`[Fix #4] Auto-corrected malformed template in autoDm.js POST /config: "${tpl}" → "${fixed}"`);
+      }
+      return fixed;
+    });
+    // END FIX #4
+
     const config = await AutoDmConfig.findOneAndUpdate(
       { videoId, userId: req.user.id },
       {
@@ -72,7 +86,7 @@ router.post('/config', authMiddleware, async (req, res) => {
         enabled: !!enabled,
         whatsappNumber,
         keywords: keywords || [],
-        replyTemplates: replyTemplates || [],
+        replyTemplates: sanitizedTemplates,
         userId: req.user.id
       },
       { upsert: true, new: true }
@@ -184,6 +198,74 @@ router.post('/run/:videoId', authMiddleware, async (req, res) => {
     }
   } catch (error) {
     logger.error(`[Auto DM Route] Error running manually: ${error.message}`);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @route POST /api/auto-dm/keywords/add
+ * @desc FIX #5 — Atomically add a single keyword to the config using $addToSet
+ *       (prevents duplicates, never overwrites existing keywords)
+ * @access Private
+ */
+router.post('/keywords/add', authMiddleware, async (req, res) => {
+  try {
+    const { videoId, keyword } = req.body;
+    if (!videoId || !keyword || typeof keyword !== 'string' || !keyword.trim()) {
+      return res.status(400).json({ error: 'videoId and a non-empty keyword are required' });
+    }
+
+    const normalizedKeyword = keyword.trim().toLowerCase();
+
+    // FIX #5: $addToSet ensures no duplicates and never overwrites the full array
+    const config = await AutoDmConfig.findOneAndUpdate(
+      { videoId, userId: req.user.id },
+      { $addToSet: { keywords: normalizedKeyword } },
+      { new: true }
+    );
+
+    if (!config) {
+      return res.status(404).json({ error: 'Auto DM config not found for this video. Save the config first.' });
+    }
+
+    console.log(`[Fix #5] Keyword "${normalizedKeyword}" added via $addToSet for video ${videoId} (autoDm.js)`);
+    return res.json({ keywords: config.keywords });
+  } catch (error) {
+    logger.error(`[Auto DM Route] Error adding keyword: ${error.message}`);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @route POST /api/auto-dm/keywords/remove
+ * @desc FIX #5 — Atomically remove a single keyword from the config using $pull
+ *       (removes only the specified keyword, never touches the rest of the array)
+ * @access Private
+ */
+router.post('/keywords/remove', authMiddleware, async (req, res) => {
+  try {
+    const { videoId, keyword } = req.body;
+    if (!videoId || !keyword || typeof keyword !== 'string' || !keyword.trim()) {
+      return res.status(400).json({ error: 'videoId and a non-empty keyword are required' });
+    }
+
+    const normalizedKeyword = keyword.trim().toLowerCase();
+
+    // FIX #5: $pull removes only the exact keyword, other keywords remain untouched
+    const config = await AutoDmConfig.findOneAndUpdate(
+      { videoId, userId: req.user.id },
+      { $pull: { keywords: normalizedKeyword } },
+      { new: true }
+    );
+
+    if (!config) {
+      return res.status(404).json({ error: 'Auto DM config not found for this video.' });
+    }
+
+    console.log(`[Fix #5] Keyword "${normalizedKeyword}" removed via $pull for video ${videoId} (autoDm.js)`);
+    return res.json({ keywords: config.keywords });
+  } catch (error) {
+    logger.error(`[Auto DM Route] Error removing keyword: ${error.message}`);
     return res.status(500).json({ error: error.message });
   }
 });

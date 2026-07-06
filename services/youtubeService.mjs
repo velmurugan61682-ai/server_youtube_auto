@@ -211,6 +211,8 @@ export const fetchLatestComments = async (youtube, channelId, maxResults = 50, v
         text: topLevelComment.snippet.textDisplay,
         author: topLevelComment.snippet.authorDisplayName,
         authorProfileImageUrl: topLevelComment.snippet.authorProfileImageUrl,
+        // FIX #2: Capture author's channel ID so processSingleComment can detect bot replies
+        authorChannelId: topLevelComment.snippet.authorChannelId?.value || null,
         publishedAt: topLevelComment.snippet.publishedAt,
         parentId: null
       });
@@ -223,6 +225,8 @@ export const fetchLatestComments = async (youtube, channelId, maxResults = 50, v
             text: reply.snippet.textDisplay,
             author: reply.snippet.authorDisplayName,
             authorProfileImageUrl: reply.snippet.authorProfileImageUrl,
+            // FIX #2: Capture author's channel ID for bot-reply detection
+            authorChannelId: reply.snippet.authorChannelId?.value || null,
             publishedAt: reply.snippet.publishedAt,
             parentId: topLevelComment.id
           });
@@ -367,7 +371,12 @@ export const replyToComment = async (youtube, parentId, text) => {
       }
     });
     logger.info(`[YOUTUBE API] Response: comments.insert succeeded with status ${response.status}. Replied to comment ${parentId}.`);
-    return { success: true };
+    // FIX #2: Return the new reply's YouTube comment ID so callers can save
+    // the bot reply doc in MongoDB with isBotReply=true, preventing self-moderation.
+    const newCommentId = response.data?.id || null;
+    const newCommentAuthorChannelId = response.data?.snippet?.authorChannelId?.value || null;
+    logger.info(`[YOUTUBE API] [FIX #2] Bot reply posted. New comment ID: ${newCommentId}, authorChannelId: ${newCommentAuthorChannelId} (youtubeService.mjs)`);
+    return { success: true, newCommentId, newCommentAuthorChannelId };
   } catch (error) {
     if (isQuotaError(error)) throw error;
     const errorMsg = error.response?.data?.error?.message || error.message;
@@ -513,6 +522,8 @@ export const fetchAllCommentsAndRepliesForVideo = async (youtube, videoId) => {
           text: topLevelComment.snippet.textDisplay,
           author: topLevelComment.snippet.authorDisplayName,
           authorProfileImageUrl: topLevelComment.snippet.authorProfileImageUrl,
+          // Gap fix: capture authorChannelId so bot-reply detection works for initial-sync comments
+          authorChannelId: topLevelComment.snippet.authorChannelId?.value || null,
           publishedAt: topLevelComment.snippet.publishedAt,
           parentId: null
         });
@@ -525,6 +536,8 @@ export const fetchAllCommentsAndRepliesForVideo = async (youtube, videoId) => {
               text: reply.snippet.textDisplay,
               author: reply.snippet.authorDisplayName,
               authorProfileImageUrl: reply.snippet.authorProfileImageUrl,
+              // Gap fix: capture authorChannelId for replies too
+              authorChannelId: reply.snippet.authorChannelId?.value || null,
               publishedAt: reply.snippet.publishedAt,
               parentId: topLevelComment.id
             });
