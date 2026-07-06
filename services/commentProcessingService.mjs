@@ -126,21 +126,22 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     const targetParentId = commentDoc.youtubeId.includes('.') ? commentDoc.youtubeId.split('.')[0] : commentDoc.youtubeId;
 
     // Guard: Prevent duplicate processing and replies
-    if (commentDoc.aiActionTaken || commentDoc.replyStatus === 'sent' || commentDoc.replyStatus === 'pending' || commentDoc.replyText) {
-      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} already processed or replied to. Skipping.`);
+    // NOTE: We do NOT skip based on replyText alone — replyText can be set on bot-own
+    // comments at insert time, and we still need aiActionTaken to gate the pipeline.
+    if (commentDoc.aiActionTaken || commentDoc.replyStatus === 'sent' || commentDoc.replyStatus === 'pending') {
+      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} already processed (aiActionTaken=${commentDoc.aiActionTaken}, replyStatus=${commentDoc.replyStatus}). Skipping.`);
       return;
     }
 
-    // ── FIX #2: Skip bot's own auto-reply comments from moderation pipeline ──────
-    // Bot-authored comments (isBotReply flag OR authorChannelId matches this channel)
-    // must never be sent to DeepSeek, never flagged toxic, and never deleted.
-    const isBotOwnComment = commentDoc.isBotReply === true ||
-      (commentDoc.authorChannelId &&
-        channel.channelId &&
-        commentDoc.authorChannelId === channel.channelId);
+    // ── FIX #2 (CORRECTED): Skip ONLY bot-posted auto-reply comments from the moderation pipeline.
+    // IMPORTANT: We ONLY use the explicit isBotReply flag set when the bot posts a reply.
+    // We do NOT use authorChannelId === channel.channelId because that would wrongly protect
+    // ALL of the channel owner's own comments (including toxic ones like "kena paiyan").
+    // The channel owner's real comments must still go through full DeepSeek moderation.
+    const isBotOwnComment = commentDoc.isBotReply === true;
 
     if (isBotOwnComment) {
-      logger.info(`[MODERATION] [FIX #2] Comment ${commentDoc.youtubeId} is a bot auto-reply. Marking safe and skipping moderation. (commentProcessingService.mjs)`);
+      logger.info(`[MODERATION] [FIX #2] Comment ${commentDoc.youtubeId} has isBotReply=true — this is a bot auto-reply. Marking safe and skipping moderation. (commentProcessingService.mjs)`);
       await Comment.updateOne(
         { _id: commentDoc._id },
         {

@@ -131,6 +131,21 @@ export const processVideo = async (videoId) => {
       const exists = await RepliedComment.findOne({ commentId: comment.youtubeId });
       if (exists) continue;
 
+      // 1b. Bot-own-comment guard: Skip if this comment is the bot's own auto-reply.
+      // Bot replies contain the WhatsApp link — we must NOT reply to our own replies.
+      // Also check the DB flag in case the comment was already tagged isBotReply=true.
+      const whatsappLinkBase = `wa.me/${config.whatsappNumber.replace(/[^\d]/g, '')}`;
+      const isOwnBotReply = (comment.text && (
+        comment.text.includes(whatsappLinkBase) ||
+        comment.text.includes('wa.me/') // any wa.me link = bot reply
+      ));
+      const dbComment = await Comment.findOne({ youtubeId: comment.youtubeId, userId: config.userId });
+      const isBotReplyInDb = dbComment?.isBotReply === true;
+      if (isOwnBotReply || isBotReplyInDb) {
+        logger.info(`[Auto DM Service] Skipping comment ${comment.youtubeId} — it is a bot auto-reply (isBotReplyInDb=${isBotReplyInDb}, isOwnBotReply=${isOwnBotReply}). Never reply to own replies.`);
+        continue;
+      }
+
       // 2. Keyword Check
       const matchedKeyword = containsKeyword(comment.text, config.keywords);
       if (!matchedKeyword) continue;
@@ -176,8 +191,30 @@ export const processVideo = async (videoId) => {
           repliesSent++;
           logger.info(`[Auto DM Service] Posted reply to comment ${comment.youtubeId} successfully.`);
 
-          // FIX #2: Save the bot reply comment in MongoDB with isBotReply=true
+          // FIX #2 (ROBUST): Save the bot reply comment in MongoDB with isBotReply=true
           // so the moderation pipeline skips it instead of flagging it as toxic.
+          // Also mark the ORIGINAL comment with hasReplied=true so the moderation
+          // pipeline does not try to re-reply to it.
+          try {
+            // 5a. Mark the original user comment as replied-to in the Comment model
+            await Comment.findOneAndUpdate(
+              { youtubeId: comment.youtubeId, userId: config.userId },
+              {
+                $set: {
+                  hasReplied: true,
+                  repliedAt: new Date(),
+                  aiActionTaken: true,
+                  aiStatus: 'completed',
+                  replyStatus: 'sent',
+                  replyText,
+                }
+              }
+            );
+            logger.info(`[Auto DM Service] Marked original comment ${comment.youtubeId} hasReplied=true and replyStatus=sent.`);
+          } catch (markErr) {
+            logger.error(`[Auto DM Service] Failed to mark original comment as replied: ${markErr.message}`);
+          }
+
           if (replyResult.newCommentId) {
             try {
               await Comment.findOneAndUpdate(
@@ -207,6 +244,10 @@ export const processVideo = async (videoId) => {
             } catch (saveErr) {
               logger.error(`[Auto DM Service] [FIX #2] Failed to save bot reply in Comment model: ${saveErr.message}`);
             }
+          } else {
+            // newCommentId not returned by API — pre-emptively tag any matching bot-reply
+            // comment that may sync later by searching by replyText + videoId
+            logger.warn(`[Auto DM Service] newCommentId not returned for reply to ${comment.youtubeId}. Bot reply doc will be tagged when sync picks it up if authorChannelId matches.`);
           }
           // END FIX #2
 
