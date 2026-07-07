@@ -42,20 +42,6 @@ const FRONTEND_URL = getFrontendUrl();
 export const initiateAuth = async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // Pre-flight check: limit Free Plan users to 1 channel
-    const user = await User.findById(userId);
-    const isPremium = user && (user.subscription?.status === 'active' || user.subscription?.id === 'trial_promo_active' || user.role === 'admin');
-    if (!isPremium) {
-      const connectedChannelsCount = await Channel.countDocuments({ userId });
-      if (connectedChannelsCount >= 1) {
-        return res.status(403).json({ 
-          error: 'Free plan is limited to 1 YouTube channel. Please upgrade to Premium Pro to connect multiple accounts.',
-          limitReached: true
-        });
-      }
-    }
-
     const state = crypto.randomUUID();
 
     console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId}`);

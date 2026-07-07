@@ -294,17 +294,21 @@ app.use(cookieParser());
 // Rate Limiting Configurations
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per 15 minutes
+  max: 1000, // Increased threshold for testing/production high loads
   standardHeaders: true,
   legacyHeaders: false,
+  // Bypass rate limits for local developer/testing requests
+  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === 'localhost',
   message: { error: 'Too many requests, please try again after 15 minutes.' }
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30, // Limit each IP to 30 authentication requests per 15 minutes
+  max: 100, // Increased threshold for auth testing
   standardHeaders: true,
   legacyHeaders: false,
+  // Bypass rate limits for local developer/testing requests
+  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === 'localhost',
   message: { error: 'Too many authentication attempts, please try again after 15 minutes.' }
 });
 

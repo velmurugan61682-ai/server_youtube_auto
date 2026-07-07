@@ -23,14 +23,7 @@ if (key_id && key_secret) {
  */
 export const createRazorpaySubscription = async (planId, email) => {
   if (!razorpay) {
-    // Return a mock subscription for developer/testing convenience
-    logger.info(`[Razorpay Mock] Creating mock subscription for plan: ${planId}`);
-    const mockId = `sub_mock_${Math.random().toString(36).substr(2, 9)}`;
-    return {
-      id: mockId,
-      status: 'created',
-      short_url: `https://checkout.razorpay.com/v1/checkout.html?sub_id=${mockId}`
-    };
+    throw new Error('Razorpay integration is not configured. Please specify RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the .env file.');
   }
 
   try {
@@ -53,9 +46,8 @@ export const createRazorpaySubscription = async (planId, email) => {
  * Cancels a subscription in Razorpay
  */
 export const cancelRazorpaySubscription = async (subscriptionId) => {
-  if (!razorpay || subscriptionId.startsWith('sub_mock_')) {
-    logger.info(`[Razorpay Mock] Cancelling mock subscription: ${subscriptionId}`);
-    return { status: 'cancelled' };
+  if (!razorpay) {
+    throw new Error('Razorpay integration is not configured.');
   }
 
   try {
