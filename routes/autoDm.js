@@ -19,7 +19,15 @@ const router = express.Router();
 router.get('/config/:videoId', authMiddleware, async (req, res) => {
   try {
     const { videoId } = req.params;
-    const config = await AutoDmConfig.findOne({ videoId, userId: req.user.id });
+
+    // Validate: verify that the user actually owns the video
+    const video = await Video.findOne({ videoId, userId: req.user.id });
+    if (!video) {
+      return res.status(403).json({ error: 'Access denied: You do not own this video or the video does not exist.' });
+    }
+    
+    // Find globally by videoId since videoId is globally unique
+    const config = await AutoDmConfig.findOne({ videoId });
     
     if (!config) {
       // Return default values so the frontend has fallback values
@@ -56,11 +64,11 @@ router.post('/config', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'channelId, videoId, and whatsappNumber are required' });
     }
 
-    // Validate: video must actually exist in DB to prevent ghost/placeholder configs
-    const videoExists = await Video.exists({ videoId });
-    if (!videoExists) {
-      return res.status(400).json({ 
-        error: `Video "${videoId}" does not exist in the database. Please select a valid video from your channel.` 
+    // Validate: verify that the user actually owns the video
+    const video = await Video.findOne({ videoId, userId: req.user.id });
+    if (!video) {
+      return res.status(403).json({ 
+        error: `Access denied: You do not own this video or it does not exist in the database.` 
       });
     }
 
@@ -78,8 +86,9 @@ router.post('/config', authMiddleware, async (req, res) => {
     });
     // END FIX #4
 
+    // Query globally by videoId since videoId is globally unique
     const config = await AutoDmConfig.findOneAndUpdate(
-      { videoId, userId: req.user.id },
+      { videoId },
       {
         channelId,
         videoId,
@@ -87,7 +96,7 @@ router.post('/config', authMiddleware, async (req, res) => {
         whatsappNumber,
         keywords: keywords || [],
         replyTemplates: sanitizedTemplates,
-        userId: req.user.id
+        userId: req.user.id // Keep current logged-in owner
       },
       { upsert: true, new: true }
     );
@@ -107,9 +116,17 @@ router.post('/config', authMiddleware, async (req, res) => {
 router.get('/stats/:videoId', authMiddleware, async (req, res) => {
   try {
     const { videoId } = req.params;
-    const config = await AutoDmConfig.findOne({ videoId, userId: req.user.id });
+
+    // Validate: verify that the user actually owns the video
+    const video = await Video.findOne({ videoId, userId: req.user.id });
+    if (!video) {
+      return res.status(403).json({ error: 'Access denied: You do not own this video.' });
+    }
     
-    const totalReplies = await RepliedComment.countDocuments({ videoId, userId: req.user.id });
+    const config = await AutoDmConfig.findOne({ videoId });
+    
+    // Count globally for this videoId
+    const totalReplies = await RepliedComment.countDocuments({ videoId });
 
     // Mock pending comments to 0 since we reply near instantly
     const pendingComments = 0;
@@ -138,10 +155,15 @@ router.get('/history/:videoId?', authMiddleware, async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const query = { userId: req.user.id };
+    // Check ownership of the video if videoId is provided
     if (videoId) {
-      query.videoId = videoId;
+      const video = await Video.findOne({ videoId, userId: req.user.id });
+      if (!video) {
+        return res.status(403).json({ error: 'Access denied: You do not own this video.' });
+      }
     }
+
+    const query = videoId ? { videoId } : { userId: req.user.id };
 
     const [history, total] = await Promise.all([
       RepliedComment.find(query)
@@ -172,8 +194,14 @@ router.post('/run/:videoId', authMiddleware, async (req, res) => {
   try {
     const { videoId } = req.params;
     
-    // Check config belongs to user
-    const config = await AutoDmConfig.findOne({ videoId, userId: req.user.id });
+    // Validate: verify that the user actually owns the video
+    const video = await Video.findOne({ videoId, userId: req.user.id });
+    if (!video) {
+      return res.status(403).json({ error: 'Access denied: You do not own this video.' });
+    }
+
+    // Find globally by videoId
+    const config = await AutoDmConfig.findOne({ videoId });
     if (!config) {
       return res.status(404).json({ error: 'Auto DM config not found for this video' });
     }
@@ -215,12 +243,21 @@ router.post('/keywords/add', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'videoId and a non-empty keyword are required' });
     }
 
+    // Validate: verify that the user actually owns the video
+    const video = await Video.findOne({ videoId, userId: req.user.id });
+    if (!video) {
+      return res.status(403).json({ error: 'Access denied: You do not own this video.' });
+    }
+
     const normalizedKeyword = keyword.trim().toLowerCase();
 
-    // FIX #5: $addToSet ensures no duplicates and never overwrites the full array
+    // Query globally by videoId and update owner to active user
     const config = await AutoDmConfig.findOneAndUpdate(
-      { videoId, userId: req.user.id },
-      { $addToSet: { keywords: normalizedKeyword } },
+      { videoId },
+      { 
+        $addToSet: { keywords: normalizedKeyword },
+        $set: { userId: req.user.id }
+      },
       { new: true }
     );
 
@@ -249,12 +286,21 @@ router.post('/keywords/remove', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'videoId and a non-empty keyword are required' });
     }
 
+    // Validate: verify that the user actually owns the video
+    const video = await Video.findOne({ videoId, userId: req.user.id });
+    if (!video) {
+      return res.status(403).json({ error: 'Access denied: You do not own this video.' });
+    }
+
     const normalizedKeyword = keyword.trim().toLowerCase();
 
-    // FIX #5: $pull removes only the exact keyword, other keywords remain untouched
+    // Query globally by videoId and update owner to active user
     const config = await AutoDmConfig.findOneAndUpdate(
-      { videoId, userId: req.user.id },
-      { $pull: { keywords: normalizedKeyword } },
+      { videoId },
+      { 
+        $pull: { keywords: normalizedKeyword },
+        $set: { userId: req.user.id }
+      },
       { new: true }
     );
 

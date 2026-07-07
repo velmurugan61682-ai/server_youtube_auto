@@ -35,7 +35,7 @@ export const login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user._id, email: user.email, role: user.role || 'client' }, JWT_SECRET, { expiresIn: '7d' });
 
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('token', token, {
@@ -76,7 +76,7 @@ export const sso = async (req, res) => {
       const user = await User.findOne({ email: sso_username }) || await User.findOne();
       if (!user) return res.status(401).json({ error: 'SSO user not found' });
 
-      const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user._id, email: user.email, role: user.role || 'client' }, JWT_SECRET, { expiresIn: '7d' });
 
       return res.json({ 
         success: true, 

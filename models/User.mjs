@@ -4,6 +4,14 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
+  role: { type: String, enum: ['admin', 'client'], default: 'client' },
+  subscription: {
+    id: { type: String, default: '' },
+    planId: { type: String, default: '' },
+    status: { type: String, enum: ['none', 'created', 'active', 'cancelled', 'expired', 'halted'], default: 'none' },
+    currentStart: { type: Date },
+    currentEnd: { type: Date }
+  },
   youtubeApiKey: { type: String, default: '' },
   youtubeChannelId: { type: String, default: '' },
   openaiApiKey:   { type: String, default: '' },

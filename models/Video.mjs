@@ -39,5 +39,6 @@ const videoSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 videoSchema.index({ userId: 1, videoId: 1 }, { unique: true });
+videoSchema.index({ userId: 1, channelId: 1, publishedAt: -1 }); // Compound index for channel video queries
 
 export default mongoose.model('Video', videoSchema);

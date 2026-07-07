@@ -7,10 +7,15 @@ import leadRoutes from './leadRoutes.mjs';
 import settingsRoutes from './settingsRoutes.mjs';
 import automationRoutes from './automation.js';
 import autoDmRoutes from './autoDm.js';
+import subscriptionRoutes from './subscriptionRoutes.mjs';
+import { requireActiveSubscription } from '../middleware/subscription.mjs';
 
 const router = express.Router();
 
 router.use('/auth', authRoutes);
+router.use('/subscription', subscriptionRoutes);
+
+// Core feature routes (accessible by both Free and Premium users)
 router.use('/youtube', youtubeRoutes);
 router.use('/comments', commentRoutes);
 router.use('/analytics', analyticsRoutes);

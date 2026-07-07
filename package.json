@@ -34,6 +34,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^9.0.3",
     "openai": "^6.45.0",
+    "razorpay": "^2.9.6",
     "sharp": "^0.35.2",
     "socket.io": "^4.8.3",
     "uuid": "^14.0.1",

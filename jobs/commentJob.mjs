@@ -110,8 +110,15 @@ export const initCommentJob = (io) => {
       return;
     }
     try {
-      logger.info('Running scheduled 30-second comment analysis...');
-      const channels = await Channel.find();
+      logger.info('Running scheduled 30-second comment analysis (fetching channels due for sync)...');
+      const fiveMinutesAgo = new Date(Date.now() - 300000);
+      const channels = await Channel.find({
+        $or: [
+          { lastSyncedAt: { $exists: false } },
+          { lastSyncedAt: null },
+          { lastSyncedAt: { $lt: fiveMinutesAgo } }
+        ]
+      });
       for (const channel of channels) {
         if (channel.reconnectRequired) {
           logger.info(`[CRON] Skipping reconnect-required channel ${channel.title || channel.channelId}`);

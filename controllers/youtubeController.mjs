@@ -1,6 +1,7 @@
 import Channel from '../models/Channel.mjs';
 import Comment from '../models/Comment.mjs';
 import Video from '../models/Video.mjs';
+import User from '../models/User.mjs';
 import logger from '../utils/logger.mjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -18,6 +19,8 @@ import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_fallback';
+
+const activeRefreshes = new Set();
 
 // ✅ FIX: Intelligent FRONTEND_URL selection based on NODE_ENV
 const getFrontendUrl = () => {
@@ -39,6 +42,20 @@ const FRONTEND_URL = getFrontendUrl();
 export const initiateAuth = async (req, res) => {
   try {
     const userId = req.user.id;
+    
+    // Pre-flight check: limit Free Plan users to 1 channel
+    const user = await User.findById(userId);
+    const isPremium = user && (user.subscription?.status === 'active' || user.subscription?.id === 'trial_promo_active' || user.role === 'admin');
+    if (!isPremium) {
+      const connectedChannelsCount = await Channel.countDocuments({ userId });
+      if (connectedChannelsCount >= 1) {
+        return res.status(403).json({ 
+          error: 'Free plan is limited to 1 YouTube channel. Please upgrade to Premium Pro to connect multiple accounts.',
+          limitReached: true
+        });
+      }
+    }
+
     const state = crypto.randomUUID();
 
     console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId}`);
@@ -153,6 +170,21 @@ export const handleCallback = async (req, res) => {
 
     const channelData = items[0];
     let existingChannel = await Channel.findOne({ channelId: channelData.id });
+
+    // Post-flight check: prevent Free Plan users from registering a second channel
+    const isReconnectingOwnChannel = existingChannel && existingChannel.userId.toString() === userId.toString();
+    if (!isReconnectingOwnChannel) {
+      const user = await User.findById(userId);
+      const isPremium = user && (user.subscription?.status === 'active' || user.subscription?.id === 'trial_promo_active' || user.role === 'admin');
+      if (!isPremium) {
+        const connectedChannelsCount = await Channel.countDocuments({ userId });
+        if (connectedChannelsCount >= 1) {
+          logger.warn(`Billing: User ${user?.email} blocked from connecting multiple channels on the Free Plan.`);
+          return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Free plan is limited to 1 YouTube channel. Please upgrade to Pro to connect multiple accounts.')}`);
+        }
+      }
+    }
+
     const auth = getAuthFromClient(youtube);
     if (existingChannel && auth) {
       auth.channelDbId = existingChannel._id;
@@ -295,74 +327,82 @@ export const getVideos = async (req, res) => {
 
     const staleTime = Date.now() - 60000; // 60 seconds TTL cache
     const needsStatsRefresh = videos.length > 0 && (
-      videos.some(v => !v.lastFetchedAt || !v.statistics || !v.statistics.viewCount || v.lastFetchedAt.getTime() < staleTime)
+      videos.some(v => !v.lastFetchedAt || !v.statistics || typeof v.statistics.viewCount !== 'number' || v.lastFetchedAt.getTime() < staleTime)
     );
 
     if (needsStatsRefresh) {
-      logger.info(`Stale/missing statistics detected for channel: ${channelId}. Syncing from YouTube Data API...`);
-      try {
-        let youtube;
-        if (channel.apiKey) {
-          youtube = getYouTubeClientWithApiKey(decrypt(channel.apiKey));
-        } else {
-          const decryptedTokens = {
-            access_token: decrypt(channel.accessToken),
-            refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
-            expiry_date: channel.expiryDate
-          };
-          youtube = getYouTubeClient(decryptedTokens, null, channel._id);
-        }
-
-        const videoIds = videos.map(v => v.videoId);
-        const apiStatsItems = await fetchVideoStatisticsBatch(youtube, videoIds);
-
-        const todayStr = new Date().toISOString().split('T')[0];
-
-        for (const item of apiStatsItems) {
-          const viewCount = parseInt(item.statistics?.viewCount || 0);
-          const likeCount = parseInt(item.statistics?.likeCount || 0);
-          const commentCount = parseInt(item.statistics?.commentCount || 0);
-          const engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
-
-          const video = videos.find(v => v.videoId === item.id);
-          if (video) {
-            let history = video.likesHistory || [];
-            if (history.length > 0) {
-              const lastEntry = history[history.length - 1];
-              const lastEntryDateStr = new Date(lastEntry.date).toISOString().split('T')[0];
-              if (lastEntryDateStr === todayStr) {
-                lastEntry.likeCount = likeCount;
-              } else {
-                history.push({ date: new Date(), likeCount });
-              }
-            } else {
-              const yesterday = new Date();
-              yesterday.setDate(yesterday.getDate() - 1);
-              history = [
-                { date: yesterday, likeCount: Math.max(0, likeCount - Math.floor(Math.random() * 5)) },
-                { date: new Date(), likeCount }
-              ];
-            }
-            if (history.length > 30) history.shift();
-
-            await Video.updateOne(
-              { _id: video._id },
-              {
-                $set: {
-                  statistics: { viewCount, likeCount, commentCount },
-                  engagementRate,
-                  likesHistory: history,
-                  lastFetchedAt: new Date()
-                }
-              }
-            );
+      const refreshKey = `${req.user.id}_${channelId}`;
+      if (activeRefreshes.has(refreshKey)) {
+        logger.info(`[SYNC] Refresh already in progress for channel: ${channelId} (User: ${req.user.id}). Returning cached DB videos.`);
+      } else {
+        activeRefreshes.add(refreshKey);
+        logger.info(`Stale/missing statistics detected for channel: ${channelId}. Syncing from YouTube Data API...`);
+        try {
+          let youtube;
+          if (channel.apiKey) {
+            youtube = getYouTubeClientWithApiKey(decrypt(channel.apiKey));
+          } else {
+            const decryptedTokens = {
+              access_token: decrypt(channel.accessToken),
+              refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+              expiry_date: channel.expiryDate
+            };
+            youtube = getYouTubeClient(decryptedTokens, null, channel._id);
           }
+
+          const videoIds = videos.map(v => v.videoId);
+          const apiStatsItems = await fetchVideoStatisticsBatch(youtube, videoIds);
+
+          const todayStr = new Date().toISOString().split('T')[0];
+
+          for (const item of apiStatsItems) {
+            const viewCount = parseInt(item.statistics?.viewCount || 0);
+            const likeCount = parseInt(item.statistics?.likeCount || 0);
+            const commentCount = parseInt(item.statistics?.commentCount || 0);
+            const engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
+
+            const video = videos.find(v => v.videoId === item.id);
+            if (video) {
+              let history = video.likesHistory || [];
+              if (history.length > 0) {
+                const lastEntry = history[history.length - 1];
+                const lastEntryDateStr = new Date(lastEntry.date).toISOString().split('T')[0];
+                if (lastEntryDateStr === todayStr) {
+                  lastEntry.likeCount = likeCount;
+                } else {
+                  history.push({ date: new Date(), likeCount });
+                }
+              } else {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                history = [
+                  { date: yesterday, likeCount: Math.max(0, likeCount - Math.floor(Math.random() * 5)) },
+                  { date: new Date(), likeCount }
+                ];
+              }
+              if (history.length > 30) history.shift();
+
+              await Video.updateOne(
+                { _id: video._id },
+                {
+                  $set: {
+                    statistics: { viewCount, likeCount, commentCount },
+                    engagementRate,
+                    likesHistory: history,
+                    lastFetchedAt: new Date()
+                  }
+                }
+              );
+            }
+          }
+          
+          // Re-fetch updated list
+          videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
+        } catch (apiErr) {
+          logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
+        } finally {
+          activeRefreshes.delete(refreshKey);
         }
-        
-        // Re-fetch updated list
-        videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
-      } catch (apiErr) {
-        logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
       }
     }
     

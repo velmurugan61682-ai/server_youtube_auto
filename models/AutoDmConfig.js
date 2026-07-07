@@ -88,4 +88,6 @@ const autoDmConfigSchema = new mongoose.Schema({
   timestamps: true
 });
 
+autoDmConfigSchema.index({ userId: 1, channelId: 1 }); // Index for fast user configuration fetches
+
 export default mongoose.model('AutoDmConfig', autoDmConfigSchema);
