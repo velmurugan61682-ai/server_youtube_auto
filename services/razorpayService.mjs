@@ -27,10 +27,41 @@ export const createRazorpaySubscription = async (planId, email) => {
   }
 
   try {
+    let activePlanId = planId;
+
+    // Auto-create/resolve plan in Razorpay if it is a mock ID
+    if (activePlanId.includes('mock') || !activePlanId.startsWith('plan_')) {
+      logger.info(`Plan ID is a mock placeholder (${planId}). Checking for existing Premium plan in Razorpay account...`);
+      try {
+        const plans = await razorpay.plans.all({ count: 50 });
+        const existingPlan = plans.items?.find(p => p.item?.name === 'Premium Pro Plan');
+        if (existingPlan) {
+          activePlanId = existingPlan.id;
+          logger.info(`Found existing Premium plan on Razorpay: ${activePlanId}`);
+        } else {
+          logger.info('Creating a new Premium Pro Plan in Razorpay...');
+          const newPlan = await razorpay.plans.create({
+            period: 'monthly',
+            interval: 1,
+            item: {
+              name: 'Premium Pro Plan',
+              amount: 99900, // ₹999.00 in paise
+              currency: 'INR',
+              description: 'Premium Pro Plan - Unlimited YouTube Channels'
+            }
+          });
+          activePlanId = newPlan.id;
+          logger.info(`Created new Premium plan on Razorpay: ${activePlanId}`);
+        }
+      } catch (err) {
+        logger.error('Failed to auto-resolve Razorpay plan. Attempting with original plan ID:', err);
+      }
+    }
+
     const subscription = await razorpay.subscriptions.create({
-      plan_id: planId,
+      plan_id: activePlanId,
       customer_notify: 1,
-      total_count: planId === process.env.RAZORPAY_PLAN_YEARLY ? 5 : 60, // 5 cycles for yearly, 60 for monthly
+      total_count: 60, // 60 cycles (5 years)
       notes: {
         email
       }

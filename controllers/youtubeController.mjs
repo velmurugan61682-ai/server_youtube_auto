@@ -170,44 +170,18 @@ export const handleCallback = async (req, res) => {
       const isAdmin = user && user.role === 'admin';
       const isSubActive = user && (user.subscription?.status === 'active' || org?.subscription?.status === 'active');
       
-      let activePlan = 'free';
-      if (isSubActive) {
-        activePlan = org?.subscription?.planType || user.subscription?.planType || 'starter';
-      }
-
       let channelLimit = 1;
-      let planName = 'Free Trial';
+      let planName = 'Free Plan';
       
       if (isAdmin) {
         channelLimit = 1000;
         planName = 'Admin';
       } else if (isSubActive) {
-        if (activePlan === 'starter') {
-          channelLimit = 1;
-          planName = 'Starter';
-        } else if (activePlan === 'professional') {
-          channelLimit = 3;
-          planName = 'Professional';
-        } else if (activePlan === 'business') {
-          channelLimit = 10;
-          planName = 'Business';
-        } else if (activePlan === 'enterprise') {
-          channelLimit = 1000;
-          planName = 'Enterprise';
-        }
+        channelLimit = 1000; // Premium gets unlimited channels
+        planName = 'Premium Pro';
       } else {
-        // Free trial check: 30 days from user registration
-        const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
-        const registrationTime = user && user.createdAt ? new Date(user.createdAt).getTime() : Date.now();
-        const isFreeTrialActive = (Date.now() - registrationTime) < oneMonthMs;
-        
-        if (isFreeTrialActive) {
-          channelLimit = 1;
-          planName = 'Free Trial';
-        } else {
-          channelLimit = 0;
-          planName = 'Expired Trial';
-        }
+        channelLimit = 1; // Free Plan gets exactly 1 channel forever
+        planName = 'Free Plan';
       }
 
       const connectedChannelsCount = await Channel.countDocuments({ userId });
