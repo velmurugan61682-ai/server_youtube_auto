@@ -2,19 +2,23 @@ import express from 'express';
 import { processComments } from '../services/commentProcessingService.mjs';
 import Channel from '../models/Channel.mjs';
 import logger from '../utils/logger.mjs';
+import { authMiddleware } from '../middleware/auth.mjs';
 
 const router = express.Router();
 
 /**
  * @route POST /api/automation/run-now
  * @desc Manually trigger comment automation processing cycle using the centralized service
- * @access Public
+ * @access Private
  */
-router.post('/run-now', async (req, res) => {
+router.post('/run-now', authMiddleware, async (req, res) => {
   try {
     logger.info('[AUTOMATION ROUTE] Manual comment automation run requested.');
     const io = req.app.get('io');
-    const channels = await Channel.find();
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(filter);
     let processedChannelsCount = 0;
 
     for (const channel of channels) {

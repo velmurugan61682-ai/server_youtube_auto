@@ -341,7 +341,14 @@ export const getVideos = async (req, res) => {
     const channel = await Channel.findOne(filter);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
-    let videos = await Video.find({ channelId }).sort({ publishedAt: -1 });
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+
+    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 });
 
     const staleTime = Date.now() - 60000; // 60 seconds TTL cache
     const needsStatsRefresh = videos.length > 0 && (
@@ -415,7 +422,7 @@ export const getVideos = async (req, res) => {
           }
           
           // Re-fetch updated list
-          videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
+          videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 });
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {
@@ -434,7 +441,15 @@ export const getVideos = async (req, res) => {
 export const getVideoAnalytics = async (req, res) => {
   try {
     const { id } = req.params;
-    const video = await Video.findOne({ userId: req.user.id, videoId: id });
+    
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+
+    const video = await Video.findOne({ userId: { $in: userIds }, videoId: id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
     res.json({ video });
   } catch (error) {
@@ -448,7 +463,14 @@ export const likeVideoDashboard = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    const video = await Video.findOne({ userId, videoId: id });
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+
+    const video = await Video.findOne({ userId: { $in: userIds }, videoId: id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
     
     // Check if duplicate

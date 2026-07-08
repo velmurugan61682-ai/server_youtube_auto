@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Comment from '../models/Comment.mjs';
 import Lead from '../models/Lead.mjs';
 import Channel from '../models/Channel.mjs';
+import User from '../models/User.mjs';
 
 export const getAnalytics = async (req, res) => {
   try {
@@ -14,7 +15,17 @@ export const getAnalytics = async (req, res) => {
     const channels = await Channel.find(filter).select('channelId');
     const channelIds = channels.map(c => c.channelId);
 
-    const aggMatch = { channelId: { $in: channelIds } };
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+
+    const aggMatch = { 
+      channelId: { $in: channelIds },
+      userId: { $in: userIds }
+    };
     
     if (channelId) {
       if (channelIds.includes(channelId)) {
@@ -92,6 +103,7 @@ export const getAnalytics = async (req, res) => {
     // Count total leads for tenant channels
     const totalLeads = await Lead.countDocuments({ 
       channelId: { $in: channelIds }, 
+      userId: { $in: userIds },
       ...(channelId && { channelId }) 
     });
 

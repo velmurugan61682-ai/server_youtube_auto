@@ -1,5 +1,6 @@
 import Comment from '../models/Comment.mjs';
 import Channel from '../models/Channel.mjs';
+import User from '../models/User.mjs';
 import { 
   getYouTubeClient, 
   likeComment, 
@@ -28,7 +29,17 @@ export const getComments = async (req, res) => {
     // Resolve tenant channels
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    const query = { channelId: { $in: allowedChannelIds } };
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+    
+    const query = { 
+      channelId: { $in: allowedChannelIds },
+      userId: { $in: userIds }
+    };
     
     if (channelId) {
       if (allowedChannelIds.includes(channelId)) {

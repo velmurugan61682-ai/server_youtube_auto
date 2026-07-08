@@ -83,7 +83,10 @@ router.post('/upload-video', authMiddleware, upload.single('video'), async (req,
   }
 
   try {
-    const channel = await Channel.findOne({ channelId, userId: req.user.id });
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+    const channel = await Channel.findOne(filter);
     if (!channel) {
       throw new Error('Channel not found');
     }
@@ -157,7 +160,10 @@ router.post('/analyze-schedule', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'videoId is required' });
     }
 
-    const channel = await Channel.findOne({ channelId, userId: req.user.id });
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+    const channel = await Channel.findOne(filter);
     if (!channel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
@@ -285,6 +291,13 @@ router.post('/confirm-schedule', authMiddleware, async (req, res) => {
     if (!channelId || !scheduledTime || !videoId) {
       return res.status(400).json({ error: 'channelId, videoId, and scheduledTime are required' });
     }
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+    const channel = await Channel.findOne(filter);
+    if (!channel) {
+      return res.status(403).json({ error: 'Access denied: Channel not found or unauthorized.' });
+    }
 
     const scheduledUpload = await ScheduledUpload.create({
       videoId,
@@ -306,14 +319,25 @@ router.post('/confirm-schedule', authMiddleware, async (req, res) => {
 
 
 /**
- * GET /api/deepseek/schedule-queue
+ * @route GET /api/deepseek/schedule-queue
  */
 router.get('/schedule-queue', authMiddleware, async (req, res) => {
   try {
     const { channelId } = req.query;
-    const filter = {};
+
+    const userFilter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(userFilter).select('channelId');
+    const channelIds = channels.map(c => c.channelId);
+
+    const filter = { channelId: { $in: channelIds } };
     if (channelId) {
-      filter.channelId = channelId;
+      if (channelIds.includes(channelId)) {
+        filter.channelId = channelId;
+      } else {
+        return res.json([]);
+      }
     }
     const queue = await ScheduledUpload.find(filter).sort({ scheduledTime: 1 });
     res.json(queue);

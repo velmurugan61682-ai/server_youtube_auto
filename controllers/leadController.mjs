@@ -1,5 +1,6 @@
 import Lead from '../models/Lead.mjs';
 import Channel from '../models/Channel.mjs';
+import User from '../models/User.mjs';
 
 const getUserChannelIds = async (user) => {
   const filter = user.organizationId 
@@ -13,7 +14,18 @@ export const getLeads = async (req, res) => {
   try {
     const { status, channelId, search } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
-    const query = { channelId: { $in: allowedChannelIds } };
+    
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+
+    const query = { 
+      channelId: { $in: allowedChannelIds },
+      userId: { $in: userIds }
+    };
 
     if (status) query.status = status;
     if (channelId) {
@@ -41,7 +53,18 @@ export const getLeads = async (req, res) => {
 export const exportLeads = async (req, res) => {
   try {
     const allowedChannelIds = await getUserChannelIds(req.user);
-    const leads = await Lead.find({ channelId: { $in: allowedChannelIds } }).sort({ createdAt: -1 });
+    
+    // Resolve organization users
+    const filterUser = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id');
+    const userIds = users.map(u => u._id);
+
+    const leads = await Lead.find({ 
+      channelId: { $in: allowedChannelIds },
+      userId: { $in: userIds }
+    }).sort({ createdAt: -1 });
     if (leads.length === 0) return res.status(404).send('No leads to export');
 
     const fields = ['authorName', 'whatsappNumber', 'status', 'isHidden', 'whatsappSent', 'videoId', 'channelId', 'createdAt'];
