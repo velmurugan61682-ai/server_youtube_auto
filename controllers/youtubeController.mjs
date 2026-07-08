@@ -2,6 +2,7 @@ import Channel from '../models/Channel.mjs';
 import Comment from '../models/Comment.mjs';
 import Video from '../models/Video.mjs';
 import User from '../models/User.mjs';
+import Organization from '../models/Organization.mjs';
 import logger from '../utils/logger.mjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -158,16 +159,65 @@ export const handleCallback = async (req, res) => {
     const channelData = items[0];
     let existingChannel = await Channel.findOne({ channelId: channelData.id });
 
-    // Post-flight check: prevent Free Plan users from registering a second channel
+    // Post-flight check: prevent exceeding channel limits based on subscription plan
     const isReconnectingOwnChannel = existingChannel && existingChannel.userId.toString() === userId.toString();
     if (!isReconnectingOwnChannel) {
-      const isPremium = user && (user.subscription?.status === 'active' || user.subscription?.id === 'trial_promo_active' || user.role === 'admin');
-      if (!isPremium) {
-        const connectedChannelsCount = await Channel.countDocuments({ userId });
-        if (connectedChannelsCount >= 1) {
-          logger.warn(`Billing: User ${user?.email} blocked from connecting multiple channels on the Free Plan.`);
-          return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Free plan is limited to 1 YouTube channel. Please upgrade to Pro to connect multiple accounts.')}`);
+      let org = null;
+      if (user && user.organizationId) {
+        org = await Organization.findById(user.organizationId);
+      }
+
+      const isAdmin = user && user.role === 'admin';
+      const isSubActive = user && (user.subscription?.status === 'active' || org?.subscription?.status === 'active');
+      
+      let activePlan = 'free';
+      if (isSubActive) {
+        activePlan = org?.subscription?.planType || user.subscription?.planType || 'starter';
+      }
+
+      let channelLimit = 1;
+      let planName = 'Free Trial';
+      
+      if (isAdmin) {
+        channelLimit = 1000;
+        planName = 'Admin';
+      } else if (isSubActive) {
+        if (activePlan === 'starter') {
+          channelLimit = 1;
+          planName = 'Starter';
+        } else if (activePlan === 'professional') {
+          channelLimit = 3;
+          planName = 'Professional';
+        } else if (activePlan === 'business') {
+          channelLimit = 10;
+          planName = 'Business';
+        } else if (activePlan === 'enterprise') {
+          channelLimit = 1000;
+          planName = 'Enterprise';
         }
+      } else {
+        // Free trial check: 30 days from user registration
+        const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+        const registrationTime = user && user.createdAt ? new Date(user.createdAt).getTime() : Date.now();
+        const isFreeTrialActive = (Date.now() - registrationTime) < oneMonthMs;
+        
+        if (isFreeTrialActive) {
+          channelLimit = 1;
+          planName = 'Free Trial';
+        } else {
+          channelLimit = 0;
+          planName = 'Expired Trial';
+        }
+      }
+
+      const connectedChannelsCount = await Channel.countDocuments({ userId });
+      if (connectedChannelsCount >= channelLimit) {
+        logger.warn(`Billing: User ${user?.email} blocked from connecting channel. Count: ${connectedChannelsCount}, Limit for ${planName}: ${channelLimit}`);
+        let errorMsg = `Your ${planName} plan is limited to ${channelLimit} YouTube channel(s). Please upgrade your plan to connect more accounts.`;
+        if (channelLimit === 0) {
+          errorMsg = 'Your 30-day Free Trial has expired. Please subscribe to a plan to connect channels.';
+        }
+        return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent(errorMsg)}`);
       }
     }
 
