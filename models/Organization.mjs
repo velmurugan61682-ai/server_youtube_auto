@@ -9,7 +9,7 @@ const organizationSchema = new mongoose.Schema({
     address: { type: String, default: '' }
   },
   subscription: {
-    status: { type: String, enum: ['none', 'active', 'cancelled', 'expired', 'halted'], default: 'none' },
+    status: { type: String, enum: ['none', 'created', 'active', 'cancelled', 'expired', 'halted'], default: 'none' },
     planType: { type: String, enum: ['starter', 'professional', 'business', 'enterprise', 'free'], default: 'free' },
     razorpaySubscriptionId: { type: String, default: '' },
     currentPeriodEnd: { type: Date }
