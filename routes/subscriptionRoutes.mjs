@@ -25,8 +25,8 @@ const planIds = {
  */
 router.post('/create', authMiddleware, async (req, res) => {
   try {
-    const { planType } = req.body; // 'starter', 'professional', 'business', 'enterprise'
-    if (!planType || !planIds[planType]) {
+    const { planType } = req.body; // 'starter', 'professional', 'business', 'enterprise', 'free'
+    if (!planType || (planType !== 'free' && !planIds[planType])) {
       return res.status(400).json({ error: 'Invalid plan type selected.' });
     }
 
@@ -36,6 +36,44 @@ router.post('/create', authMiddleware, async (req, res) => {
 
     const org = await Organization.findById(user.organizationId);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    if (planType === 'free') {
+      // Cancel any active Razorpay subscription if present
+      const subId = org.subscription?.razorpaySubscriptionId || user.subscription?.id;
+      if (subId && !subId.includes('mock')) {
+        try {
+          await cancelRazorpaySubscription(subId);
+        } catch (apiErr) {
+          logger.warn(`SDK cancellation skipped/mocked: ${apiErr.message}`);
+        }
+      }
+
+      // Reset subscription fields to free tier
+      org.subscription = {
+        status: 'none',
+        planType: 'free',
+        razorpaySubscriptionId: '',
+        currentPeriodEnd: null
+      };
+      await org.save();
+
+      user.subscription = {
+        id: '',
+        planId: '',
+        status: 'none',
+        currentStart: null,
+        currentEnd: null
+      };
+      await user.save();
+
+      return res.json({
+        success: true,
+        subscriptionId: '',
+        shortUrl: '',
+        status: 'none',
+        razorpayKeyId: process.env.RAZORPAY_KEY_ID
+      });
+    }
 
     const planId = planIds[planType];
     
@@ -76,7 +114,8 @@ router.post('/create', authMiddleware, async (req, res) => {
       success: true,
       subscriptionId: sub.id,
       shortUrl: sub.short_url,
-      status: sub.status
+      status: sub.status,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID
     });
   } catch (err) {
     logger.error('Subscription initiate failure:', err);
