@@ -193,6 +193,11 @@ export const handleCallback = async (req, res) => {
     const channelData = items[0];
     let existingChannel = await Channel.findOne({ channelId: channelData.id });
 
+    if (existingChannel && existingChannel.userId.toString() !== userId.toString()) {
+      logger.warn(`Security: User ${userId} attempted to link YouTube channel ${channelData.id} which is already owned by User ${existingChannel.userId}`);
+      return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('This YouTube channel is already connected to another account.')}`);
+    }
+
     // Post-flight check: prevent exceeding channel limits based on subscription plan
     const isReconnectingOwnChannel = existingChannel && existingChannel.userId.toString() === userId.toString();
     if (!isReconnectingOwnChannel) {

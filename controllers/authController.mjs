@@ -76,26 +76,41 @@ export const getMe = async (req, res) => {
 
 export const sso = async (req, res) => {
   try {
-    const { sso_username, sso_key } = req.body;
-    // Simple verification for development
-    if (sso_key === '926313') {
-      const user = await User.findOne({ email: sso_username }) || await User.findOne();
-      if (!user) return res.status(401).json({ error: 'SSO user not found' });
-
-      const token = jwt.sign({ 
-        id: user._id, 
-        email: user.email, 
-        role: user.role || 'client',
-        organizationId: user.organizationId
-      }, JWT_SECRET, { expiresIn: '7d' });
-
-      return res.json({ 
-        success: true, 
-        token,
-        user: { id: user._id, name: user.name, email: user.email } 
-      });
+    if (process.env.NODE_ENV === 'production') {
+      logger.warn(`🛑 [SSO Attempt] Blocked SSO request in production environment from IP: ${req.ip}`);
+      return res.status(403).json({ error: 'Forbidden: SSO is disabled in production.' });
     }
-    res.status(401).json({ error: 'Invalid SSO credentials' });
+
+    const { sso_username, sso_key } = req.body;
+    const expectedSsoKey = process.env.DEV_SSO_KEY;
+
+    if (!expectedSsoKey || !sso_key || sso_key !== expectedSsoKey) {
+      logger.warn(`🔑 [SSO Attempt] Invalid SSO key from IP: ${req.ip}`);
+      return res.status(401).json({ error: 'Invalid SSO credentials' });
+    }
+
+    if (!sso_username) {
+      return res.status(400).json({ error: 'sso_username is required' });
+    }
+
+    const user = await User.findOne({ email: sso_username });
+    if (!user) {
+      logger.warn(`🔑 [SSO Attempt] SSO user not found for email: ${sso_username}`);
+      return res.status(401).json({ error: 'SSO user not found' });
+    }
+
+    const token = jwt.sign({ 
+      id: user._id, 
+      email: user.email, 
+      role: user.role || 'client',
+      organizationId: user.organizationId
+    }, JWT_SECRET, { expiresIn: '7d' });
+
+    return res.json({ 
+      success: true, 
+      token,
+      user: { id: user._id, name: user.name, email: user.email } 
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

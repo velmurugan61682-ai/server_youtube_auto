@@ -26,5 +26,6 @@ const leadSchema = new mongoose.Schema({
 
 // Index for duplicate protection and fast lookups
 leadSchema.index({ whatsappNumber: 1, createdAt: -1 });
+leadSchema.index({ userId: 1, channelId: 1, createdAt: -1 });
 
 export default mongoose.model('Lead', leadSchema);

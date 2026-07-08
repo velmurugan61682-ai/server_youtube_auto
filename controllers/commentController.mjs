@@ -156,7 +156,7 @@ export const takeAction = async (req, res) => {
     if (io) {
       const roomName = comment.userId.toString();
       io.to(roomName).emit('stats_updated');
-      debouncedEmit(io, 'stats_updated');
+      debouncedEmit(io, roomName, 'stats_updated');
     }
 
     res.json({ success: true, comment });
@@ -185,7 +185,7 @@ export const editComment = async (req, res) => {
     if (io) {
       const roomName = comment.userId.toString();
       io.to(roomName).emit('stats_updated');
-      debouncedEmit(io, 'stats_updated');
+      debouncedEmit(io, roomName, 'stats_updated');
     }
     
     res.json({ success: true, comment });
@@ -207,7 +207,7 @@ export const reanalyzeComments = async (req, res) => {
         await comment.save();
       }
       const io = req.app.get('io');
-      if (io) io.emit('stats_updated');
+      if (io) io.to(req.user.id.toString()).emit('stats_updated');
     };
 
     runReanalysis();

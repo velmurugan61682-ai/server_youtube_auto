@@ -2,6 +2,10 @@ import Lead from '../models/Lead.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
 
+const escapeRegex = (string) => {
+  return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+};
+
 const getUserChannelIds = async (user) => {
   const filter = user.organizationId 
     ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
@@ -36,10 +40,11 @@ export const getLeads = async (req, res) => {
       }
     }
     if (search) {
+      const escapedSearch = escapeRegex(search);
       query.$or = [
-        { authorName: { $regex: search, $options: 'i' } },
-        { whatsappNumber: { $regex: search, $options: 'i' } },
-        { originalComment: { $regex: search, $options: 'i' } }
+        { authorName: { $regex: escapedSearch, $options: 'i' } },
+        { whatsappNumber: { $regex: escapedSearch, $options: 'i' } },
+        { originalComment: { $regex: escapedSearch, $options: 'i' } }
       ];
     }
 

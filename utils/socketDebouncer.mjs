@@ -5,19 +5,38 @@
 
 const debouncedEmitters = new Map();
 
-export const debouncedEmit = (io, eventName, data = null, delayMs = 1000) => {
-  const key = `${eventName}`;
+export const debouncedEmit = (io, roomNameOrEvent, eventNameOrData, data = null, delayMs = 1000) => {
+  let roomName = null;
+  let eventName = null;
+  let actualData = data;
+  let actualDelay = delayMs;
+
+  if (typeof eventNameOrData === 'string') {
+    roomName = roomNameOrEvent;
+    eventName = eventNameOrData;
+  } else {
+    roomName = null;
+    eventName = roomNameOrEvent;
+    actualData = eventNameOrData;
+    if (typeof data === 'number') {
+      actualDelay = data;
+    }
+  }
+
+  const key = roomName ? `${roomName}_${eventName}` : `${eventName}`;
   
   if (debouncedEmitters.has(key)) {
-    // Already scheduled, skip
     return;
   }
   
-  // Schedule emission
   const timeoutId = setTimeout(() => {
-    io.emit(eventName, data);
+    if (roomName) {
+      io.to(roomName).emit(eventName, actualData);
+    } else {
+      io.emit(eventName, actualData);
+    }
     debouncedEmitters.delete(key);
-  }, delayMs);
+  }, actualDelay);
   
   debouncedEmitters.set(key, timeoutId);
 };

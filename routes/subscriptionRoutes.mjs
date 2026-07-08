@@ -264,7 +264,11 @@ router.post('/webhook', async (req, res) => {
   const signature = req.headers['x-razorpay-signature'];
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
-  if (secret && signature) {
+  if (secret) {
+    if (!signature) {
+      logger.warn('⚠️ [Razorpay Webhook] Missing x-razorpay-signature header. Request rejected.');
+      return res.status(400).send('Missing signature');
+    }
     const isValid = verifyWebhookSignature(req.body, signature, secret);
     if (!isValid) {
       logger.warn('⚠️ [Razorpay Webhook] Invalid signature rejected.');

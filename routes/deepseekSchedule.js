@@ -218,36 +218,42 @@ Rules:
 Video Description: "${description || ''}"
 Hourly Watch-time Data: ${JSON.stringify(watchTimeData)}`;
 
-    logger.info(`[Auto-Schedule] Calling DeepSeek to analyze best schedule...`);
-    const deepseekResponse = await axios.post(
-      'https://api.deepseek.com/chat/completions',
-      {
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        temperature: 0.3,
-        response_format: { type: 'json_object' }
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+    let content = '';
+    try {
+      logger.info(`[Auto-Schedule] Calling DeepSeek to analyze best schedule...`);
+      const deepseekResponse = await axios.post(
+        'https://api.deepseek.com/chat/completions',
+        {
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.3,
+          response_format: { type: 'json_object' }
         },
-        timeout: 25000
-      }
-    );
-
-    let content = deepseekResponse.data?.choices?.[0]?.message?.content || '';
-    // Strip markdown fences
-    content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          timeout: 25000
+        }
+      );
+      content = deepseekResponse.data?.choices?.[0]?.message?.content || '';
+    } catch (apiErr) {
+      logger.error(`[Auto-Schedule] DeepSeek API call failed: ${apiErr.message}. Falling back to default scheduling.`);
+    }
 
     let parsed = null;
-    try {
-      parsed = JSON.parse(content);
-    } catch (parseErr) {
-      logger.error(`[Auto-Schedule] Failed to parse DeepSeek response: "${content}"`);
+    if (content) {
+      // Strip markdown fences
+      content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+      try {
+        parsed = JSON.parse(content);
+      } catch (parseErr) {
+        logger.error(`[Auto-Schedule] Failed to parse DeepSeek response: "${content}"`);
+      }
     }
 
     // Sane fallback: 2 hours from now
