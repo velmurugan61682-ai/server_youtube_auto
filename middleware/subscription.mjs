@@ -19,11 +19,10 @@ export const requireActiveSubscription = async (req, res, next) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Resolve tenant organization subscription status
     let isSubscribed = user.subscription && user.subscription.status === 'active';
-    let isTrialPromo = user.subscription && user.subscription.id === 'trial_promo_active';
     let currentEnd = user.subscription?.currentEnd;
 
-    // Resolve tenant organization subscription status
     if (user.organizationId) {
       const org = await Organization.findById(user.organizationId);
       if (org) {
@@ -32,13 +31,11 @@ export const requireActiveSubscription = async (req, res, next) => {
       }
     }
 
-    // 3. Active Subscription Check
-    if (isSubscribed || isTrialPromo) {
-      // Ensure subscription isn't expired
+    // 3. Paid Subscription Expiration Check
+    if (isSubscribed) {
       if (currentEnd && new Date() > new Date(currentEnd)) {
-        logger.warn(`Subscription has expired.`);
+        logger.warn(`Paid Razorpay subscription expired for user: ${user.email}`);
         
-        // Update user state locally
         user.subscription.status = 'expired';
         await user.save();
 
@@ -49,18 +46,28 @@ export const requireActiveSubscription = async (req, res, next) => {
         }
 
         return res.status(402).json({ 
-          error: 'Your subscription has expired.', 
+          error: 'Your Razorpay subscription has expired. Please renew to continue.', 
           subscriptionExpired: true 
         });
       }
       return next();
     }
 
-    logger.warn(`Billing: User ${user.email} blocked due to inactive subscription.`);
-    return res.status(402).json({ 
-      error: 'Active subscription required. Please subscribe to access this feature.',
-      subscriptionRequired: true 
-    });
+    // 4. Free Trial Expiration Check (1 Month trial from account registration)
+    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+    const trialExpirationDate = new Date(user.createdAt.getTime() + oneMonthMs);
+
+    if (new Date() > trialExpirationDate) {
+      logger.warn(`Free plan trial expired for user: ${user.email}`);
+      return res.status(402).json({ 
+        error: 'Your 30-day Free Trial has expired. Please choose a subscription plan to continue.',
+        subscriptionRequired: true,
+        trialExpired: true
+      });
+    }
+
+    // Free trial is still active
+    return next();
   } catch (error) {
     logger.error('Error in subscription verification middleware:', error);
     res.status(500).json({ error: 'Internal subscription check failed' });
