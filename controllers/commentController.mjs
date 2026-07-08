@@ -1,6 +1,7 @@
 import Comment from '../models/Comment.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
+import Video from '../models/Video.mjs';
 import { 
   getYouTubeClient, 
   likeComment, 
@@ -41,7 +42,15 @@ export const getComments = async (req, res) => {
       userId: { $in: userIds }
     };
     
-    if (channelId) {
+    if (videoId) {
+      // Find the video and verify it belongs to allowed channelIds and userIds to prevent cross-channel/cross-user leakages
+      const videoDoc = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds }, userId: { $in: userIds } });
+      if (!videoDoc) {
+        return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
+      }
+      query.videoId = videoId;
+      query.channelId = videoDoc.channelId; // Load comments strictly belonging to this video's channel
+    } else if (channelId) {
       if (allowedChannelIds.includes(channelId)) {
         query.channelId = channelId;
       } else {
@@ -52,7 +61,6 @@ export const getComments = async (req, res) => {
     if (status) query.status = status;
     if (sentiment) query.sentiment = sentiment;
     if (autoLiked !== undefined) query.autoLiked = autoLiked === 'true';
-    if (videoId) query.videoId = videoId;
 
     // ✅ PERFORMANCE: Added pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -113,26 +121,26 @@ export const takeAction = async (req, res) => {
       if (channel.apiKey) {
         return res.status(400).json({ error: 'OAuth required for liking comments.' });
       }
-      await likeComment(youtube, comment.commentId);
+      await likeComment(youtube, comment.youtubeId);
       comment.autoLiked = true;
     } else if (action === 'delete') {
       if (channel.apiKey) {
         return res.status(400).json({ error: 'OAuth required for deleting comments.' });
       }
-      await deleteCommentFromYouTube(youtube, comment.commentId);
+      await deleteCommentFromYouTube(youtube, comment.youtubeId);
       comment.status = 'deleted';
     } else if (action === 'hide') {
       if (channel.apiKey) {
         return res.status(400).json({ error: 'OAuth required for hiding comments.' });
       }
-      await hideComment(youtube, comment.channelId, comment.authorChannelId);
+      await hideComment(youtube, comment.youtubeId);
       comment.status = 'hidden';
     } else if (action === 'reply') {
       if (!replyText) return res.status(400).json({ error: 'Reply text is required' });
       if (channel.apiKey) {
         return res.status(400).json({ error: 'OAuth required for replying to comments.' });
       }
-      await replyToComment(youtube, comment.commentId, replyText);
+      await replyToComment(youtube, comment.youtubeId, replyText);
       comment.autoReplied = true;
       comment.replyText = replyText;
     } else if (action === 'approve') {
@@ -145,7 +153,11 @@ export const takeAction = async (req, res) => {
     await comment.save();
 
     const io = req.app.get('io');
-    if (io) debouncedEmit(io, 'stats_updated');
+    if (io) {
+      const roomName = comment.userId.toString();
+      io.to(roomName).emit('stats_updated');
+      debouncedEmit(io, 'stats_updated');
+    }
 
     res.json({ success: true, comment });
   } catch (error) {
@@ -170,8 +182,11 @@ export const editComment = async (req, res) => {
 
     await comment.save();
     const io = req.app.get('io');
-    // ✅ PERFORMANCE: Use debounced emission (max once per second)
-    if (io) debouncedEmit(io, 'stats_updated');
+    if (io) {
+      const roomName = comment.userId.toString();
+      io.to(roomName).emit('stats_updated');
+      debouncedEmit(io, 'stats_updated');
+    }
     
     res.json({ success: true, comment });
   } catch (error) {

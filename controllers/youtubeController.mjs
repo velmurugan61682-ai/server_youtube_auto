@@ -375,7 +375,8 @@ export const getVideos = async (req, res) => {
             youtube = getYouTubeClient(decryptedTokens, null, channel._id);
           }
 
-          const videoIds = videos.map(v => v.videoId);
+          // Deduplicate videoIds to avoid duplicate API statistics requests
+          const videoIds = [...new Set(videos.map(v => v.videoId))];
           const apiStatsItems = await fetchVideoStatisticsBatch(youtube, videoIds);
 
           const todayStr = new Date().toISOString().split('T')[0];
@@ -430,6 +431,17 @@ export const getVideos = async (req, res) => {
         }
       }
     }
+
+    // Deduplicate videos by videoId to guarantee uniqueness
+    const uniqueVideos = [];
+    const seenVideoIds = new Set();
+    for (const v of videos) {
+      if (!seenVideoIds.has(v.videoId)) {
+        seenVideoIds.add(v.videoId);
+        uniqueVideos.push(v);
+      }
+    }
+    videos = uniqueVideos;
     
     res.json({ videos });
   } catch (error) {
@@ -449,7 +461,14 @@ export const getVideoAnalytics = async (req, res) => {
     const users = await User.find(filterUser).select('_id');
     const userIds = users.map(u => u._id);
 
-    const video = await Video.findOne({ userId: { $in: userIds }, videoId: id });
+    // Resolve tenant channels to avoid cross-channel leakage
+    const filterChannel = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(filterChannel).select('channelId');
+    const channelIds = channels.map(c => c.channelId);
+
+    const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
     res.json({ video });
   } catch (error) {
@@ -470,7 +489,14 @@ export const likeVideoDashboard = async (req, res) => {
     const users = await User.find(filterUser).select('_id');
     const userIds = users.map(u => u._id);
 
-    const video = await Video.findOne({ userId: { $in: userIds }, videoId: id });
+    // Resolve tenant channels to avoid cross-channel leakage
+    const filterChannel = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(filterChannel).select('channelId');
+    const channelIds = channels.map(c => c.channelId);
+
+    const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
     
     // Check if duplicate

@@ -7,6 +7,7 @@ import Video from '../models/Video.mjs';
 import GoWhatsLog from '../models/GoWhatsLog.mjs';
 import AutomationLog from '../models/AutomationLog.mjs';
 import AutoReplyLog from '../models/AutoReplyLog.mjs';
+import AutoLikeLog from '../models/AutoLikeLog.mjs';
 import logger from '../utils/logger.mjs';
 import moment from 'moment-timezone';
 import { 
@@ -124,6 +125,23 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
   try {
     const confidenceThresholdDecimal = (userSettings.confidenceThreshold || 85) / 100;
     const targetParentId = commentDoc.youtubeId.includes('.') ? commentDoc.youtubeId.split('.')[0] : commentDoc.youtubeId;
+
+    // Never process another user's comments
+    if (commentDoc.userId.toString() !== channel.userId.toString()) {
+      logger.warn(`[MODERATION] Comment ${commentDoc.youtubeId} does not belong to channel owner ${channel.userId}. Skipping.`);
+      return;
+    }
+
+    // Check if comment has already been processed (aiActionTaken) in MongoDB to prevent duplicate processing
+    const isProcessed = await Comment.findOne({
+      userId: channel.userId,
+      youtubeId: commentDoc.youtubeId,
+      aiActionTaken: true
+    });
+    if (isProcessed) {
+      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} already marked as processed (aiActionTaken=true) in MongoDB. Skipping.`);
+      return;
+    }
 
     // Guard: Prevent duplicate processing and replies
     // NOTE: We do NOT skip based on replyText alone — replyText can be set on bot-own
@@ -257,20 +275,63 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let likeStatus = 'none';
     let likeError = null;
 
-    const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident;
+    // Check MongoDB to ensure the comment has not already been processed for Auto Like
+    const hasAlreadyBeenLiked = await AutoLikeLog.exists({ commentId: commentDoc.youtubeId });
+    if (hasAlreadyBeenLiked) {
+      logger.info(`[AUTO-LIKE] Comment ${commentDoc.youtubeId} already processed for Auto Like. Skipping.`);
+    } else {
+      // Ignore toxic, spam, and moderate comments. Only process good/positive comments.
+      const isToxicOrSpamOrModerate = [
+        'spam', 'promotion', 'toxic', 'abuse', 'threat', 'scam', 'hate', 'profanity', 
+        'selfpromotion', 'advertisement', 'adult', 'bullying', 'violence', 'malicious_review', 'bad_words',
+        'harassment', 'hate_speech', 'offensive', 'fake_review', 'offensive_review', 'bad words', 'hate speech',
+        'self promotion', 'fake review', 'offensive review'
+      ].includes(classification.toLowerCase()) || 
+      rawAnalysis.toxic || rawAnalysis.spam || rawAnalysis.abuse || rawAnalysis.threat || 
+      rawAnalysis.scam || rawAnalysis.hate || rawAnalysis.profanity || rawAnalysis.selfPromotion || 
+      rawAnalysis.advertisement || rawAnalysis.maliciousReview || rawAnalysis.badWords ||
+      rawAnalysis.harassment || rawAnalysis.hateSpeech || rawAnalysis.offensive ||
+      rawAnalysis.fakeReview || rawAnalysis.offensiveReview ||
+      aiResult.sentiment === 'toxic' || aiResult.sentiment === 'moderate';
 
-    if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && userSettings.autoLike) {
-      if (channel.apiKey) {
-        likeStatus = 'not_supported';
-        likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
-      } else {
-        logger.info(`[MODERATION] Attempting to auto-like comment ${commentDoc.youtubeId}`);
-        const result = await likeComment(youtube, commentDoc.youtubeId);
-        likeStatus = result.status;
-        likeError = result.reason;
-        autoLiked = result.success;
-        if (autoLiked) {
-          aiActionTaken = true;
+      const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident && !isToxicOrSpamOrModerate;
+
+      if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && userSettings.autoLike) {
+        if (channel.apiKey) {
+          likeStatus = 'not_supported';
+          likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
+        } else {
+          logger.info(`[MODERATION] Attempting to auto-like comment ${commentDoc.youtubeId}`);
+          const result = await likeComment(youtube, commentDoc.youtubeId);
+          likeStatus = result.status;
+          likeError = result.reason;
+          autoLiked = result.success;
+          if (autoLiked) {
+            aiActionTaken = true;
+          }
+        }
+
+        // Save every Auto Like action in MongoDB to prevent duplicate processing and keep metrics updated
+        try {
+          await AutoLikeLog.findOneAndUpdate(
+            { commentId: commentDoc.youtubeId },
+            {
+              $setOnInsert: {
+                userId: channel.userId,
+                organizationId: channel.organizationId || null,
+                channelId: channel.channelId,
+                videoId: commentDoc.videoId,
+                commentId: commentDoc.youtubeId,
+                processedAt: new Date(),
+                autoLiked: true,
+                status: likeStatus
+              }
+            },
+            { upsert: true, new: true }
+          );
+          logger.info(`[AUTO-LIKE] Saved auto-like action for comment ${commentDoc.youtubeId} to MongoDB.`);
+        } catch (logErr) {
+          logger.error(`[AUTO-LIKE] Failed to save AutoLikeLog: ${logErr.message}`);
         }
       }
     }
@@ -791,23 +852,30 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
           for (const c of videoComments) {
             const existing = await Comment.findOne({ userId: channel.userId, youtubeId: c.youtubeId });
             if (!existing) {
-              const newComment = new Comment({
-                userId: channel.userId,
-                youtubeId: c.youtubeId,
-                channelId: channel.channelId,
-                videoId: c.videoId,
-                text: c.text,
-                author: c.author,
-                authorProfileImageUrl: c.authorProfileImageUrl,
-                // Gap fix: same authorChannelId capture that the recurring sync already does —
-                // needed so processSingleComment can detect and skip bot-authored replies.
-                authorChannelId: c.authorChannelId || null,
-                publishedAt: c.publishedAt,
-                status: 'pending',
-                aiActionTaken: false
-              });
-              await newComment.save();
-              totalCommentsImported++;
+              try {
+                await Comment.findOneAndUpdate(
+                  { userId: channel.userId, youtubeId: c.youtubeId },
+                  {
+                    $setOnInsert: {
+                      userId: channel.userId,
+                      youtubeId: c.youtubeId,
+                      channelId: channel.channelId,
+                      videoId: c.videoId,
+                      text: c.text,
+                      author: c.author,
+                      authorProfileImageUrl: c.authorProfileImageUrl,
+                      authorChannelId: c.authorChannelId || null,
+                      publishedAt: c.publishedAt,
+                      status: 'pending',
+                      aiActionTaken: false
+                    }
+                  },
+                  { upsert: true, new: true }
+                );
+                totalCommentsImported++;
+              } catch (err) {
+                if (err.code !== 11000) throw err;
+              }
             }
           }
         }
@@ -876,22 +944,29 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
           for (const c of comments) {
             const existing = await Comment.findOne({ userId: channel.userId, youtubeId: c.youtubeId });
             if (!existing) {
-              const newComment = new Comment({
-                userId: channel.userId,
-                youtubeId: c.youtubeId,
-                channelId: channel.channelId,
-                videoId: c.videoId,
-                text: c.text,
-                author: c.author,
-                authorProfileImageUrl: c.authorProfileImageUrl,
-                // FIX #2: Save the comment author's channel ID so the moderation
-                // pipeline can detect and skip bot-authored replies.
-                authorChannelId: c.authorChannelId || null,
-                publishedAt: c.publishedAt,
-                status: 'pending',
-                aiActionTaken: false
-              });
-              await newComment.save();
+              try {
+                await Comment.findOneAndUpdate(
+                  { userId: channel.userId, youtubeId: c.youtubeId },
+                  {
+                    $setOnInsert: {
+                      userId: channel.userId,
+                      youtubeId: c.youtubeId,
+                      channelId: channel.channelId,
+                      videoId: c.videoId,
+                      text: c.text,
+                      author: c.author,
+                      authorProfileImageUrl: c.authorProfileImageUrl,
+                      authorChannelId: c.authorChannelId || null,
+                      publishedAt: c.publishedAt,
+                      status: 'pending',
+                      aiActionTaken: false
+                    }
+                  },
+                  { upsert: true, new: true }
+                );
+              } catch (err) {
+                if (err.code !== 11000) throw err;
+              }
             }
           }
         }

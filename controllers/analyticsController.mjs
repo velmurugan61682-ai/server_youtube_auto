@@ -3,6 +3,7 @@ import Comment from '../models/Comment.mjs';
 import Lead from '../models/Lead.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
+import AutoLikeLog from '../models/AutoLikeLog.mjs';
 
 export const getAnalytics = async (req, res) => {
   try {
@@ -56,10 +57,6 @@ export const getAnalytics = async (req, res) => {
             { $match: { status: 'deleted' } },
             { $count: 'count' }
           ],
-          positiveLiked: [
-            { $match: { autoLiked: true } },
-            { $count: 'count' }
-          ],
           pendingModeration: [
             { $match: { status: { $in: ['pending', 'flagged'] } } },
             { $count: 'count' }
@@ -88,7 +85,6 @@ export const getAnalytics = async (req, res) => {
     
     const totalComments = data.totalComments[0]?.count || 0;
     const toxicDeleted = data.toxicDeleted[0]?.count || 0;
-    const positiveLiked = data.positiveLiked[0]?.count || 0;
     const pendingModeration = data.pendingModeration[0]?.count || 0;
     const sentimentCounts = data.sentimentCounts;
     const languageCounts = data.languageCounts;
@@ -105,6 +101,14 @@ export const getAnalytics = async (req, res) => {
       channelId: { $in: channelIds }, 
       userId: { $in: userIds },
       ...(channelId && { channelId }) 
+    });
+
+    // Count total positiveLiked from AutoLikeLog matching organization/user channels
+    const positiveLiked = await AutoLikeLog.countDocuments({
+      userId: { $in: userIds },
+      channelId: { $in: channelIds },
+      autoLiked: true,
+      ...(channelId && { channelId })
     });
 
     res.json({
