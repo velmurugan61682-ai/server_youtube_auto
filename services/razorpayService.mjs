@@ -73,3 +73,28 @@ export const verifyWebhookSignature = (body, signature, secret) => {
   
   return digest === signature;
 };
+
+/**
+ * Fetch invoices for a subscription
+ */
+export const getSubscriptionInvoices = async (subscriptionId) => {
+  if (!razorpay) {
+    return [
+      {
+        id: 'inv_mock_001',
+        amount: 29900, // INR 299.00
+        currency: 'INR',
+        status: 'issued',
+        issued_at: Math.floor((Date.now() - 5 * 24 * 60 * 60 * 1000) / 1000),
+        invoice_number: 'INV-2026-001'
+      }
+    ];
+  }
+  try {
+    const invoices = await razorpay.invoices.all({ subscription_id: subscriptionId });
+    return invoices.items || [];
+  } catch (error) {
+    logger.error('Error fetching Razorpay invoices:', error);
+    return [];
+  }
+};

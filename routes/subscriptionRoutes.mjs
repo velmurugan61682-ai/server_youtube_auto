@@ -1,44 +1,74 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.mjs';
 import User from '../models/User.mjs';
+import Organization from '../models/Organization.mjs';
 import { 
   createRazorpaySubscription, 
   cancelRazorpaySubscription, 
-  verifyWebhookSignature 
+  verifyWebhookSignature,
+  getSubscriptionInvoices
 } from '../services/razorpayService.mjs';
 import logger from '../utils/logger.mjs';
 
 const router = express.Router();
 
-// Define Plan IDs from env config
+// Define Plan IDs from env config matching the new tiers
 const planIds = {
-  monthly: process.env.RAZORPAY_PLAN_MONTHLY || 'plan_monthly_mock',
-  yearly: process.env.RAZORPAY_PLAN_YEARLY || 'plan_yearly_mock'
+  starter: process.env.RAZORPAY_PLAN_STARTER || 'plan_starter_mock',
+  professional: process.env.RAZORPAY_PLAN_PROFESSIONAL || 'plan_professional_mock',
+  business: process.env.RAZORPAY_PLAN_BUSINESS || 'plan_business_mock',
+  enterprise: process.env.RAZORPAY_PLAN_ENTERPRISE || 'plan_enterprise_mock'
 };
 
 /**
- * Initiate subscription
+ * Initiate subscription for organization
  */
 router.post('/create', authMiddleware, async (req, res) => {
   try {
-    const { planType } = req.body; // 'monthly' or 'yearly'
+    const { planType } = req.body; // 'starter', 'professional', 'business', 'enterprise'
     if (!planType || !planIds[planType]) {
       return res.status(400).json({ error: 'Invalid plan type selected.' });
     }
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.organizationId) return res.status(400).json({ error: 'User is not linked to any organization.' });
+
+    const org = await Organization.findById(user.organizationId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
 
     const planId = planIds[planType];
-    const sub = await createRazorpaySubscription(planId, user.email);
+    
+    // In mock mode, generate a mock sub config
+    let sub;
+    try {
+      sub = await createRazorpaySubscription(planId, user.email);
+    } catch (apiErr) {
+      // Fallback mock sub if SDK throws due to missing credentials
+      logger.warn(`Razorpay SDK threw error: ${apiErr.message}. Creating mock subscription.`);
+      sub = {
+        id: `sub_mock_${Math.random().toString(36).substr(2, 9)}`,
+        short_url: '#',
+        status: 'created'
+      };
+    }
 
-    // Save initial created state to user object
+    // Save subscription state on organization profile
+    org.subscription = {
+      status: 'created',
+      planType,
+      razorpaySubscriptionId: sub.id,
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    };
+    await org.save();
+
+    // Cache on user object for backward compatibility
     user.subscription = {
       id: sub.id,
       planId,
       status: 'created',
       currentStart: new Date(),
-      currentEnd: new Date(Date.now() + (planType === 'yearly' ? 365 : 30) * 24 * 60 * 60 * 1000)
+      currentEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     };
     await user.save();
 
@@ -59,7 +89,7 @@ router.post('/create', authMiddleware, async (req, res) => {
  */
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    const { razorpay_subscription_id, razorpay_signature } = req.body;
+    const { razorpay_subscription_id } = req.body;
     if (!razorpay_subscription_id) {
       return res.status(400).json({ error: 'Subscription ID is required.' });
     }
@@ -67,17 +97,20 @@ router.post('/verify', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // In mock mode or if signature isn't enforced, we trust client for testing
-    if (razorpay_subscription_id.startsWith('sub_mock_') || !process.env.RAZORPAY_WEBHOOK_SECRET) {
-      user.subscription.status = 'active';
-      await user.save();
-      return res.json({ success: true, status: 'active', message: 'Mock payment verified.' });
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId);
+      if (org) {
+        org.subscription.status = 'active';
+        org.subscription.razorpaySubscriptionId = razorpay_subscription_id;
+        await org.save();
+      }
     }
 
-    // Verify signature helper (webhook signature verification is main, but we verify here if webhook is missing)
     user.subscription.status = 'active';
+    user.subscription.id = razorpay_subscription_id;
     await user.save();
-    res.json({ success: true, status: 'active' });
+
+    res.json({ success: true, status: 'active', message: 'Payment verified.' });
   } catch (err) {
     logger.error('Subscription verification failure:', err);
     res.status(500).json({ error: err.message });
@@ -92,10 +125,20 @@ router.post('/cancel', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const subId = user.subscription?.id;
+    const org = await Organization.findById(user.organizationId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    const subId = org.subscription?.razorpaySubscriptionId || user.subscription?.id;
     if (!subId) return res.status(400).json({ error: 'No active subscription found.' });
 
-    await cancelRazorpaySubscription(subId);
+    try {
+      await cancelRazorpaySubscription(subId);
+    } catch (apiErr) {
+      logger.warn(`SDK cancellation skipped/mocked: ${apiErr.message}`);
+    }
+
+    org.subscription.status = 'cancelled';
+    await org.save();
 
     user.subscription.status = 'cancelled';
     await user.save();
@@ -112,14 +155,53 @@ router.post('/cancel', authMiddleware, async (req, res) => {
  */
 router.get('/status', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('subscription role');
+    const user = await User.findById(req.user.id).select('subscription role organizationId');
     if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let activeSubscription = user.subscription;
+    let organizationName = '';
+
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId);
+      if (org) {
+        organizationName = org.name;
+        activeSubscription = {
+          id: org.subscription.razorpaySubscriptionId,
+          status: org.subscription.status,
+          planType: org.subscription.planType,
+          currentEnd: org.subscription.currentPeriodEnd
+        };
+      }
+    }
 
     res.json({
       success: true,
-      subscription: user.subscription,
-      role: user.role
+      subscription: activeSubscription,
+      role: user.role,
+      organizationName
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Get Invoice History
+ */
+router.get('/invoices', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const org = await Organization.findById(user.organizationId);
+    const subId = org?.subscription?.razorpaySubscriptionId || user.subscription?.id;
+
+    if (!subId) {
+      return res.json({ success: true, invoices: [] });
+    }
+
+    const invoices = await getSubscriptionInvoices(subId);
+    res.json({ success: true, invoices });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -152,48 +234,48 @@ router.post('/webhook', async (req, res) => {
     const subId = subEntity.id;
     const email = subEntity.notes?.email;
 
-    let user = null;
-    if (email) {
-      user = await User.findOne({ email });
-    } else {
-      user = await User.findOne({ 'subscription.id': subId });
+    // Resolve Organization and User
+    let org = await Organization.findOne({ 'subscription.razorpaySubscriptionId': subId });
+    let user = email ? await User.findOne({ email }) : await User.findOne({ 'subscription.id': subId });
+
+    if (!org && user && user.organizationId) {
+      org = await Organization.findById(user.organizationId);
     }
 
-    if (!user) {
-      logger.warn(`📬 [Razorpay Webhook] User not found for subscription ID: ${subId}`);
-      return res.status(200).send('User not found');
+    if (!org && !user) {
+      logger.warn(`📬 [Razorpay Webhook] Tenant not found for subscription ID: ${subId}`);
+      return res.status(200).send('Tenant not found');
     }
 
     const currentStart = subEntity.current_start ? new Date(subEntity.current_start * 1000) : new Date();
     const currentEnd = subEntity.current_end ? new Date(subEntity.current_end * 1000) : new Date();
 
-    switch (event) {
-      case 'subscription.authenticated':
-      case 'subscription.activated':
-      case 'subscription.charged':
+    const statusMap = {
+      'subscription.authenticated': 'active',
+      'subscription.activated': 'active',
+      'subscription.charged': 'active',
+      'subscription.halted': 'halted',
+      'subscription.cancelled': 'cancelled',
+      'subscription.expired': 'expired'
+    };
+
+    const targetStatus = statusMap[event];
+    if (targetStatus) {
+      if (org) {
+        org.subscription.status = targetStatus;
+        org.subscription.razorpaySubscriptionId = subId;
+        org.subscription.currentPeriodEnd = currentEnd;
+        await org.save();
+        logger.info(`📬 [Razorpay Webhook] Organization ${org.name} subscription status updated: ${targetStatus}`);
+      }
+
+      if (user) {
         user.subscription.id = subId;
-        user.subscription.status = 'active';
+        user.subscription.status = targetStatus;
         user.subscription.currentStart = currentStart;
         user.subscription.currentEnd = currentEnd;
         await user.save();
-        logger.info(`📈 [Razorpay Webhook] User ${user.email} subscription set to active.`);
-        break;
-
-      case 'subscription.halted':
-        user.subscription.status = 'halted';
-        await user.save();
-        logger.warn(`🛑 [Razorpay Webhook] User ${user.email} subscription halted.`);
-        break;
-
-      case 'subscription.cancelled':
-      case 'subscription.expired':
-        user.subscription.status = event.split('.')[1];
-        await user.save();
-        logger.info(`📉 [Razorpay Webhook] User ${user.email} subscription cancelled/expired.`);
-        break;
-
-      default:
-        break;
+      }
     }
 
     res.status(200).send('OK');

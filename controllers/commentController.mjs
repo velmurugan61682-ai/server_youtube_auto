@@ -12,12 +12,32 @@ import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 import { debouncedEmit } from '../utils/socketDebouncer.mjs';
 
+// Helper to get allowed channel IDs for a user based on their organization
+const getUserChannelIds = async (user) => {
+  const filter = user.organizationId 
+    ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
+    : { userId: user.id };
+  const channels = await Channel.find(filter).select('channelId');
+  return channels.map(c => c.channelId);
+};
+
 export const getComments = async (req, res) => {
   try {
     const { status, sentiment, autoLiked, videoId, channelId, page = 1, limit = 50 } = req.query;
-    const query = { userId: req.user.id };
     
-    if (channelId) query.channelId = channelId;
+    // Resolve tenant channels
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    
+    const query = { channelId: { $in: allowedChannelIds } };
+    
+    if (channelId) {
+      if (allowedChannelIds.includes(channelId)) {
+        query.channelId = channelId;
+      } else {
+        return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
+      }
+    }
+    
     if (status) query.status = status;
     if (sentiment) query.sentiment = sentiment;
     if (autoLiked !== undefined) query.autoLiked = autoLiked === 'true';
@@ -51,10 +71,14 @@ export const takeAction = async (req, res) => {
   const { action, replyText } = req.body;
 
   try {
-    const comment = await Comment.findOne({ _id: id, userId: req.user.id });
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const comment = await Comment.findOne({ _id: id, channelId: { $in: allowedChannelIds } });
     if (!comment) return res.status(404).json({ error: 'Comment not found' });
 
-    const channel = await Channel.findOne({ channelId: comment.channelId, userId: req.user.id });
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId: comment.channelId }
+      : { userId: req.user.id, channelId: comment.channelId };
+    const channel = await Channel.findOne(filter);
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 
     if (channel.apiKey && action !== 'approve') {
@@ -66,75 +90,55 @@ export const takeAction = async (req, res) => {
 
     let youtube;
     if (!channel.apiKey) {
-      youtube = getYouTubeClient({
+      const decryptedTokens = {
         access_token: decrypt(channel.accessToken),
-        refresh_token: decrypt(channel.refreshToken),
-        expiry_date: channel.expiryDate,
-      }, async (newTokens) => {
-        await Channel.findOneAndUpdate({ channelId: channel.channelId, userId: req.user.id }, {
-          accessToken: encrypt(newTokens.access_token),
-          refreshToken: encrypt(newTokens.refresh_token || decrypt(channel.refreshToken)),
-          expiryDate: newTokens.expiry_date
-        }, { returnDocument: 'after' });
-      }, channel._id);
+        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+        expiry_date: channel.expiryDate
+      };
+      youtube = getYouTubeClient(decryptedTokens, null, channel._id);
     }
 
-    let success = false;
-    let actionError = null;
-
-    switch (action) {
-      case 'approve':
-        comment.status = 'approved';
-        success = true;
-        break;
-      case 'delete':
-        const deleteRes = await deleteCommentFromYouTube(youtube, comment.youtubeId);
-        success = deleteRes.success;
-        if (success) {
-          comment.status = 'deleted';
-          comment.deleteFailed = false;
-        } else {
-          comment.deleteFailed = true;
-          actionError = deleteRes.reason;
-        }
-        break;
-      case 'like':
-        const likeRes = await likeComment(youtube, comment.youtubeId);
-        success = likeRes.success;
-        comment.likeStatus = likeRes.status;
-        if (success) {
-          comment.autoLiked = true;
-          comment.status = 'approved';
-        } else {
-          actionError = likeRes.reason;
-        }
-        break;
-      case 'hide':
-        const hideRes = await hideComment(youtube, comment.youtubeId);
-        success = hideRes.success;
-        if (success) comment.status = 'flagged';
-        else actionError = hideRes.reason;
-        break;
-      case 'reply':
-        const replyRes = await replyToComment(youtube, comment.youtubeId, replyText);
-        success = replyRes.success;
-        if (success) comment.status = 'approved';
-        else actionError = replyRes.reason;
-        break;
+    if (action === 'like') {
+      if (channel.apiKey) {
+        return res.status(400).json({ error: 'OAuth required for liking comments.' });
+      }
+      await likeComment(youtube, comment.commentId);
+      comment.autoLiked = true;
+    } else if (action === 'delete') {
+      if (channel.apiKey) {
+        return res.status(400).json({ error: 'OAuth required for deleting comments.' });
+      }
+      await deleteCommentFromYouTube(youtube, comment.commentId);
+      comment.status = 'deleted';
+    } else if (action === 'hide') {
+      if (channel.apiKey) {
+        return res.status(400).json({ error: 'OAuth required for hiding comments.' });
+      }
+      await hideComment(youtube, comment.channelId, comment.authorChannelId);
+      comment.status = 'hidden';
+    } else if (action === 'reply') {
+      if (!replyText) return res.status(400).json({ error: 'Reply text is required' });
+      if (channel.apiKey) {
+        return res.status(400).json({ error: 'OAuth required for replying to comments.' });
+      }
+      await replyToComment(youtube, comment.commentId, replyText);
+      comment.autoReplied = true;
+      comment.replyText = replyText;
+    } else if (action === 'approve') {
+      comment.status = 'approved';
+    } else {
+      return res.status(400).json({ error: 'Invalid action' });
     }
 
+    comment.aiActionTaken = true;
     await comment.save();
+
     const io = req.app.get('io');
-    // ✅ PERFORMANCE: Use debounced emission (max once per second)
     if (io) debouncedEmit(io, 'stats_updated');
 
-    if (!success && action !== 'approve') {
-      return res.json({ success: false, error: actionError || 'Operation failed' });
-    }
-    
     res.json({ success: true, comment });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -143,7 +147,8 @@ export const editComment = async (req, res) => {
   const { sentiment, status, note } = req.body;
 
   try {
-    const comment = await Comment.findOne({ _id: id, userId: req.user.id });
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const comment = await Comment.findOne({ _id: id, channelId: { $in: allowedChannelIds } });
     if (!comment) return res.status(404).json({ error: 'Comment not found' });
 
     if (sentiment) comment.sentiment = sentiment;
@@ -166,7 +171,8 @@ export const editComment = async (req, res) => {
 export const reanalyzeComments = async (req, res) => {
   try {
     const { sentimentFilter } = req.body;
-    const comments = await Comment.find({ userId: req.user.id, ...(sentimentFilter && { sentiment: sentimentFilter }) });
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const comments = await Comment.find({ channelId: { $in: allowedChannelIds }, ...(sentimentFilter && { sentiment: sentimentFilter }) });
     
     const runReanalysis = async () => {
       for (const comment of comments) {
@@ -189,7 +195,10 @@ export const manualSync = async (req, res) => {
   try {
     const { videoId } = req.params;
     const { channelId } = req.query;
-    const channel = await Channel.findOne({ userId: req.user.id, channelId });
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+    const channel = await Channel.findOne(filter);
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 
     const io = req.app.get('io');

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const channelSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
   channelId: { type: String, required: true, unique: true },
   title: String,
   customUrl: String,

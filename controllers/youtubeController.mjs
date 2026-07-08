@@ -138,6 +138,7 @@ export const handleCallback = async (req, res) => {
   let channel = null;
 
   try {
+    const user = await User.findById(userId);
     const client = getYouTubeAuth();
     logger.info(`Exchanging OAuth code: ${code ? code.substring(0, 10) + '...' : 'none'}`);
     const tokenResponse = await client.getToken(code);
@@ -160,7 +161,6 @@ export const handleCallback = async (req, res) => {
     // Post-flight check: prevent Free Plan users from registering a second channel
     const isReconnectingOwnChannel = existingChannel && existingChannel.userId.toString() === userId.toString();
     if (!isReconnectingOwnChannel) {
-      const user = await User.findById(userId);
       const isPremium = user && (user.subscription?.status === 'active' || user.subscription?.id === 'trial_promo_active' || user.role === 'admin');
       if (!isPremium) {
         const connectedChannelsCount = await Channel.countDocuments({ userId });
@@ -182,6 +182,7 @@ export const handleCallback = async (req, res) => {
 
     const updateData = {
       userId,
+      organizationId: user?.organizationId || null,
       channelId: channelData.id,
       title: channelData.snippet.title,
       customUrl: channelData.snippet.customUrl || '',
@@ -278,7 +279,10 @@ export const handleCallback = async (req, res) => {
 
 export const getChannels = async (req, res) => {
   try {
-    const channels = await Channel.find({ userId: req.user.id }).select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason');
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(filter).select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason');
     res.json(channels);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -288,11 +292,14 @@ export const getChannels = async (req, res) => {
 export const deleteChannel = async (req, res) => {
   try {
     const { channelId } = req.params;
-    const deletedChannel = await Channel.findOneAndDelete({ userId: req.user.id, channelId });
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+    const deletedChannel = await Channel.findOneAndDelete(filter);
     if (!deletedChannel) {
       return res.status(404).json({ error: 'Channel not found' });
     }
-    await Comment.deleteMany({ userId: req.user.id, channelId });
+    await Comment.deleteMany({ channelId });
     res.json({ success: true, message: 'Channel disconnected' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to disconnect channel' });
@@ -304,12 +311,13 @@ export const getVideos = async (req, res) => {
     const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
     
-    const channel = await Channel.findOne({ userId: req.user.id, channelId });
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+    const channel = await Channel.findOne(filter);
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
-    // Fetch videos from MongoDB
-    logger.info(`Fetching videos from MongoDB for channel: ${channelId}`);
-    let videos = await Video.find({ userId: req.user.id, channelId }).sort({ publishedAt: -1 });
+    let videos = await Video.find({ channelId }).sort({ publishedAt: -1 });
 
     const staleTime = Date.now() - 60000; // 60 seconds TTL cache
     const needsStatsRefresh = videos.length > 0 && (

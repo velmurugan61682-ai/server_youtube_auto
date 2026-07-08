@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.mjs';
+import Organization from '../models/Organization.mjs';
 import logger from '../utils/logger.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'stable_dev_secret_2026';
@@ -35,7 +36,12 @@ export const login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id, email: user.email, role: user.role || 'client' }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ 
+      id: user._id, 
+      email: user.email, 
+      role: user.role || 'client',
+      organizationId: user.organizationId
+    }, JWT_SECRET, { expiresIn: '7d' });
 
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('token', token, {
@@ -76,7 +82,12 @@ export const sso = async (req, res) => {
       const user = await User.findOne({ email: sso_username }) || await User.findOne();
       if (!user) return res.status(401).json({ error: 'SSO user not found' });
 
-      const token = jwt.sign({ id: user._id, email: user.email, role: user.role || 'client' }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ 
+        id: user._id, 
+        email: user.email, 
+        role: user.role || 'client',
+        organizationId: user.organizationId
+      }, JWT_SECRET, { expiresIn: '7d' });
 
       return res.json({ 
         success: true, 
@@ -97,4 +108,49 @@ export const logout = (req, res) => {
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
   });
   res.json({ success: true });
+};
+
+export const listOrganizations = async (req, res) => {
+  try {
+    const orgs = await Organization.find({}).select('name logo');
+    res.json(orgs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const switchOrganization = async (req, res) => {
+  try {
+    const { organizationId } = req.body;
+    if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+
+    // Validate requestor is admin
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Forbidden: Admin access required' });
+
+    // Verify organization exists
+    const org = await Organization.findById(organizationId);
+    if (!org) return res.status(404).json({ error: 'Organization not found' });
+
+    // Update user active tenant
+    user.organizationId = organizationId;
+    await user.save();
+
+    // Re-sign token with updated tenant context
+    const token = jwt.sign({ 
+      id: user._id, 
+      email: user.email, 
+      role: user.role || 'client',
+      organizationId: user.organizationId
+    }, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      success: true,
+      token,
+      user: { id: user._id, name: user.name, email: user.email, organizationId }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };

@@ -1,4 +1,5 @@
 import User from '../models/User.mjs';
+import Organization from '../models/Organization.mjs';
 import logger from '../utils/logger.mjs';
 
 export const requireActiveSubscription = async (req, res, next) => {
@@ -18,16 +19,35 @@ export const requireActiveSubscription = async (req, res, next) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // 3. Active Subscription Check
-    const isSubscribed = user.subscription && user.subscription.status === 'active';
-    const isTrialPromo = user.subscription && user.subscription.id === 'trial_promo_active';
+    let isSubscribed = user.subscription && user.subscription.status === 'active';
+    let isTrialPromo = user.subscription && user.subscription.id === 'trial_promo_active';
+    let currentEnd = user.subscription?.currentEnd;
 
+    // Resolve tenant organization subscription status
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId);
+      if (org) {
+        isSubscribed = org.subscription && org.subscription.status === 'active';
+        currentEnd = org.subscription.currentPeriodEnd;
+      }
+    }
+
+    // 3. Active Subscription Check
     if (isSubscribed || isTrialPromo) {
       // Ensure subscription isn't expired
-      if (user.subscription.currentEnd && new Date() > new Date(user.subscription.currentEnd)) {
+      if (currentEnd && new Date() > new Date(currentEnd)) {
+        logger.warn(`Subscription has expired.`);
+        
+        // Update user state locally
         user.subscription.status = 'expired';
         await user.save();
-        logger.warn(`User ${user.email} subscription has expired.`);
+
+        if (user.organizationId) {
+          await Organization.findByIdAndUpdate(user.organizationId, {
+            $set: { 'subscription.status': 'expired' }
+          });
+        }
+
         return res.status(402).json({ 
           error: 'Your subscription has expired.', 
           subscriptionExpired: true 

@@ -1,56 +1,70 @@
 import mongoose from 'mongoose';
 import Comment from '../models/Comment.mjs';
 import Lead from '../models/Lead.mjs';
+import Channel from '../models/Channel.mjs';
 
 export const getAnalytics = async (req, res) => {
   try {
     const { channelId } = req.query;
-    const userIdObj = new mongoose.Types.ObjectId(req.user.id);
-    const aggMatch = { userId: userIdObj };
+    
+    // Resolve organization channels
+    const filter = req.user.organizationId 
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(filter).select('channelId');
+    const channelIds = channels.map(c => c.channelId);
+
+    const aggMatch = { channelId: { $in: channelIds } };
     
     if (channelId) {
-      aggMatch.channelId = channelId;
+      if (channelIds.includes(channelId)) {
+        aggMatch.channelId = channelId;
+      } else {
+        return res.json({
+          totalComments: 0,
+          toxicDeleted: 0,
+          positiveLiked: 0,
+          pendingModeration: 0,
+          totalLeads: 0,
+          categories: [],
+          languages: [],
+          topCategories: [],
+          activities: []
+        });
+      }
     }
 
-    // ✅ PERFORMANCE: Combined all queries into single aggregation pipeline (6x faster!)
+    // ✅ PERFORMANCE: Combined all queries into single aggregation pipeline
     const results = await Comment.aggregate([
       { $match: aggMatch },
       { $facet: {
-          // Count total documents
           totalComments: [
             { $count: 'count' }
           ],
-          // Count toxic deleted
           toxicDeleted: [
             { $match: { status: 'deleted' } },
             { $count: 'count' }
           ],
-          // Count positive liked
           positiveLiked: [
             { $match: { autoLiked: true } },
             { $count: 'count' }
           ],
-          // Count pending moderation
           pendingModeration: [
             { $match: { status: { $in: ['pending', 'flagged'] } } },
             { $count: 'count' }
           ],
-          // Group by sentiment
           sentimentCounts: [
             { $group: { _id: '$sentiment', count: { $sum: 1 } } }
           ],
-          // Group by language
           languageCounts: [
             { $group: { _id: '$language', count: { $sum: 1 } } }
           ],
-          // Top 5 toxic word categories
           wordCategoryCounts: [
             { $unwind: '$detectedWords' },
             { $group: { _id: '$detectedWords.category', count: { $sum: 1 } } },
             { $sort: { count: -1 } },
             { $limit: 5 }
           ],
-          // Recent activities (last 5)
           recentActivities: [
             { $sort: { updatedAt: -1 } },
             { $limit: 5 }
@@ -61,7 +75,6 @@ export const getAnalytics = async (req, res) => {
 
     const data = results[0];
     
-    // Extract counts from aggregation (handle empty results)
     const totalComments = data.totalComments[0]?.count || 0;
     const toxicDeleted = data.toxicDeleted[0]?.count || 0;
     const positiveLiked = data.positiveLiked[0]?.count || 0;
@@ -76,8 +89,11 @@ export const getAnalytics = async (req, res) => {
       type: c.status === 'deleted' ? 'delete' : (c.autoLiked ? 'like' : 'new_comment')
     }));
 
-    // Count total leads
-    const totalLeads = await Lead.countDocuments({ userId: req.user.id, ...(channelId && { channelId }) });
+    // Count total leads for tenant channels
+    const totalLeads = await Lead.countDocuments({ 
+      channelId: { $in: channelIds }, 
+      ...(channelId && { channelId }) 
+    });
 
     res.json({
       totalComments,

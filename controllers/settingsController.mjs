@@ -90,20 +90,25 @@ export const updateYouTubeSettings = async (req, res) => {
     await user.save();
 
     const uploadsPlaylistId = channelData.contentDetails?.relatedPlaylists?.uploads || '';
-    await Channel.findOneAndUpdate({ channelId }, {
-      $set: {
-        userId: req.user.id,
-        channelId,
-        title: channelData.snippet.title,
-        thumbnailUrl: channelData.snippet.thumbnails?.default?.url || '',
-        apiKey: encrypt(finalApiKey),
-        uploadsPlaylistId,
-        statistics: {
-          subscriberCount: channelData.statistics?.subscriberCount || '0',
-          videoCount: channelData.statistics?.videoCount || '0',
-          viewCount: channelData.statistics?.viewCount || '0',
-        }
+    const channelUpdate = {
+      userId: req.user.id,
+      channelId,
+      title: channelData.snippet.title,
+      thumbnailUrl: channelData.snippet.thumbnails?.default?.url || '',
+      apiKey: encrypt(finalApiKey),
+      uploadsPlaylistId,
+      statistics: {
+        subscriberCount: channelData.statistics?.subscriberCount || '0',
+        videoCount: channelData.statistics?.videoCount || '0',
+        viewCount: channelData.statistics?.viewCount || '0',
       }
+    };
+    if (user.organizationId) {
+      channelUpdate.organizationId = user.organizationId;
+    }
+
+    await Channel.findOneAndUpdate({ channelId }, {
+      $set: channelUpdate
     }, { upsert: true });
 
     res.json({ success: true, message: 'YouTube details saved' });

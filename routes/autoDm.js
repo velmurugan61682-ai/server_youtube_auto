@@ -5,11 +5,26 @@ import RepliedComment from '../models/RepliedComment.js';
 import { processVideo } from '../services/autoDmService.js';
 import logger from '../utils/logger.mjs';
 import Video from '../models/Video.mjs';
+import Channel from '../models/Channel.mjs';
 
 // NOTE: Auto DM cron is initialized from index.mjs after MongoDB connects.
 // Do NOT import '../jobs/autoDmCron.js' here — it caused side-effect initialization.
 
 const router = express.Router();
+
+// Helper to verify video access based on user organization
+const verifyVideoAccess = async (videoId, user) => {
+  const video = await Video.findOne({ videoId });
+  if (!video) return false;
+  
+  const filter = user.organizationId 
+    ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
+    : { userId: user.id };
+  const channels = await Channel.find(filter).select('channelId');
+  const channelIds = channels.map(c => c.channelId);
+  
+  return channelIds.includes(video.channelId) || video.userId.toString() === user.id.toString();
+};
 
 /**
  * @route GET /api/auto-dm/config/:videoId
@@ -21,8 +36,8 @@ router.get('/config/:videoId', authMiddleware, async (req, res) => {
     const { videoId } = req.params;
 
     // Validate: verify that the user actually owns the video
-    const video = await Video.findOne({ videoId, userId: req.user.id });
-    if (!video) {
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied: You do not own this video or the video does not exist.' });
     }
     
@@ -65,8 +80,8 @@ router.post('/config', authMiddleware, async (req, res) => {
     }
 
     // Validate: verify that the user actually owns the video
-    const video = await Video.findOne({ videoId, userId: req.user.id });
-    if (!video) {
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
       return res.status(403).json({ 
         error: `Access denied: You do not own this video or it does not exist in the database.` 
       });
@@ -74,7 +89,6 @@ router.post('/config', authMiddleware, async (req, res) => {
 
     // FIX #4: Sanitize reply templates — replace any hardcoded {https://...} or {http://...}
     // URL-in-braces patterns with the correct {whatsapp_link} placeholder.
-    // This fixes the broken WhatsApp link / %7D encoding issue.
     const HARDCODED_URL_IN_BRACES_ROUTE = /\{https?:\/\/[^}]*\}/g;
     const sanitizedTemplates = (replyTemplates || []).map((tpl) => {
       if (typeof tpl !== 'string') return tpl;
@@ -84,7 +98,6 @@ router.post('/config', authMiddleware, async (req, res) => {
       }
       return fixed;
     });
-    // END FIX #4
 
     // Query globally by videoId since videoId is globally unique
     const config = await AutoDmConfig.findOneAndUpdate(
@@ -96,7 +109,7 @@ router.post('/config', authMiddleware, async (req, res) => {
         whatsappNumber,
         keywords: keywords || [],
         replyTemplates: sanitizedTemplates,
-        userId: req.user.id // Keep current logged-in owner
+        userId: req.user.id
       },
       { upsert: true, new: true }
     );
@@ -118,8 +131,8 @@ router.get('/stats/:videoId', authMiddleware, async (req, res) => {
     const { videoId } = req.params;
 
     // Validate: verify that the user actually owns the video
-    const video = await Video.findOne({ videoId, userId: req.user.id });
-    if (!video) {
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied: You do not own this video.' });
     }
     
@@ -144,59 +157,17 @@ router.get('/stats/:videoId', authMiddleware, async (req, res) => {
 });
 
 /**
- * @route GET /api/auto-dm/history/:videoId?
- * @desc Get paginated reply history for a specific video
- * @access Private
- */
-router.get('/history/:videoId?', authMiddleware, async (req, res) => {
-  try {
-    const videoId = req.params.videoId || req.query.videoId;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    // Check ownership of the video if videoId is provided
-    if (videoId) {
-      const video = await Video.findOne({ videoId, userId: req.user.id });
-      if (!video) {
-        return res.status(403).json({ error: 'Access denied: You do not own this video.' });
-      }
-    }
-
-    const query = videoId ? { videoId } : { userId: req.user.id };
-
-    const [history, total] = await Promise.all([
-      RepliedComment.find(query)
-        .sort({ repliedAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      RepliedComment.countDocuments(query)
-    ]);
-
-    return res.json({
-      data: history,
-      page,
-      pages: Math.ceil(total / limit),
-      total
-    });
-  } catch (error) {
-    logger.error(`[Auto DM Route] Error fetching history: ${error.message}`);
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-/**
  * @route POST /api/auto-dm/run/:videoId
- * @desc Manually trigger comments check & replies for a specific video
+ * @desc Manually trigger Auto DM scanning/reply for a specific video
  * @access Private
  */
 router.post('/run/:videoId', authMiddleware, async (req, res) => {
   try {
     const { videoId } = req.params;
-    
+
     // Validate: verify that the user actually owns the video
-    const video = await Video.findOne({ videoId, userId: req.user.id });
-    if (!video) {
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied: You do not own this video.' });
     }
 
@@ -233,7 +204,6 @@ router.post('/run/:videoId', authMiddleware, async (req, res) => {
 /**
  * @route POST /api/auto-dm/keywords/add
  * @desc FIX #5 — Atomically add a single keyword to the config using $addToSet
- *       (prevents duplicates, never overwrites existing keywords)
  * @access Private
  */
 router.post('/keywords/add', authMiddleware, async (req, res) => {
@@ -244,8 +214,8 @@ router.post('/keywords/add', authMiddleware, async (req, res) => {
     }
 
     // Validate: verify that the user actually owns the video
-    const video = await Video.findOne({ videoId, userId: req.user.id });
-    if (!video) {
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied: You do not own this video.' });
     }
 
@@ -276,7 +246,6 @@ router.post('/keywords/add', authMiddleware, async (req, res) => {
 /**
  * @route POST /api/auto-dm/keywords/remove
  * @desc FIX #5 — Atomically remove a single keyword from the config using $pull
- *       (removes only the specified keyword, never touches the rest of the array)
  * @access Private
  */
 router.post('/keywords/remove', authMiddleware, async (req, res) => {
@@ -287,8 +256,8 @@ router.post('/keywords/remove', authMiddleware, async (req, res) => {
     }
 
     // Validate: verify that the user actually owns the video
-    const video = await Video.findOne({ videoId, userId: req.user.id });
-    if (!video) {
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied: You do not own this video.' });
     }
 

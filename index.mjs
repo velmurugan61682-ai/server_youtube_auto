@@ -15,8 +15,10 @@ import bcrypt from 'bcryptjs';
 import User from './models/User.mjs';
 import routes from './routes/index.mjs';
 import jwt from 'jsonwebtoken';
+import compression from 'compression';
 import { initCommentJob } from './jobs/commentJob.mjs';
 import { initAutoDmCron } from './jobs/autoDmCron.js';
+import { seedOrganizations } from './utils/tenantSeeder.mjs';
 
 
 // ── Global Error Handlers ─────────────────────────────────────
@@ -279,6 +281,7 @@ async function watchDatabaseChanges(io) {
 }
 
 // ── Middleware ───────────────────────────────────────────────
+app.use(compression());
 app.use(helmet());
 
 app.use(
@@ -360,6 +363,15 @@ async function startServer() {
     // Start MongoDB Change Streams (with hooks fallback)
     watchDatabaseChanges(io);
 
+    // Seed organizations
+    let techOrgId = null;
+    try {
+      const seedRes = await seedOrganizations();
+      techOrgId = seedRes.techOrgId;
+    } catch (seedErr) {
+      logger.error('Organization seeding failed during startup:', seedErr);
+    }
+
     // Development Admin Reset
     try {
       const adminEmail = 'admin@youtubeai.test';
@@ -368,11 +380,18 @@ async function startServer() {
         10
       );
 
+      const adminUpdate = {
+        password: hashedPassword
+      };
+      if (techOrgId) {
+        adminUpdate.organizationId = techOrgId;
+      }
+
       await User.findOneAndUpdate(
         { email: adminEmail },
         {
-          $setOnInsert: { name: 'System Admin' },
-          $set: { password: hashedPassword }
+          $setOnInsert: { name: 'System Admin', role: 'admin' },
+          $set: adminUpdate
         },
         { upsert: true, returnDocument: 'after' }
       );
