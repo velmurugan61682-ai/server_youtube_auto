@@ -1,9 +1,8 @@
 import jwt from 'jsonwebtoken';
 import logger from '../utils/logger.mjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'stable_dev_secret_2026';
-
 export const authMiddleware = (req, res, next) => {
+  const JWT_SECRET = process.env.JWT_SECRET;
   const authHeader = req.headers.authorization;
   let token = authHeader && authHeader.split(' ')[1];
   
@@ -26,12 +25,14 @@ export const authMiddleware = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
+    logger.info('✓ JWT verified');
     next();
   } catch (err) {
     logger.warn(`Invalid token attempt: ${err.message}`);
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Token expired', expired: true });
     }
-    return res.status(403).json({ error: 'Forbidden' });
+    return res.status(401).json({ error: 'Unauthorized', details: err.message });
   }
 };
+

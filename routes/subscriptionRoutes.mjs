@@ -38,6 +38,12 @@ router.post('/create', authMiddleware, async (req, res) => {
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
     if (planType === 'free') {
+      const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+      const trialExpirationDate = new Date(user.createdAt.getTime() + oneMonthMs);
+      if (new Date() > trialExpirationDate) {
+        return res.status(400).json({ error: 'Your 30-day Free Trial has expired. You cannot select the Free Plan.' });
+      }
+
       // Cancel any active Razorpay subscription if present
       const subId = org.subscription?.razorpaySubscriptionId || user.subscription?.id;
       if (subId && !subId.includes('mock')) {
@@ -194,7 +200,7 @@ router.post('/cancel', authMiddleware, async (req, res) => {
  */
 router.get('/status', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('subscription role organizationId');
+    const user = await User.findById(req.user.id).select('subscription role organizationId createdAt');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     let activeSubscription = user.subscription;
@@ -213,11 +219,16 @@ router.get('/status', authMiddleware, async (req, res) => {
       }
     }
 
+    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+    const trialExpirationDate = new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
+    const trialExpired = new Date() > trialExpirationDate;
+
     res.json({
       success: true,
       subscription: activeSubscription,
       role: user.role,
-      organizationName
+      organizationName,
+      trialExpired
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

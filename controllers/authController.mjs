@@ -4,7 +4,7 @@ import User from '../models/User.mjs';
 import Organization from '../models/Organization.mjs';
 import logger from '../utils/logger.mjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'stable_dev_secret_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const register = async (req, res) => {
   try {

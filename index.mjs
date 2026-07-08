@@ -58,33 +58,58 @@ dotenv.config({
   path: path.resolve(__dirname, '.env')
 });
 
+// Map legacy variables for backward compatibility
+if (process.env.YOUTUBE_OAUTH_CLIENT_ID && !process.env.GOOGLE_CLIENT_ID) {
+  process.env.GOOGLE_CLIENT_ID = process.env.YOUTUBE_OAUTH_CLIENT_ID;
+}
+if (process.env.YOUTUBE_OAUTH_CLIENT_SECRET && !process.env.GOOGLE_CLIENT_SECRET) {
+  process.env.GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_OAUTH_CLIENT_SECRET;
+}
 if (process.env.MONGO_URI && !process.env.MONGODB_URI) {
   process.env.MONGODB_URI = process.env.MONGO_URI;
 }
 
-// Debug
-console.log('================================');
-console.log('ENV FILE:', path.resolve(__dirname, '.env'));
-console.log('MONGODB_URI:', !!process.env.MONGODB_URI);
-console.log('DEEPSEEK_API_KEY:', !!process.env.DEEPSEEK_API_KEY);
-console.log('JWT_SECRET:', !!process.env.JWT_SECRET);
-console.log('================================');
+// Automatically configure GOOGLE_REDIRECT_URI if not defined
+if (!process.env.GOOGLE_REDIRECT_URI) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  process.env.GOOGLE_REDIRECT_URI = isProduction
+    ? (process.env.GOOGLE_REDIRECT_URI_PROD || '')
+    : (process.env.GOOGLE_REDIRECT_URI_DEV || 'http://localhost:5000/api/youtube/callback');
+}
 
 // ── Validate Environment ─────────────────────────────────────
-const REQUIRED_ENV = [
-  'MONGODB_URI',
-  'DEEPSEEK_API_KEY'
+const variablesToCheck = [
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_REDIRECT_URI',
+  'JWT_SECRET',
+  'MONGODB_URI'
 ];
 
-const missingEnv = REQUIRED_ENV.filter(
-  (key) => !process.env[key]
-);
+let hasCriticalErrors = false;
+const missingCriticalList = [];
 
-if (missingEnv.length > 0) {
-  logger.error(
-    `❌ CRITICAL STARTUP ERROR: Missing environment variables: ${missingEnv.join(', ')}`
-  );
+variablesToCheck.forEach(key => {
+  const isLoaded = !!process.env[key];
+  if (isLoaded) {
+    console.log(`✓ ${key} Loaded`);
+  } else {
+    console.log(`✗ ${key} Missing`);
+    
+    // Determine if the missing variable is critical and should stop the server
+    const isCriticalAlways = (key === 'MONGODB_URI' || key === 'JWT_SECRET');
+    const isCriticalInProd = (process.env.NODE_ENV === 'production' && (key === 'GOOGLE_CLIENT_ID' || key === 'GOOGLE_CLIENT_SECRET'));
+    
+    if (isCriticalAlways || isCriticalInProd) {
+      hasCriticalErrors = true;
+      missingCriticalList.push(key);
+    }
+  }
+});
 
+if (hasCriticalErrors) {
+  logger.error(`❌ CRITICAL STARTUP ERROR: Missing critical environment variables: ${missingCriticalList.join(', ')}`);
+  console.error(`❌ CRITICAL STARTUP ERROR: Missing critical environment variables: ${missingCriticalList.join(', ')}`);
   process.exit(1);
 }
 
@@ -135,9 +160,7 @@ const io = new Server(server, {
 });
 logger.info('🚀 Socket.IO Server Initialized with Custom Ping/Pong (10s/5s) & CORS settings');
 
-const JWT_SECRET =
-  process.env.JWT_SECRET ||
-  'stable_dev_secret_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
@@ -156,6 +179,7 @@ io.use((socket, next) => {
     );
 
     socket.user = decoded;
+    logger.info('✓ JWT verified');
     logger.info(`🔑 [Socket Auth Success] Token verified for User: ${decoded.id || decoded.email || 'Unknown'}. Socket ID: ${socket.id}`);
     next();
   } catch (err) {
@@ -165,6 +189,7 @@ io.use((socket, next) => {
     );
   }
 });
+
 
 app.set('io', io);
 

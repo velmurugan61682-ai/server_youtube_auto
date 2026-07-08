@@ -19,7 +19,7 @@ import {
 import { processComments } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_fallback';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const activeRefreshes = new Set();
 
@@ -43,6 +43,39 @@ const FRONTEND_URL = getFrontendUrl();
 export const initiateAuth = async (req, res) => {
   try {
     const userId = req.user.id;
+    
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    let org = null;
+    if (user.organizationId) {
+      org = await Organization.findById(user.organizationId);
+    }
+
+    const isAdmin = user.role === 'admin';
+    const isSubActive = (user.subscription?.status === 'active' || org?.subscription?.status === 'active');
+    
+    let channelLimit = 1;
+    let planName = 'Free Plan';
+    
+    if (isAdmin) {
+      channelLimit = 1000;
+      planName = 'Admin';
+    } else if (isSubActive) {
+      channelLimit = 1000; // Premium gets unlimited channels
+      planName = 'Premium Pro';
+    } else {
+      channelLimit = 1; // Free Plan gets exactly 1 channel forever
+      planName = 'Free Plan';
+    }
+
+    const connectedChannelsCount = await Channel.countDocuments({ userId });
+    if (connectedChannelsCount >= channelLimit) {
+      logger.warn(`Billing: User ${user.email} blocked from initiating channel link. Count: ${connectedChannelsCount}, Limit for ${planName}: ${channelLimit}`);
+      let errorMsg = `Your ${planName} is limited to ${channelLimit} YouTube channel(s). Please upgrade your plan to connect more accounts.`;
+      return res.status(403).json({ error: errorMsg });
+    }
+
     const state = crypto.randomUUID();
 
     console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId}`);
@@ -146,6 +179,7 @@ export const handleCallback = async (req, res) => {
     tokens = tokenResponse.tokens;
     client.setCredentials(tokens);
     logger.info('OAuth Token exchange successful');
+    logger.info('✓ Google token received');
 
     const youtube = getYouTubeClient(tokens, null, null);
     channelRes = await youtube.channels.list({ part: 'snippet,contentDetails,statistics', mine: true });
@@ -238,6 +272,7 @@ export const handleCallback = async (req, res) => {
       { upsert: true, returnDocument: 'after' }
     );
     logger.info(`Channel saved to MongoDB: ${channel.title} (ID: ${channel.channelId})`);
+    logger.info('✓ Channel connected');
 
     // Trigger initial background process (processComments expects raw/decrypted tokens)
     const io = req.app.get('io');
@@ -291,13 +326,7 @@ export const handleCallback = async (req, res) => {
       console.error('Failed to stringify error object:', error);
     }
 
-    res.status(500).json({
-      error: 'auth_failed',
-      message: error.message,
-      code: error.code,
-      keyPattern: error.keyPattern,
-      keyValue: error.keyValue
-    });
+    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`);
   }
 };
 
