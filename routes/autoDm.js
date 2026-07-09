@@ -157,6 +157,44 @@ router.get('/stats/:videoId', authMiddleware, async (req, res) => {
 });
 
 /**
+ * @route GET /api/auto-dm/history/:videoId
+ * @desc Get replied comments history for a specific video
+ * @access Private
+ */
+router.get('/history/:videoId', authMiddleware, async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    // Validate: verify that the user actually owns the video
+    const hasAccess = await verifyVideoAccess(videoId, req.user);
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Access denied: You do not own this video.' });
+    }
+
+    const total = await RepliedComment.countDocuments({ videoId });
+    const data = await RepliedComment.find({ videoId })
+      .sort({ repliedAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const pages = Math.ceil(total / limit);
+
+    return res.json({
+      total,
+      pages: pages || 1,
+      data
+    });
+  } catch (error) {
+    logger.error(`[Auto DM Route] Error fetching history: ${error.message}`);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+
+/**
  * @route POST /api/auto-dm/run/:videoId
  * @desc Manually trigger Auto DM scanning/reply for a specific video
  * @access Private
