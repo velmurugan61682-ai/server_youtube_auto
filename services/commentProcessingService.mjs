@@ -342,9 +342,13 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let replyText = commentDoc.replyText || null;
     let suggestedReply = commentDoc.suggestedReply || aiResult.suggestedReply;
 
+    // We only reply to top-level comments, never to reply comments (which have a dot in their youtubeId)
+    // and never to the channel owner's own comments.
+    const isReply = commentDoc.youtubeId.includes('.');
+    const isOwnerComment = commentDoc.authorChannelId === channel.channelId;
     const isNormalComment = !isToxicOrBad && status !== 'deleted' && status !== 'flagged' && !wasHidden;
 
-    if (isNormalComment) {
+    if (isNormalComment && !isReply && !isOwnerComment) {
       if (channel.apiKey) {
         replyStatus = 'failed';
         replyError = 'Authentication via API Key does not permit write actions (OAuth required)';
@@ -370,6 +374,29 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                 $set: {
                   replyStatus: existing.status === 'success' ? 'sent' : 'pending',
                   replyText: existing.status === 'success' ? existing.replyText : null,
+                  aiActionTaken: true
+                }
+              }
+            );
+            return;
+          }
+
+          // Double check the Comment database to see if a reply from the channel owner already exists for this parent comment
+          const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const ownerReplyExists = await Comment.exists({
+            userId: channel.userId,
+            youtubeId: new RegExp('^' + escapeRegExp(commentDoc.youtubeId) + '\\.'),
+            authorChannelId: channel.channelId
+          });
+
+          if (ownerReplyExists) {
+            logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has an owner/bot reply in the database. Marking hasReplied=true and skipping.`);
+            await Comment.updateOne(
+              { _id: commentDoc._id },
+              {
+                $set: {
+                  hasReplied: true,
+                  replyStatus: 'sent',
                   aiActionTaken: true
                 }
               }
@@ -714,6 +741,35 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         const failedReplies = await Comment.find({ userId: channel.userId, replyStatus: 'failed' }).limit(5);
         for (const fr of failedReplies) {
           logger.info(`[RETRY] Retrying failed reply for comment: ${fr.youtubeId}`);
+
+          // Multi-reply prevention checks for retry loop
+          const isReply = fr.youtubeId.includes('.');
+          const isOwnerComment = fr.authorChannelId === channel.channelId;
+
+          if (isReply || isOwnerComment) {
+            logger.info(`[RETRY] Skipping reply retry for comment ${fr.youtubeId} (isReply: ${isReply}, isOwnerComment: ${isOwnerComment}).`);
+            fr.replyStatus = 'none';
+            await fr.save();
+            continue;
+          }
+
+          // Check if owner reply already exists in the database
+          const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const ownerReplyExists = await Comment.exists({
+            userId: channel.userId,
+            youtubeId: new RegExp('^' + escapeRegExp(fr.youtubeId) + '\\.'),
+            authorChannelId: channel.channelId
+          });
+
+          if (ownerReplyExists) {
+            logger.info(`[RETRY] Comment ${fr.youtubeId} already has an owner/bot reply in the database. Marking hasReplied=true and skipping retry.`);
+            fr.replyStatus = 'sent';
+            fr.hasReplied = true;
+            fr.aiActionTaken = true;
+            await fr.save();
+            continue;
+          }
+
           const targetParentId = fr.youtubeId.includes('.') ? fr.youtubeId.split('.')[0] : fr.youtubeId;
 
           // Double check AutoReplyLog first before retrying

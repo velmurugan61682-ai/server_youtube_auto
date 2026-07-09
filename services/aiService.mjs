@@ -138,6 +138,8 @@ export const classifyComment = async (text, userKey = null) => {
         {
           role: 'system',
           content: `You are an expert YouTube AI Moderator, Lead Extractor, and Engagement Agent.
+You must carefully moderate comments in English, Tamil, and Tanglish (Tamil words written in Latin/English script).
+Identify and mark "toxic", "profanity", "abuse", "badWords", or "hate" as true if the comment contains any toxic remarks, swearing, or abusive/vulgar slang in Tamil/Tanglish (e.g., words like "poda", "moodu", "kena", "koothi", "otha", "punda", "loose", "vetti", "wasteu", "kevalam", "mokka", "dei", "da", "baadu", "sunni", "gotha", "thevidiya") or English equivalents.
 Analyze the user's comment and output a JSON object containing the following keys and values. Do not output any markdown formatting (like \`\`\`json) or extra text. Output ONLY the JSON object.
 
 JSON Schema:
