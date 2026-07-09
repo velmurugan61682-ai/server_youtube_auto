@@ -28,7 +28,10 @@ async function main() {
   console.log(`\n=== CHANNELS (${channels.length}) ===`);
   channels.forEach(c => {
     console.log(`- ChannelId: ${c.channelId} | Title: ${c.title} | UserID: ${c.userId}`);
+    console.log(`  reconnectRequired: ${c.reconnectRequired} | reconnectReason: ${c.reconnectReason}`);
+    console.log(`  hasAccessToken: ${!!c.accessToken} | hasRefreshToken: ${!!c.refreshToken} | apiKey: ${c.apiKey}`);
   });
+
 
   // Check leads
   const leads = await Lead.find({});
@@ -43,17 +46,14 @@ async function main() {
   }
 
   // Check comments
-  const comments = await Comment.find({});
-  console.log(`\n=== COMMENTS (${comments.length}) ===`);
-  comments.forEach((c, index) => {
-    if (index < 15) {
-      const textSnippet = (c.text || '').substring(0, 60);
-      console.log(`- ID: ${c._id} | Text: "${textSnippet}" | Author: ${c.author} | VideoID: ${c.videoId} | hasReplied: ${c.hasReplied} | status: ${c.status}`);
-    }
+  const comments = await Comment.find({ $or: [{ author: /JokerKilar/i }, { text: /gyugyu/i }] });
+  console.log(`\n=== TARGET COMMENTS (${comments.length}) ===`);
+  comments.forEach((c) => {
+    console.log(`- ID: ${c._id} | Text: "${c.text}" | Author: ${c.author} | VideoID: ${c.videoId} | status: ${c.status} | classification: ${c.classification}`);
+    console.log(`  aiActionTaken: ${c.aiActionTaken} | deleteFailed: ${c.deleteFailed} | deleteError: ${c.deleteError}`);
+    console.log(`  moderationStatus: ${c.moderationStatus} | aiStatus: ${c.aiStatus}`);
   });
-  if (comments.length > 15) {
-    console.log(`... and ${comments.length - 15} more.`);
-  }
+
 
   await mongoose.disconnect();
 

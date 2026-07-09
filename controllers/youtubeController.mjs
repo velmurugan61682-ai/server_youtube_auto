@@ -384,7 +384,7 @@ export const getVideos = async (req, res) => {
 
     let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
 
-    const staleTime = Date.now() - 60000; // 60 seconds TTL cache
+    const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
     const needsStatsRefresh = videos.length > 0 && (
       videos.some(v => !v.lastFetchedAt || !v.statistics || typeof v.statistics.viewCount !== 'number' || v.lastFetchedAt.getTime() < staleTime)
     );
@@ -414,6 +414,7 @@ export const getVideos = async (req, res) => {
           const apiStatsItems = await fetchVideoStatisticsBatch(youtube, videoIds);
 
           const todayStr = new Date().toISOString().split('T')[0];
+          const bulkOps = [];
 
           for (const item of apiStatsItems) {
             const viewCount = parseInt(item.statistics?.viewCount || 0);
@@ -442,18 +443,26 @@ export const getVideos = async (req, res) => {
               }
               if (history.length > 30) history.shift();
 
-              await Video.updateOne(
-                { _id: video._id },
-                {
-                  $set: {
-                    statistics: { viewCount, likeCount, commentCount },
-                    engagementRate,
-                    likesHistory: history,
-                    lastFetchedAt: new Date()
+              bulkOps.push({
+                updateOne: {
+                  filter: { _id: video._id },
+                  update: {
+                    $set: {
+                      statistics: { viewCount, likeCount, commentCount },
+                      engagementRate,
+                      likesHistory: history,
+                      lastFetchedAt: new Date()
+                    }
                   }
                 }
-              );
+              });
             }
+          }
+
+          if (bulkOps.length > 0) {
+            logger.info(`[SYNC] Executing bulk write of ${bulkOps.length} video statistics...`);
+            await Video.bulkWrite(bulkOps);
+            logger.info(`[SYNC] Bulk write completed.`);
           }
           
           // Re-fetch updated list

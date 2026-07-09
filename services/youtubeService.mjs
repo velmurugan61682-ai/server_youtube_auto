@@ -21,6 +21,16 @@ export const isUnauthorizedClientError = (error) => {
 
   const errorString = JSON.stringify({ msg, errorBody, errorDescription, statusCode }).toLowerCase();
 
+  // Skip video-specific errors so they don't mark the whole channel as reconnect required
+  if (
+    errorString.includes('commentsdisabled') || 
+    errorString.includes('disabled comments') ||
+    errorString.includes('membersonly') ||
+    errorString.includes('disabledcomments')
+  ) {
+    return false;
+  }
+
   return (
     errorString.includes('unauthorized_client') ||
     errorString.includes('invalid_grant') ||
