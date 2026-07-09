@@ -44,12 +44,12 @@ export const initiateAuth = async (req, res) => {
   try {
     const userId = req.user.id;
     
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     let org = null;
     if (user.organizationId) {
-      org = await Organization.findById(user.organizationId);
+      org = await Organization.findById(user.organizationId).lean();
     }
 
     const isAdmin = user.role === 'admin';
@@ -172,7 +172,7 @@ export const handleCallback = async (req, res) => {
   let channel = null;
 
   try {
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).lean();
     const client = getYouTubeAuth();
     logger.info(`Exchanging OAuth code: ${code ? code.substring(0, 10) + '...' : 'none'}`);
     const tokenResponse = await client.getToken(code);
@@ -191,7 +191,7 @@ export const handleCallback = async (req, res) => {
     }
 
     const channelData = items[0];
-    let existingChannel = await Channel.findOne({ channelId: channelData.id });
+    let existingChannel = await Channel.findOne({ channelId: channelData.id }).lean();
 
     if (existingChannel && existingChannel.userId.toString() !== userId.toString()) {
       logger.warn(`Security: User ${userId} attempted to link YouTube channel ${channelData.id} which is already owned by User ${existingChannel.userId}`);
@@ -203,7 +203,7 @@ export const handleCallback = async (req, res) => {
     if (!isReconnectingOwnChannel) {
       let org = null;
       if (user && user.organizationId) {
-        org = await Organization.findById(user.organizationId);
+        org = await Organization.findById(user.organizationId).lean();
       }
 
       const isAdmin = user && user.role === 'admin';
@@ -340,7 +340,7 @@ export const getChannels = async (req, res) => {
     const filter = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
-    const channels = await Channel.find(filter).select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason');
+    const channels = await Channel.find(filter).select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason').lean();
     res.json(channels);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -372,17 +372,17 @@ export const getVideos = async (req, res) => {
     const filter = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
       : { userId: req.user.id, channelId };
-    const channel = await Channel.findOne(filter);
+    const channel = await Channel.findOne(filter).lean();
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
     // Resolve organization users
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
-    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 });
+    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 60000; // 60 seconds TTL cache
     const needsStatsRefresh = videos.length > 0 && (
@@ -457,7 +457,7 @@ export const getVideos = async (req, res) => {
           }
           
           // Re-fetch updated list
-          videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 });
+          videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {
@@ -492,17 +492,17 @@ export const getVideoAnalytics = async (req, res) => {
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     // Resolve tenant channels to avoid cross-channel leakage
     const filterChannel = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
-    const channels = await Channel.find(filterChannel).select('channelId');
+    const channels = await Channel.find(filterChannel).select('channelId').lean();
     const channelIds = channels.map(c => c.channelId);
 
-    const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id });
+    const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id }).lean();
     if (!video) return res.status(404).json({ error: 'Video not found' });
     res.json({ video });
   } catch (error) {
@@ -520,14 +520,14 @@ export const likeVideoDashboard = async (req, res) => {
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     // Resolve tenant channels to avoid cross-channel leakage
     const filterChannel = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
-    const channels = await Channel.find(filterChannel).select('channelId');
+    const channels = await Channel.find(filterChannel).select('channelId').lean();
     const channelIds = channels.map(c => c.channelId);
 
     const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id });

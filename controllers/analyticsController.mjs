@@ -13,14 +13,14 @@ export const getAnalytics = async (req, res) => {
     const filter = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
-    const channels = await Channel.find(filter).select('channelId');
+    const channels = await Channel.find(filter).select('channelId').lean();
     const channelIds = channels.map(c => c.channelId);
 
     // Resolve organization users
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     const aggMatch = { 

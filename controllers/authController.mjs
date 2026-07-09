@@ -13,7 +13,7 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'Please provide all fields' });
     }
 
-    const exists = await User.findOne({ email });
+    const exists = await User.findOne({ email }).lean();
     if (exists) return res.status(400).json({ error: 'User already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -30,7 +30,7 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).lean();
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -64,7 +64,7 @@ export const login = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await User.findById(req.user.id).select('-password').lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json(user);
@@ -93,7 +93,7 @@ export const sso = async (req, res) => {
       return res.status(400).json({ error: 'sso_username is required' });
     }
 
-    const user = await User.findOne({ email: sso_username });
+    const user = await User.findOne({ email: sso_username }).lean();
     if (!user) {
       logger.warn(`🔑 [SSO Attempt] SSO user not found for email: ${sso_username}`);
       return res.status(401).json({ error: 'SSO user not found' });
@@ -127,7 +127,7 @@ export const logout = (req, res) => {
 
 export const listOrganizations = async (req, res) => {
   try {
-    const orgs = await Organization.find({}).select('name logo');
+    const orgs = await Organization.find({}).select('name logo').lean();
     res.json(orgs);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -145,7 +145,7 @@ export const switchOrganization = async (req, res) => {
     if (user.role !== 'admin') return res.status(403).json({ error: 'Forbidden: Admin access required' });
 
     // Verify organization exists
-    const org = await Organization.findById(organizationId);
+    const org = await Organization.findById(organizationId).lean();
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
     // Update user active tenant

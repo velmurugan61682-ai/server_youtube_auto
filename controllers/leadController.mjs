@@ -10,7 +10,7 @@ const getUserChannelIds = async (user) => {
   const filter = user.organizationId 
     ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
     : { userId: user.id };
-  const channels = await Channel.find(filter).select('channelId');
+  const channels = await Channel.find(filter).select('channelId').lean();
   return channels.map(c => c.channelId);
 };
 
@@ -23,7 +23,7 @@ export const getLeads = async (req, res) => {
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     const query = { 
@@ -48,7 +48,7 @@ export const getLeads = async (req, res) => {
       ];
     }
 
-    const leads = await Lead.find(query).sort({ createdAt: -1 }).limit(200);
+    const leads = await Lead.find(query).sort({ createdAt: -1 }).limit(200).lean();
     res.json(leads);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -63,13 +63,13 @@ export const exportLeads = async (req, res) => {
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     const leads = await Lead.find({ 
       channelId: { $in: allowedChannelIds },
       userId: { $in: userIds }
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).lean();
     if (leads.length === 0) return res.status(404).send('No leads to export');
 
     const fields = ['authorName', 'whatsappNumber', 'status', 'isHidden', 'whatsappSent', 'videoId', 'channelId', 'createdAt'];

@@ -19,7 +19,7 @@ const getUserChannelIds = async (user) => {
   const filter = user.organizationId 
     ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
     : { userId: user.id };
-  const channels = await Channel.find(filter).select('channelId');
+  const channels = await Channel.find(filter).select('channelId').lean();
   return channels.map(c => c.channelId);
 };
 
@@ -34,7 +34,7 @@ export const getComments = async (req, res) => {
     const filterUser = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id');
+    const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
     
     const query = { 
@@ -44,7 +44,7 @@ export const getComments = async (req, res) => {
     
     if (videoId) {
       // Find the video and verify it belongs to allowed channelIds and userIds to prevent cross-channel/cross-user leakages
-      const videoDoc = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds }, userId: { $in: userIds } });
+      const videoDoc = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds }, userId: { $in: userIds } }).lean();
       if (!videoDoc) {
         return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
       }
@@ -67,7 +67,8 @@ export const getComments = async (req, res) => {
     const comments = await Comment.find(query)
       .sort({ publishedAt: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .lean();
     
     const total = await Comment.countDocuments(query);
     
@@ -97,7 +98,7 @@ export const takeAction = async (req, res) => {
     const filter = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId: comment.channelId }
       : { userId: req.user.id, channelId: comment.channelId };
-    const channel = await Channel.findOne(filter);
+    const channel = await Channel.findOne(filter).lean();
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 
     if (channel.apiKey && action !== 'approve') {
@@ -224,7 +225,7 @@ export const manualSync = async (req, res) => {
     const filter = req.user.organizationId 
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
       : { userId: req.user.id, channelId };
-    const channel = await Channel.findOne(filter);
+    const channel = await Channel.findOne(filter).lean();
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 
     const io = req.app.get('io');
