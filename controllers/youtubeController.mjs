@@ -86,7 +86,7 @@ export const initiateAuth = async (req, res) => {
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
       { state, userId },
-      { upsert: true, returnDocument: 'after' }
+      { upsert: true, new: true }
     );
 
     console.log(`[OAuth State Gen] ✅ State stored in MongoDB`);
@@ -373,10 +373,7 @@ export const getVideos = async (req, res) => {
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
       : { userId: req.user.id, channelId };
     const channel = await Channel.findOne(filter).lean();
-    if (!channel) {
-      logger.warn(`[getVideos] Channel not found or unauthorized: ${channelId} for user ${req.user.id}`);
-      return res.json({ videos: [] });
-    }
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
     // Resolve organization users
     const filterUser = req.user.organizationId 
@@ -385,10 +382,7 @@ export const getVideos = async (req, res) => {
     const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
-    let videos = await Video.find({ userId: { $in: userIds }, channelId })
-      .select('_id videoId title thumbnail publishedAt lastFetchedAt statistics likesHistory')
-      .sort({ publishedAt: -1 })
-      .lean();
+    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
     const videosToRefresh = videos.slice(0, 50);
@@ -473,10 +467,7 @@ export const getVideos = async (req, res) => {
           }
           
           // Re-fetch updated list
-          videos = await Video.find({ userId: { $in: userIds }, channelId })
-            .select('_id videoId title thumbnail publishedAt lastFetchedAt statistics likesHistory')
-            .sort({ publishedAt: -1 })
-            .lean();
+          videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {

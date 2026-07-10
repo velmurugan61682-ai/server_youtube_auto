@@ -327,7 +327,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                 status: likeStatus
               }
             },
-            { upsert: true, returnDocument: 'after' }
+            { upsert: true, new: true }
           );
           logger.info(`[AUTO-LIKE] Saved auto-like action for comment ${commentDoc.youtubeId} to MongoDB.`);
         } catch (logErr) {
@@ -463,7 +463,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                       actionTaken: 'skip_bot',
                     }
                   },
-                  { upsert: true, returnDocument: 'after' }
+                  { upsert: true, new: true }
                 );
                 logger.info(`[REPLY] [FIX #2] Saved bot reply ${repRes.newCommentId} in MongoDB with isBotReply=true. (commentProcessingService.mjs)`);
               } catch (botSaveErr) {
@@ -926,7 +926,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
                       aiActionTaken: false
                     }
                   },
-                  { upsert: true, returnDocument: 'after' }
+                  { upsert: true, new: true }
                 );
                 totalCommentsImported++;
               } catch (err) {
@@ -1018,7 +1018,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
                       aiActionTaken: false
                     }
                   },
-                  { upsert: true, returnDocument: 'after' }
+                  { upsert: true, new: true }
                 );
               } catch (err) {
                 if (err.code !== 11000) throw err;

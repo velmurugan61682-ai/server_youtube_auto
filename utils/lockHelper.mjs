@@ -28,7 +28,7 @@ export const acquireLock = async (lockKey, durationMs = 300000) => {
           const updated = await WorkerLock.findOneAndUpdate(
             { lockKey, expiresAt: lock.expiresAt },
             { lockedAt: now, expiresAt },
-            { returnDocument: 'after' }
+            { new: true }
           );
           if (updated) {
             logger.info(`[Lock Helper] Acquired expired lock for: ${lockKey}`);

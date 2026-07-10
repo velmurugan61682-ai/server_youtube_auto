@@ -46,7 +46,7 @@ async function main() {
   const updatedConfig = await AutoDmConfig.findOneAndUpdate(
     { videoId: VIDEO_ID },
     { $addToSet: { keywords: TEST_KEYWORD } },
-    { returnDocument: 'after' }
+    { new: true }
   );
 
   console.log('[TEST 1] AFTER - Keywords after adding "' + TEST_KEYWORD + '":', JSON.stringify(updatedConfig?.keywords));

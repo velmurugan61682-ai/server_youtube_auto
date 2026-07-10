@@ -111,7 +111,7 @@ router.post('/config', authMiddleware, async (req, res) => {
         replyTemplates: sanitizedTemplates,
         userId: req.user.id
       },
-      { upsert: true, returnDocument: 'after' }
+      { upsert: true, new: true }
     );
 
     return res.json(config);
@@ -266,7 +266,7 @@ router.post('/keywords/add', authMiddleware, async (req, res) => {
         $addToSet: { keywords: normalizedKeyword },
         $set: { userId: req.user.id }
       },
-      { returnDocument: 'after' }
+      { new: true }
     );
 
     if (!config) {
@@ -308,7 +308,7 @@ router.post('/keywords/remove', authMiddleware, async (req, res) => {
         $pull: { keywords: normalizedKeyword },
         $set: { userId: req.user.id }
       },
-      { returnDocument: 'after' }
+      { new: true }
     );
 
     if (!config) {

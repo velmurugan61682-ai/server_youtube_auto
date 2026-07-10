@@ -238,7 +238,7 @@ export const processVideo = async (videoId) => {
                   },
                   $set: { isBotReply: true, hasReplied: false }
                 },
-                { upsert: true, returnDocument: 'after' }
+                { upsert: true, new: true }
               );
               logger.info(`[Auto DM Service] [FIX #2] Saved bot reply ${replyResult.newCommentId} in MongoDB with isBotReply=true to prevent self-moderation. (autoDmService.js)`);
             } catch (saveErr) {
