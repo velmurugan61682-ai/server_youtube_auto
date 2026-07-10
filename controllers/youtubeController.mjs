@@ -385,8 +385,9 @@ export const getVideos = async (req, res) => {
     let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
-    const needsStatsRefresh = videos.length > 0 && (
-      videos.some(v => !v.lastFetchedAt || !v.statistics || typeof v.statistics.viewCount !== 'number' || v.lastFetchedAt.getTime() < staleTime)
+    const videosToRefresh = videos.slice(0, 50);
+    const needsStatsRefresh = videosToRefresh.length > 0 && (
+      videosToRefresh.some(v => !v.lastFetchedAt || !v.statistics || typeof v.statistics.viewCount !== 'number' || v.lastFetchedAt.getTime() < staleTime)
     );
 
     if (needsStatsRefresh) {
@@ -395,7 +396,7 @@ export const getVideos = async (req, res) => {
         logger.info(`[SYNC] Refresh already in progress for channel: ${channelId} (User: ${req.user.id}). Returning cached DB videos.`);
       } else {
         activeRefreshes.add(refreshKey);
-        logger.info(`Stale/missing statistics detected for channel: ${channelId}. Syncing from YouTube Data API...`);
+        logger.info(`Stale/missing statistics detected for channel: ${channelId} (evaluating top 50). Syncing from YouTube Data API...`);
         try {
           let youtube;
           if (channel.apiKey) {
@@ -410,7 +411,7 @@ export const getVideos = async (req, res) => {
           }
 
           // Deduplicate videoIds to avoid duplicate API statistics requests
-          const videoIds = [...new Set(videos.map(v => v.videoId))];
+          const videoIds = [...new Set(videosToRefresh.map(v => v.videoId))];
           const apiStatsItems = await fetchVideoStatisticsBatch(youtube, videoIds);
 
           const todayStr = new Date().toISOString().split('T')[0];
