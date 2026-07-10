@@ -86,7 +86,7 @@ export const initiateAuth = async (req, res) => {
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
       { state, userId },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     console.log(`[OAuth State Gen] ✅ State stored in MongoDB`);

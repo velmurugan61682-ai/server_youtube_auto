@@ -374,7 +374,7 @@ cron.schedule('* * * * *', async () => {
       const lockedUpload = await ScheduledUpload.findOneAndUpdate(
         { _id: upload._id, status: 'scheduled' },
         { $set: { status: 'publishing' } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!lockedUpload) {
