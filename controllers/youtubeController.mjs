@@ -373,7 +373,10 @@ export const getVideos = async (req, res) => {
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
       : { userId: req.user.id, channelId };
     const channel = await Channel.findOne(filter).lean();
-    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    if (!channel) {
+      logger.warn(`[getVideos] Channel not found or unauthorized: ${channelId} for user ${req.user.id}`);
+      return res.json({ videos: [] });
+    }
 
     // Resolve organization users
     const filterUser = req.user.organizationId 
