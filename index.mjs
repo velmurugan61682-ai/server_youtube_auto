@@ -121,7 +121,7 @@ const server = http.createServer(app);
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
-  'https://client-youtube-automation.vercel.app/',
+  'https://client-youtube-auto-4esx.vercel.app/',
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ...(process.env.EXTRA_ORIGINS

@@ -9,7 +9,7 @@ import logger from '../utils/logger.mjs';
 export const getOAuth2Client = () => {
   const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
   const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
-  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || process.env.REDIRECT_URI || 'https://server-youtube-automation.onrender.com/api/youtube/callback').trim().replace(/^["']|["']$/g, '');
+  const redirectUri = (process.env.GOOGLE_REDIRECT_URI || process.env.REDIRECT_URI || 'https://server-youtube-auto.onrender.com/api/youtube/callback').trim().replace(/^["']|["']$/g, '');
   const refreshToken = (process.env.YOUTUBE_OAUTH_REFRESH_TOKEN || '').trim().replace(/^["']|["']$/g, '');
 
   console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
