@@ -53,7 +53,11 @@ export const initiateAuth = async (req, res) => {
     }
 
     const isAdmin = user.role === 'admin';
-    const isSubActive = (user.subscription?.status === 'active' || org?.subscription?.status === 'active');
+    const isUserSubActive = user.subscription?.status === 'active' || 
+      (user.subscription?.status === 'cancelled' && user.subscription?.currentEnd && new Date(user.subscription.currentEnd) > new Date());
+    const isOrgSubActive = org?.subscription?.status === 'active' || 
+      (org?.subscription?.status === 'cancelled' && org?.subscription?.currentPeriodEnd && new Date(org.subscription.currentPeriodEnd) > new Date());
+    const isSubActive = isUserSubActive || isOrgSubActive;
     
     let channelLimit = 1;
     let planName = 'Free Plan';
@@ -207,7 +211,11 @@ export const handleCallback = async (req, res) => {
       }
 
       const isAdmin = user && user.role === 'admin';
-      const isSubActive = user && (user.subscription?.status === 'active' || org?.subscription?.status === 'active');
+      const isUserSubActive = user && (user.subscription?.status === 'active' || 
+        (user.subscription?.status === 'cancelled' && user.subscription?.currentEnd && new Date(user.subscription.currentEnd) > new Date()));
+      const isOrgSubActive = org && (org.subscription?.status === 'active' || 
+        (org.subscription?.status === 'cancelled' && org.subscription?.currentPeriodEnd && new Date(org.subscription.currentPeriodEnd) > new Date()));
+      const isSubActive = isUserSubActive || isOrgSubActive;
       
       let channelLimit = 1;
       let planName = 'Free Plan';

@@ -20,14 +20,20 @@ export const requireActiveSubscription = async (req, res, next) => {
     }
 
     // Resolve tenant organization subscription status
-    let isSubscribed = user.subscription && user.subscription.status === 'active';
-    let currentEnd = user.subscription?.currentEnd;
+    const userSub = user.subscription;
+    const isUserSubActive = userSub && (userSub.status === 'active' || 
+      (userSub.status === 'cancelled' && userSub.currentEnd && new Date(userSub.currentEnd) > new Date()));
+    let isSubscribed = isUserSubActive;
+    let currentEnd = userSub?.currentEnd;
 
     if (user.organizationId) {
       const org = await Organization.findById(user.organizationId);
       if (org) {
-        isSubscribed = org.subscription && org.subscription.status === 'active';
-        currentEnd = org.subscription.currentPeriodEnd;
+        const orgSub = org.subscription;
+        const isOrgSubActive = orgSub && (orgSub.status === 'active' || 
+          (orgSub.status === 'cancelled' && orgSub.currentPeriodEnd && new Date(orgSub.currentPeriodEnd) > new Date()));
+        isSubscribed = isOrgSubActive;
+        currentEnd = orgSub?.currentPeriodEnd;
       }
     }
 
