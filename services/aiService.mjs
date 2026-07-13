@@ -59,6 +59,38 @@ const TOXIC_KEYWORDS = [
 ];
 
 export const classifyComment = async (text, userKey = null) => {
+  const lowerText = text.toLowerCase().trim();
+  const hasFire = text.includes('🔥') || lowerText.includes('fire');
+  const hasDetail = lowerText.includes('detail');
+
+  if (hasFire || hasDetail) {
+    logger.info(`[MODERATION] Bypassing AI classification for fire/detail comment: "${text}"`);
+    const isFire = hasFire;
+    return {
+      classification: isFire ? 'Positive' : 'Neutral',
+      sentiment: isFire ? 'positive' : 'neutral',
+      toxicityScore: 0,
+      confidence: 1.0,
+      language: 'unknown',
+      detectedWords: isFire ? [{ word: 'fire', category: 'appreciation' }] : [],
+      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: null },
+      suggestedReply: null,
+      rawAnalysis: {
+        positive: isFire,
+        neutral: !isFire,
+        toxic: false,
+        spam: false,
+        abuse: false,
+        threat: false,
+        scam: false,
+        hate: false,
+        profanity: false,
+        badWords: false,
+        question: !isFire
+      }
+    };
+  }
+
   let client;
   if (userKey) {
     try {
@@ -73,8 +105,6 @@ export const classifyComment = async (text, userKey = null) => {
   } else {
     client = getOpenAI();
   }
-
-  const lowerText = text.toLowerCase().trim();
 
   let keywordDetected = false;
   let detectedSentiment = null;

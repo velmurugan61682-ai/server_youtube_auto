@@ -64,6 +64,20 @@ const callDeepSeek = async (systemPrompt, userMessage, temperature, retryCount =
  * @returns {Promise<object>}
  */
 export const classifyComment = async (text) => {
+  const lowerText = text.toLowerCase().trim();
+  const hasFire = text.includes('🔥') || lowerText.includes('fire');
+  const hasDetail = lowerText.includes('detail');
+
+  if (hasFire || hasDetail) {
+    logger.info(`[DeepSeek Service] Bypassing classification for fire/detail comment: "${text}"`);
+    return {
+      category: hasFire ? 'normal' : 'review',
+      reason: hasFire ? 'fire comment override' : 'detail comment override',
+      reply_needed: true,
+      severity: 'low'
+    };
+  }
+
   const systemPrompt = `You are a strict comment moderation classifier for a YouTube channel.
 Classify the given comment into exactly one category:
 
