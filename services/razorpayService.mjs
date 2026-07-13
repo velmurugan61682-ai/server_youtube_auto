@@ -31,27 +31,70 @@ export const createRazorpaySubscription = async (planId, email) => {
 
     // Auto-create/resolve plan in Razorpay if it is a mock ID
     if (activePlanId.includes('mock') || !activePlanId.startsWith('plan_')) {
-      logger.info(`Plan ID is a mock placeholder (${planId}). Checking for existing Premium plan in Razorpay account...`);
+      logger.info(`Plan ID is a mock placeholder (${planId}). Resolving corresponding plan details in Razorpay...`);
       try {
         const plans = await razorpay.plans.all({ count: 50 });
-        const existingPlan = plans.items?.find(p => p.item?.name === 'Premium Pro Plan');
-        if (existingPlan) {
-          activePlanId = existingPlan.id;
-          logger.info(`Found existing Premium plan on Razorpay: ${activePlanId}`);
-        } else {
-          logger.info('Creating a new Premium Pro Plan in Razorpay...');
-          const newPlan = await razorpay.plans.create({
+        
+        let planDetails = {
+          name: 'Premium Pro Plan',
+          amount: 99900,
+          period: 'monthly',
+          interval: 1,
+          description: 'Premium Pro Plan - Unlimited YouTube Channels'
+        };
+        
+        if (planId.includes('one_rupee')) {
+          planDetails = {
+            name: '1 Rupee Plan',
+            amount: 100, // ₹1 in paise
             period: 'monthly',
             interval: 1,
+            description: '1 Rupee Plan - 1 Channel Connection'
+          };
+        } else if (planId.includes('monthly_345')) {
+          planDetails = {
+            name: '1 Month Plan (345)',
+            amount: 34500, // ₹345 in paise
+            period: 'monthly',
+            interval: 1,
+            description: '1 Month Plan - 5 Channels Connection'
+          };
+        } else if (planId.includes('two_months_600')) {
+          planDetails = {
+            name: '2 Months Plan (600)',
+            amount: 60000, // ₹600 in paise
+            period: 'monthly',
+            interval: 2,
+            description: '2 Months Plan - 10 Channels Connection'
+          };
+        } else if (planId.includes('three_months_999') || planId.includes('professional')) {
+          planDetails = {
+            name: '3 Months Plan (999)',
+            amount: 99900, // ₹999 in paise
+            period: 'monthly',
+            interval: 3,
+            description: '3 Months Plan - Unlimited Channels Connection'
+          };
+        }
+
+        const existingPlan = plans.items?.find(p => p.item?.name === planDetails.name);
+        if (existingPlan) {
+          activePlanId = existingPlan.id;
+          logger.info(`Found existing plan on Razorpay: ${activePlanId}`);
+        } else {
+          logger.info(`Creating a new plan (${planDetails.name}) on Razorpay...`);
+          const newPlan = await razorpay.plans.create({
+            period: planDetails.period,
+            interval: planDetails.interval,
             item: {
-              name: 'Premium Pro Plan',
-              amount: 99900, // ₹999.00 in paise
+              name: planDetails.name,
+              amount: planDetails.amount,
               currency: 'INR',
-              description: 'Premium Pro Plan - Unlimited YouTube Channels'
+              description: planDetails.description
             }
           });
           activePlanId = newPlan.id;
-          logger.info(`Created new Premium plan on Razorpay: ${activePlanId}`);
+          logger.info(`Created new plan on Razorpay: ${activePlanId}`);
         }
       } catch (err) {
         logger.error('Failed to auto-resolve Razorpay plan. Attempting with original plan ID:', err);

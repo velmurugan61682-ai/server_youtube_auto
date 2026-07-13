@@ -58,6 +58,20 @@ export const initiateAuth = async (req, res) => {
     const isOrgSubActive = org?.subscription?.status === 'active' || 
       (org?.subscription?.status === 'cancelled' && org?.subscription?.currentPeriodEnd && new Date(org.subscription.currentPeriodEnd) > new Date());
     const isSubActive = isUserSubActive || isOrgSubActive;
+
+    let planType = 'free';
+    if (org && org.subscription && org.subscription.planType) {
+      planType = org.subscription.planType;
+    } else if (user.subscription && user.subscription.planId) {
+      const planId = user.subscription.planId;
+      if (planId.includes('one_rupee')) planType = 'one_rupee';
+      else if (planId.includes('monthly_345')) planType = 'monthly_345';
+      else if (planId.includes('two_months_600')) planType = 'two_months_600';
+      else if (planId.includes('three_months_999')) planType = 'three_months_999';
+    }
+
+    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+    const isTrialExpired = new Date() > new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
     
     let channelLimit = 1;
     let planName = 'Free Plan';
@@ -66,11 +80,30 @@ export const initiateAuth = async (req, res) => {
       channelLimit = 1000;
       planName = 'Admin';
     } else if (isSubActive) {
-      channelLimit = 1000; // Premium gets unlimited channels
-      planName = 'Premium Pro';
+      if (planType === 'one_rupee') {
+        channelLimit = 1;
+        planName = '₹1 Plan';
+      } else if (planType === 'monthly_345') {
+        channelLimit = 5;
+        planName = '₹345 Plan';
+      } else if (planType === 'two_months_600') {
+        channelLimit = 10;
+        planName = '₹600 Plan';
+      } else if (planType === 'three_months_999') {
+        channelLimit = 1000;
+        planName = '₹999 Plan';
+      } else {
+        channelLimit = 1000;
+        planName = 'Premium Pro';
+      }
     } else {
-      channelLimit = 1; // Free Plan gets exactly 1 channel forever
-      planName = 'Free Plan';
+      if (isTrialExpired) {
+        channelLimit = 0;
+        planName = 'Expired Free Trial';
+      } else {
+        channelLimit = 1;
+        planName = 'Free Plan';
+      }
     }
 
     const connectedChannelsCount = await Channel.countDocuments({ userId });
@@ -216,6 +249,20 @@ export const handleCallback = async (req, res) => {
       const isOrgSubActive = org && (org.subscription?.status === 'active' || 
         (org.subscription?.status === 'cancelled' && org.subscription?.currentPeriodEnd && new Date(org.subscription.currentPeriodEnd) > new Date()));
       const isSubActive = isUserSubActive || isOrgSubActive;
+
+      let planType = 'free';
+      if (org && org.subscription && org.subscription.planType) {
+        planType = org.subscription.planType;
+      } else if (user && user.subscription && user.subscription.planId) {
+        const planId = user.subscription.planId;
+        if (planId.includes('one_rupee')) planType = 'one_rupee';
+        else if (planId.includes('monthly_345')) planType = 'monthly_345';
+        else if (planId.includes('two_months_600')) planType = 'two_months_600';
+        else if (planId.includes('three_months_999')) planType = 'three_months_999';
+      }
+
+      const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+      const isTrialExpired = new Date() > new Date(((user && user.createdAt) || new Date()).getTime() + oneMonthMs);
       
       let channelLimit = 1;
       let planName = 'Free Plan';
@@ -224,11 +271,30 @@ export const handleCallback = async (req, res) => {
         channelLimit = 1000;
         planName = 'Admin';
       } else if (isSubActive) {
-        channelLimit = 1000; // Premium gets unlimited channels
-        planName = 'Premium Pro';
+        if (planType === 'one_rupee') {
+          channelLimit = 1;
+          planName = '₹1 Plan';
+        } else if (planType === 'monthly_345') {
+          channelLimit = 5;
+          planName = '₹345 Plan';
+        } else if (planType === 'two_months_600') {
+          channelLimit = 10;
+          planName = '₹600 Plan';
+        } else if (planType === 'three_months_999') {
+          channelLimit = 1000;
+          planName = '₹999 Plan';
+        } else {
+          channelLimit = 1000;
+          planName = 'Premium Pro';
+        }
       } else {
-        channelLimit = 1; // Free Plan gets exactly 1 channel forever
-        planName = 'Free Plan';
+        if (isTrialExpired) {
+          channelLimit = 0;
+          planName = 'Expired Free Trial';
+        } else {
+          channelLimit = 1;
+          planName = 'Free Plan';
+        }
       }
 
       const connectedChannelsCount = await Channel.countDocuments({ userId });

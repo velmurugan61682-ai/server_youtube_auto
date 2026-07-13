@@ -10,7 +10,7 @@ const organizationSchema = new mongoose.Schema({
   },
   subscription: {
     status: { type: String, enum: ['none', 'created', 'active', 'cancelled', 'expired', 'halted'], default: 'none' },
-    planType: { type: String, enum: ['starter', 'professional', 'business', 'enterprise', 'free'], default: 'free' },
+    planType: { type: String, enum: ['starter', 'professional', 'business', 'enterprise', 'free', 'one_rupee', 'monthly_345', 'two_months_600', 'three_months_999', 'none'], default: 'free' },
     razorpaySubscriptionId: { type: String, default: '' },
     currentPeriodEnd: { type: Date }
   },

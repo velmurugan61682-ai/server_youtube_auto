@@ -14,10 +14,11 @@ const router = express.Router();
 
 // Define Plan IDs from env config matching the new tiers
 const planIds = {
-  starter: process.env.RAZORPAY_PLAN_STARTER || 'plan_starter_mock',
-  professional: process.env.RAZORPAY_PLAN_PROFESSIONAL || 'plan_professional_mock',
-  business: process.env.RAZORPAY_PLAN_BUSINESS || 'plan_business_mock',
-  enterprise: process.env.RAZORPAY_PLAN_ENTERPRISE || 'plan_enterprise_mock'
+  one_rupee: process.env.RAZORPAY_PLAN_ONE_RUPEE || 'plan_one_rupee_mock',
+  monthly_345: process.env.RAZORPAY_PLAN_MONTHLY_345 || 'plan_monthly_345_mock',
+  two_months_600: process.env.RAZORPAY_PLAN_TWO_MONTHS_600 || 'plan_two_months_600_mock',
+  three_months_999: process.env.RAZORPAY_PLAN_THREE_MONTHS_999 || 'plan_three_months_999_mock',
+  professional: process.env.RAZORPAY_PLAN_PROFESSIONAL || 'plan_professional_mock'
 };
 
 /**
@@ -25,7 +26,7 @@ const planIds = {
  */
 router.post('/create', authMiddleware, async (req, res) => {
   try {
-    const { planType } = req.body; // 'starter', 'professional', 'business', 'enterprise', 'free'
+    const { planType } = req.body; // 'free', 'one_rupee', 'monthly_345', 'two_months_600', 'three_months_999'
     if (!planType || (planType !== 'free' && !planIds[planType])) {
       return res.status(400).json({ error: 'Invalid plan type selected.' });
     }
@@ -97,12 +98,22 @@ router.post('/create', authMiddleware, async (req, res) => {
       };
     }
 
+    // Calculate duration based on subscription type
+    let durationMs = 30 * 24 * 60 * 60 * 1000; // default 30 days
+    if (planType === 'one_rupee') {
+      durationMs = 1 * 24 * 60 * 60 * 1000; // 1 day limit
+    } else if (planType === 'two_months_600') {
+      durationMs = 60 * 24 * 60 * 60 * 1000; // 60 days
+    } else if (planType === 'three_months_999' || planType === 'professional') {
+      durationMs = 90 * 24 * 60 * 60 * 1000; // 90 days
+    }
+
     // Save subscription state on organization profile
     org.subscription = {
       status: 'created',
       planType,
       razorpaySubscriptionId: sub.id,
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      currentPeriodEnd: new Date(Date.now() + durationMs)
     };
     await org.save();
 
@@ -112,7 +123,7 @@ router.post('/create', authMiddleware, async (req, res) => {
       planId,
       status: 'created',
       currentStart: new Date(),
-      currentEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      currentEnd: new Date(Date.now() + durationMs)
     };
     await user.save();
 
