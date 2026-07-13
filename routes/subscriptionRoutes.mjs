@@ -134,9 +134,26 @@ router.post('/create', authMiddleware, async (req, res) => {
  */
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    const { razorpay_subscription_id } = req.body;
+    const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature } = req.body;
     if (!razorpay_subscription_id) {
       return res.status(400).json({ error: 'Subscription ID is required.' });
+    }
+
+    // Verify cryptographic signature if Razorpay is fully configured and not a mock subscription
+    const isMock = razorpay_subscription_id.includes('mock');
+    const hasCredentials = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET;
+    
+    if (hasCredentials && !isMock) {
+      if (!razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({ error: 'Payment ID and signature are required for production verification.' });
+      }
+      
+      const { verifySubscriptionSignature } = await import('../services/razorpayService.mjs');
+      const isValid = verifySubscriptionSignature(razorpay_payment_id, razorpay_subscription_id, razorpay_signature);
+      if (!isValid) {
+        logger.warn(`⚠️ [Razorpay Verification] Cryptographic verification failed for sub: ${razorpay_subscription_id}`);
+        return res.status(400).json({ error: 'Invalid payment signature. Verification failed.' });
+      }
     }
 
     const user = await User.findById(req.user.id);
@@ -269,7 +286,7 @@ router.post('/webhook', async (req, res) => {
       logger.warn('⚠️ [Razorpay Webhook] Missing x-razorpay-signature header. Request rejected.');
       return res.status(400).send('Missing signature');
     }
-    const isValid = verifyWebhookSignature(req.body, signature, secret);
+    const isValid = verifyWebhookSignature(req.rawBody || req.body, signature, secret);
     if (!isValid) {
       logger.warn('⚠️ [Razorpay Webhook] Invalid signature rejected.');
       return res.status(400).send('Invalid signature');

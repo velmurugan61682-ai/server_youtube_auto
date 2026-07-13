@@ -93,16 +93,41 @@ export const cancelRazorpaySubscription = async (subscriptionId) => {
 };
 
 /**
- * Verify Razorpay payment signature
+ * Verify Razorpay payment signature for webhooks
  */
-export const verifyWebhookSignature = (body, signature, secret) => {
+export const verifyWebhookSignature = (rawBody, signature, secret) => {
   if (!secret) return false;
   
-  const shasum = crypto.createHmac('sha256', secret);
-  shasum.update(JSON.stringify(body));
-  const digest = shasum.digest('hex');
+  let data = rawBody;
+  if (typeof rawBody !== 'string' && !Buffer.isBuffer(rawBody)) {
+    try {
+      data = JSON.stringify(rawBody);
+    } catch (e) {
+      data = String(rawBody);
+    }
+  }
   
-  return digest === signature;
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(data)
+    .digest('hex');
+  
+  return expectedSignature === signature;
+};
+
+/**
+ * Verify Razorpay subscription payment signature (standard checkout modal verification)
+ */
+export const verifySubscriptionSignature = (paymentId, subscriptionId, signature) => {
+  if (!key_secret) return false;
+  
+  const text = `${paymentId}|${subscriptionId}`;
+  const generatedSignature = crypto
+    .createHmac('sha256', key_secret)
+    .update(text)
+    .digest('hex');
+    
+  return generatedSignature === signature;
 };
 
 /**
