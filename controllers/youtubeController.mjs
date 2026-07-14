@@ -618,7 +618,8 @@ export const likeVideoDashboard = async (req, res) => {
     if (!video) return res.status(404).json({ error: 'Video not found' });
     
     // Check if duplicate
-    if (video.likedByUsers && video.likedByUsers.includes(userId)) {
+    const hasLiked = video.likedByUsers && video.likedByUsers.some(id => id.toString() === userId.toString());
+    if (hasLiked) {
       return res.status(400).json({ error: 'You have already liked this video' });
     }
     

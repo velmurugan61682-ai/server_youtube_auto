@@ -454,7 +454,7 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
         videoId: item.contentDetails.videoId,
         title: item.snippet.title,
         description: item.snippet.description,
-        thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace('_live.jpg', '.jpg'),
         publishedAt: item.snippet.publishedAt
       }));
       allVideos = allVideos.concat(items);
@@ -508,7 +508,7 @@ export const fetchAllVideos = async (youtube, channelId) => {
         videoId: item.contentDetails.videoId,
         title: item.snippet.title,
         description: item.snippet.description,
-        thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace('_live.jpg', '.jpg'),
         publishedAt: item.snippet.publishedAt
       }));
       allVideos = allVideos.concat(items);

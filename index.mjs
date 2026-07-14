@@ -118,6 +118,15 @@ const PORT = process.env.PORT || 5000;
 const app = express();
 const server = http.createServer(app);
 
+const normalizeOrigin = (urlStr) => {
+  try {
+    const url = new URL(urlStr.trim());
+    return url.origin;
+  } catch (e) {
+    return urlStr.trim().replace(/\/$/, '');
+  }
+};
+
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
@@ -127,7 +136,7 @@ const allowedOrigins = [
   ...(process.env.EXTRA_ORIGINS
     ? process.env.EXTRA_ORIGINS.split(',')
     : [])
-].map(origin => origin.trim().replace(/\/$/, ''));
+].map(normalizeOrigin);
 
 const checkOrigin = (origin, callback) => {
   if (!origin) {
@@ -156,7 +165,7 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   },
   pingInterval: 10000, // Send a ping every 10 seconds to keep Render connection alive
-  pingTimeout: 5000    // Timeout if no response in 5 seconds
+  pingTimeout: 20000    // Increased to 20 seconds to prevent premature timeout disconnections
 });
 logger.info('🚀 Socket.IO Server Initialized with Custom Ping/Pong (10s/5s) & CORS settings');
 
