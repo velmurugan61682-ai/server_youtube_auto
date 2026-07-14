@@ -5,6 +5,7 @@ import RepliedComment from '../models/RepliedComment.js';
 import Video from '../models/Video.mjs';
 import Channel from '../models/Channel.mjs';
 import Comment from '../models/Comment.mjs';
+import User from '../models/User.mjs';
 import { decrypt, encrypt } from '../utils/cryptoHelper.mjs';
 import {
   getYouTubeClient,
@@ -82,6 +83,9 @@ export const processVideo = async (videoId) => {
     logger.warn(`[Auto DM Service] Channel ${channel.title} requires reconnect. Skipping.`);
     return { success: false, reason: 'Channel requires reconnection' };
   }
+
+  const user = await User.findById(config.userId);
+  const productLink = user?.productLink || '';
 
   try {
     // Resolve YouTube API Client
@@ -162,7 +166,8 @@ export const processVideo = async (videoId) => {
       }
 
       const randomTemplate = config.replyTemplates[Math.floor(Math.random() * config.replyTemplates.length)];
-      const replyText = randomTemplate.replace(/{whatsapp_link}/g, whatsappLink);
+      let replyText = randomTemplate.replace(/{whatsapp_link}/g, whatsappLink);
+      replyText = replyText.replace(/{product_link}/g, productLink);
 
       // 4. Create database lock record to prevent duplicate reply racing
       try {
@@ -179,6 +184,12 @@ export const processVideo = async (videoId) => {
           repliedAt: new Date()
         });
         await repliedLog.save();
+
+        // 4b. Wait random delay (e.g., between 15 to 35 seconds) before posting the reply
+        // to avoid YouTube instantly flagging/deleting the reply as automation spam
+        const delayBeforeReplyMs = Math.floor(Math.random() * (35000 - 15000 + 1)) + 15000;
+        logger.info(`[Auto DM Service] Sleeping for ${delayBeforeReplyMs / 1000} seconds before posting reply to avoid YouTube deletion...`);
+        await new Promise(resolve => setTimeout(resolve, delayBeforeReplyMs));
 
         // 5. Post public reply on YouTube
         const replyResult = await replyToComment(youtube, comment.youtubeId, replyText);
