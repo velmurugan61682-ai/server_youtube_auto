@@ -2,6 +2,10 @@ import express from 'express';
 import { authMiddleware } from '../middleware/auth.mjs';
 import User from '../models/User.mjs';
 import Organization from '../models/Organization.mjs';
+import Payment from '../models/Payment.mjs';
+import Subscription from '../models/Subscription.mjs';
+import Transaction from '../models/Transaction.mjs';
+import BillingHistory from '../models/BillingHistory.mjs';
 import { 
   createRazorpaySubscription, 
   cancelRazorpaySubscription, 
@@ -170,8 +174,9 @@ router.post('/verify', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    let org = null;
     if (user.organizationId) {
-      const org = await Organization.findById(user.organizationId);
+      org = await Organization.findById(user.organizationId);
       if (org) {
         org.subscription.status = 'active';
         org.subscription.razorpaySubscriptionId = razorpay_subscription_id;
@@ -182,6 +187,85 @@ router.post('/verify', authMiddleware, async (req, res) => {
     user.subscription.status = 'active';
     user.subscription.id = razorpay_subscription_id;
     await user.save();
+
+    // Create Subscription log
+    const planType = org?.subscription?.planType || user.subscription.planType || 'one_rupee';
+    const planId = user.subscription.planId || 'plan_one_rupee_mock';
+    const durationMs = planType === 'one_rupee' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+    const currentEnd = org?.subscription?.currentPeriodEnd || user.subscription.currentEnd || new Date(Date.now() + durationMs);
+
+    await Subscription.findOneAndUpdate(
+      { razorpaySubscriptionId: razorpay_subscription_id },
+      {
+        userId: user._id,
+        organizationId: org ? org._id : undefined,
+        razorpaySubscriptionId: razorpay_subscription_id,
+        planId,
+        planType,
+        status: 'active',
+        currentStart: new Date(),
+        currentEnd
+      },
+      { upsert: true, new: true }
+    );
+
+    // Create Payment log (support both sandbox verify or real webhook backup verification)
+    const paymentId = razorpay_payment_id || `pay_mock_${Math.random().toString(36).substr(2, 9)}`;
+    const amountMap = {
+      free: 0,
+      one_rupee: 100,
+      monthly_345: 34500,
+      two_months_600: 60000,
+      three_months_999: 99900,
+      professional: 99900
+    };
+    const amount = amountMap[planType] || 0;
+
+    await Payment.findOneAndUpdate(
+      { razorpayPaymentId: paymentId },
+      {
+        userId: user._id,
+        organizationId: org ? org._id : undefined,
+        razorpayPaymentId: paymentId,
+        razorpaySubscriptionId: razorpay_subscription_id,
+        razorpaySignature: razorpay_signature || 'mock_signature',
+        amount,
+        currency: 'INR',
+        status: 'captured',
+        method: isMock ? 'mock' : 'carded'
+      },
+      { upsert: true, new: true }
+    );
+
+    // Create Transaction log
+    await Transaction.create({
+      userId: user._id,
+      organizationId: org ? org._id : undefined,
+      razorpayPaymentId: paymentId,
+      razorpaySubscriptionId: razorpay_subscription_id,
+      amount,
+      type: 'credit',
+      status: 'success',
+      description: `Payment verified for plan: ${planType}`
+    });
+
+    // Create Billing History log
+    await BillingHistory.findOneAndUpdate(
+      { razorpayPaymentId: paymentId },
+      {
+        userId: user._id,
+        organizationId: org ? org._id : undefined,
+        razorpayInvoiceId: `inv_${paymentId}`,
+        razorpaySubscriptionId: razorpay_subscription_id,
+        razorpayPaymentId: paymentId,
+        amount,
+        planType,
+        invoiceUrl: '',
+        billingDate: new Date(),
+        status: 'paid'
+      },
+      { upsert: true, new: true }
+    );
 
     res.json({ success: true, status: 'active', message: 'Payment verified.' });
   } catch (err) {
@@ -272,8 +356,29 @@ router.get('/invoices', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const org = await Organization.findById(user.organizationId);
-    const subId = org?.subscription?.razorpaySubscriptionId || user.subscription?.id;
+    
+    // Attempt to load from BillingHistory collection first (Optimized database query with indexes)
+    const dbInvoices = await BillingHistory.find({
+      $or: [
+        { userId: user._id },
+        org ? { organizationId: org._id } : {}
+      ].filter(Boolean)
+    }).sort({ billingDate: -1 }).lean();
 
+    if (dbInvoices && dbInvoices.length > 0) {
+      const mapped = dbInvoices.map(inv => ({
+        id: inv.razorpayInvoiceId || inv._id.toString(),
+        invoice_number: inv.razorpayInvoiceId || 'N/A',
+        issued_at: Math.floor(new Date(inv.billingDate).getTime() / 1000),
+        amount: inv.amount,
+        currency: 'INR',
+        status: inv.status,
+        invoiceUrl: inv.invoiceUrl || ''
+      }));
+      return res.json({ success: true, invoices: mapped });
+    }
+
+    const subId = org?.subscription?.razorpaySubscriptionId || user.subscription?.id;
     if (!subId) {
       return res.json({ success: true, invoices: [] });
     }
@@ -281,6 +386,7 @@ router.get('/invoices', authMiddleware, async (req, res) => {
     const invoices = await getSubscriptionInvoices(subId);
     res.json({ success: true, invoices });
   } catch (err) {
+    logger.error('Error fetching invoices:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -357,6 +463,83 @@ router.post('/webhook', async (req, res) => {
         user.subscription.currentStart = currentStart;
         user.subscription.currentEnd = currentEnd;
         await user.save();
+      }
+
+      // Update/create Subscription in our new collection
+      const planType = org?.subscription?.planType || user?.subscription?.planType || 'free';
+      const planId = subEntity.plan_id || user?.subscription?.planId || 'plan_free';
+
+      await Subscription.findOneAndUpdate(
+        { razorpaySubscriptionId: subId },
+        {
+          userId: user ? user._id : org ? org._id : undefined,
+          organizationId: org ? org._id : undefined,
+          razorpaySubscriptionId: subId,
+          planId,
+          planType,
+          status: targetStatus,
+          currentStart,
+          currentEnd,
+          endedAt: targetStatus === 'expired' || targetStatus === 'cancelled' ? new Date() : undefined,
+          cancelledAt: targetStatus === 'cancelled' ? new Date() : undefined
+        },
+        { upsert: true, new: true }
+      );
+
+      // If it's a charged event, log the payment, transaction, and billing history!
+      if (event === 'subscription.charged') {
+        const paymentPayload = payload.payment?.entity;
+        if (paymentPayload) {
+          const paymentId = paymentPayload.id;
+          const amount = paymentPayload.amount; // already in paise
+          const method = paymentPayload.method;
+
+          // A: Payment
+          await Payment.findOneAndUpdate(
+            { razorpayPaymentId: paymentId },
+            {
+              userId: user ? user._id : undefined,
+              organizationId: org ? org._id : undefined,
+              razorpayPaymentId: paymentId,
+              razorpaySubscriptionId: subId,
+              amount,
+              currency: paymentPayload.currency || 'INR',
+              status: 'captured',
+              method
+            },
+            { upsert: true, new: true }
+          );
+
+          // B: Transaction
+          await Transaction.create({
+            userId: user ? user._id : undefined,
+            organizationId: org ? org._id : undefined,
+            razorpayPaymentId: paymentId,
+            razorpaySubscriptionId: subId,
+            amount,
+            type: 'credit',
+            status: 'success',
+            description: `Subscription charged: ${event}`
+          });
+
+          // C: Billing History
+          await BillingHistory.findOneAndUpdate(
+            { razorpayPaymentId: paymentId },
+            {
+              userId: user ? user._id : undefined,
+              organizationId: org ? org._id : undefined,
+              razorpayInvoiceId: payload.invoice?.entity?.id || `inv_${paymentId}`,
+              razorpaySubscriptionId: subId,
+              razorpayPaymentId: paymentId,
+              amount,
+              planType,
+              invoiceUrl: payload.invoice?.entity?.short_url || '',
+              billingDate: new Date(),
+              status: 'paid'
+            },
+            { upsert: true, new: true }
+          );
+        }
       }
     }
 

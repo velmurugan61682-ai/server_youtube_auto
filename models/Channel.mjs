@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const channelSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
+  googleUserId: String,
   channelId: { type: String, required: true, unique: true },
   title: String,
   customUrl: String,
@@ -13,6 +14,7 @@ const channelSchema = new mongoose.Schema({
   expiryDate: Number,
   apiKey: String,
   uploadsPlaylistId: String,
+  status: { type: String, default: 'connected' },
   statistics: {
     subscriberCount: { type: String, default: '0' },
     videoCount: { type: String, default: '0' },

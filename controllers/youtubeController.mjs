@@ -317,9 +317,22 @@ export const handleCallback = async (req, res) => {
     // Fetch all playlists for the channel
     const playlists = await fetchPlaylists(youtube, channelData.id);
 
+    let googleUserId = null;
+    if (tokens.id_token) {
+      try {
+        const decoded = jwt.decode(tokens.id_token);
+        if (decoded && decoded.sub) {
+          googleUserId = decoded.sub;
+        }
+      } catch (e) {
+        logger.error('Failed to decode id_token:', e);
+      }
+    }
+
     const updateData = {
       userId,
       organizationId: user?.organizationId || null,
+      googleUserId,
       channelId: channelData.id,
       title: channelData.snippet.title,
       customUrl: channelData.snippet.customUrl || '',
@@ -330,6 +343,7 @@ export const handleCallback = async (req, res) => {
       playlists,
       reconnectRequired: false,
       reconnectReason: '',
+      status: 'connected',
       statistics: {
         subscriberCount: channelData.statistics?.subscriberCount || '0',
         videoCount: channelData.statistics?.videoCount || '0',
@@ -350,7 +364,7 @@ export const handleCallback = async (req, res) => {
       { $set: updateData },
       { upsert: true, returnDocument: 'after' }
     );
-    logger.info(`Channel saved to MongoDB: ${channel.title} (ID: ${channel.channelId})`);
+    logger.info(`Channel saved to MongoDB: ${channel.title} (ID: ${channel.channelId}, Google User ID: ${channel.googleUserId})`);
     logger.info('✓ Channel connected');
 
     // Trigger initial background process (processComments expects raw/decrypted tokens)

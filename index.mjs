@@ -321,7 +321,8 @@ app.use(helmet());
 app.use(
   cors({
     origin: checkOrigin,
-    credentials: true
+    credentials: true,
+    exposedHeaders: ['x-rtb-fingerprint-id', 'request-id']
   })
 );
 

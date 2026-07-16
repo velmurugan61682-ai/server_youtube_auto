@@ -27,6 +27,9 @@ import {
 // In-memory backoff tracking
 const channelBackoffs = new Map();
 
+// In-memory comment ID deduplication to prevent concurrent duplicate processing
+const activeCommentsProcessing = new Set();
+
 const getNextSyncTime = (channelId) => {
   const backoff = channelBackoffs.get(channelId);
   if (!backoff) return null;
@@ -122,72 +125,26 @@ const runInTransaction = async (fn) => {
  * Receives a Mongoose Comment document.
  */
 export const processSingleComment = async (youtube, channel, userKey, userSettings, commentDoc, io) => {
+  if (activeCommentsProcessing.has(commentDoc.youtubeId)) {
+    logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} is already being processed. Skipping.`);
+    return false;
+  }
+
   try {
+    activeCommentsProcessing.add(commentDoc.youtubeId);
+
     const confidenceThresholdDecimal = (userSettings.confidenceThreshold || 85) / 100;
     const targetParentId = commentDoc.youtubeId.includes('.') ? commentDoc.youtubeId.split('.')[0] : commentDoc.youtubeId;
 
-    // Never process another user's comments
-    if (commentDoc.userId.toString() !== channel.userId.toString()) {
-      logger.warn(`[MODERATION] Comment ${commentDoc.youtubeId} does not belong to channel owner ${channel.userId}. Skipping.`);
-      return;
+    // Never process comments posted by the channel owner
+    if (commentDoc.authorChannelId === channel.channelId) {
+      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} is posted by the channel owner. Skipping processing.`);
+      return false;
     }
-
-    // Check if comment has already been processed (aiActionTaken) in MongoDB to prevent duplicate processing
-    const isProcessed = await Comment.findOne({
-      userId: channel.userId,
-      youtubeId: commentDoc.youtubeId,
-      aiActionTaken: true
-    });
-    if (isProcessed) {
-      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} already marked as processed (aiActionTaken=true) in MongoDB. Skipping.`);
-      return;
-    }
-
-    // Guard: Prevent duplicate processing and replies
-    // NOTE: We do NOT skip based on replyText alone — replyText can be set on bot-own
-    // comments at insert time, and we still need aiActionTaken to gate the pipeline.
-    if (commentDoc.aiActionTaken || commentDoc.replyStatus === 'sent' || commentDoc.replyStatus === 'pending') {
-      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} already processed (aiActionTaken=${commentDoc.aiActionTaken}, replyStatus=${commentDoc.replyStatus}). Skipping.`);
-      return;
-    }
-
-    // ── FIX #2 (CORRECTED): Skip ONLY bot-posted auto-reply comments from the moderation pipeline.
-    // IMPORTANT: We ONLY use the explicit isBotReply flag set when the bot posts a reply.
-    // We do NOT use authorChannelId === channel.channelId because that would wrongly protect
-    // ALL of the channel owner's own comments (including toxic ones like "kena paiyan").
-    // The channel owner's real comments must still go through full DeepSeek moderation.
-    const isBotOwnComment = commentDoc.isBotReply === true;
-
-    if (isBotOwnComment) {
-      logger.info(`[MODERATION] [FIX #2] Comment ${commentDoc.youtubeId} has isBotReply=true — this is a bot auto-reply. Marking safe and skipping moderation. (commentProcessingService.mjs)`);
-      await Comment.updateOne(
-        { _id: commentDoc._id },
-        {
-          $set: {
-            aiActionTaken: true,
-            aiStatus: 'completed',
-            status: 'approved',
-            classification: 'bot_reply',
-            moderationStatus: 'safe',
-            actionTaken: 'skip_bot',
-            isBotReply: true
-          }
-        }
-      );
-      return;
-    }
-    // ── END FIX #2 ──────────────────────────────────────────────────────────────
-
-    // ── FIX #3: Skip if this comment has already been replied to ────────────────
-    if (commentDoc.hasReplied === true) {
-      logger.info(`[MODERATION] [FIX #3] Comment ${commentDoc.youtubeId} already has hasReplied=true. Skipping duplicate reply. (commentProcessingService.mjs)`);
-      return;
-    }
-    // ── END FIX #3 (hasReplied pre-check) ───────────────────────────────────────
 
     logger.info(`[MODERATION] Initiating DeepSeek analysis for comment ID ${commentDoc.youtubeId} by ${commentDoc.author}: "${commentDoc.text}"`);
 
-    // DeepSeek Classifier
+    // DeepSeek Classifier (Direct Pipeline - No DB Lookup, No Pending Status)
     const aiResult = await classifyComment(commentDoc.text, userKey);
     logger.info("DeepSeek analysis completed");
     const classification = aiResult.classification || 'Neutral';
@@ -197,7 +154,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     const isConfident = confidence >= confidenceThresholdDecimal;
     const isMeaningful = commentDoc.text && commentDoc.text.trim().length > 3;
 
-    let status = 'pending';
+    let status = 'approved';
     let deleteFailed = false;
     let deleteErrorReason = null;
     let deleteReason = null;
@@ -211,7 +168,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let actionTaken = undefined;
     let moderationReason = undefined;
 
-    // Toxicity / Bad Category check (detecting all 12 requested categories)
+    // Toxicity / Bad Category check
     const isToxicOrBad = [
       'spam', 'promotion', 'toxic', 'abuse', 'threat', 'scam', 'hate', 'profanity', 
       'selfpromotion', 'advertisement', 'adult', 'bullying', 'violence', 'malicious_review', 'bad_words',
@@ -226,7 +183,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
 
     logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} classification: ${classification}, isToxicOrBad: ${isToxicOrBad}`);
 
-    // Auto-Delete / Auto-Hide Mod Action (runs automatically for all bad comments)
+    // Auto-Delete / Auto-Hide Mod Action
     if (isToxicOrBad) {
       moderationReason = classification;
 
@@ -275,214 +232,143 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let likeStatus = 'none';
     let likeError = null;
 
-    // Check MongoDB to ensure the comment has not already been processed for Auto Like
-    const hasAlreadyBeenLiked = await AutoLikeLog.exists({ commentId: commentDoc.youtubeId });
-    if (hasAlreadyBeenLiked) {
-      logger.info(`[AUTO-LIKE] Comment ${commentDoc.youtubeId} already processed for Auto Like. Skipping.`);
-    } else {
-      // Ignore toxic, spam, and moderate comments. Only process good/positive comments.
-      const isToxicOrSpamOrModerate = [
-        'spam', 'promotion', 'toxic', 'abuse', 'threat', 'scam', 'hate', 'profanity', 
-        'selfpromotion', 'advertisement', 'adult', 'bullying', 'violence', 'malicious_review', 'bad_words',
-        'harassment', 'hate_speech', 'offensive', 'fake_review', 'offensive_review', 'bad words', 'hate speech',
-        'self promotion', 'fake review', 'offensive review'
-      ].includes(classification.toLowerCase()) || 
-      rawAnalysis.toxic || rawAnalysis.spam || rawAnalysis.abuse || rawAnalysis.threat || 
-      rawAnalysis.scam || rawAnalysis.hate || rawAnalysis.profanity || rawAnalysis.selfPromotion || 
-      rawAnalysis.advertisement || rawAnalysis.maliciousReview || rawAnalysis.badWords ||
-      rawAnalysis.harassment || rawAnalysis.hateSpeech || rawAnalysis.offensive ||
-      rawAnalysis.fakeReview || rawAnalysis.offensiveReview ||
-      aiResult.sentiment === 'toxic' || aiResult.sentiment === 'moderate';
+    // Ignore toxic, spam, and moderate comments. Only process good/positive comments.
+    const isToxicOrSpamOrModerate = isToxicOrBad || aiResult.sentiment === 'toxic' || aiResult.sentiment === 'moderate';
+    const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident && !isToxicOrSpamOrModerate;
 
-      const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident && !isToxicOrSpamOrModerate;
-
-      if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && userSettings.autoLike) {
-        if (channel.apiKey) {
-          likeStatus = 'not_supported';
-          likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
-        } else {
-          logger.info(`[MODERATION] Attempting to auto-like comment ${commentDoc.youtubeId}`);
-          const result = await likeComment(youtube, commentDoc.youtubeId);
-          likeStatus = result.status;
-          likeError = result.reason;
-          autoLiked = result.success;
-          if (autoLiked) {
-            aiActionTaken = true;
-          }
+    if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && userSettings.autoLike) {
+      if (channel.apiKey) {
+        likeStatus = 'not_supported';
+        likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
+      } else {
+        logger.info(`[MODERATION] Attempting to auto-like comment ${commentDoc.youtubeId}`);
+        const result = await likeComment(youtube, commentDoc.youtubeId);
+        likeStatus = result.status;
+        likeError = result.reason;
+        autoLiked = result.success;
+        if (autoLiked) {
+          aiActionTaken = true;
         }
+      }
 
-        // Save every Auto Like action in MongoDB to prevent duplicate processing and keep metrics updated
-        try {
-          await AutoLikeLog.findOneAndUpdate(
-            { commentId: commentDoc.youtubeId },
-            {
-              $setOnInsert: {
-                userId: channel.userId,
-                organizationId: channel.organizationId || null,
-                channelId: channel.channelId,
-                videoId: commentDoc.videoId,
-                commentId: commentDoc.youtubeId,
-                processedAt: new Date(),
-                autoLiked: true,
-                status: likeStatus
-              }
-            },
-            { upsert: true, new: true }
-          );
-          logger.info(`[AUTO-LIKE] Saved auto-like action for comment ${commentDoc.youtubeId} to MongoDB.`);
-        } catch (logErr) {
-          logger.error(`[AUTO-LIKE] Failed to save AutoLikeLog: ${logErr.message}`);
-        }
+      // Save Auto Like action in MongoDB
+      try {
+        await AutoLikeLog.findOneAndUpdate(
+          { commentId: commentDoc.youtubeId },
+          {
+            $setOnInsert: {
+              userId: channel.userId,
+              organizationId: channel.organizationId || null,
+              channelId: channel.channelId,
+              videoId: commentDoc.videoId,
+              commentId: commentDoc.youtubeId,
+              processedAt: new Date(),
+              autoLiked: true,
+              status: likeStatus
+            }
+          },
+          { upsert: true, new: true }
+        );
+      } catch (logErr) {
+        logger.error(`[AUTO-LIKE] Failed to save AutoLikeLog: ${logErr.message}`);
       }
     }
 
     // Auto-Reply logic (replies to all good comments, never reply to toxic/spam/deleted comments)
-    let replyStatus = commentDoc.replyStatus || 'none';
-    let replyError = commentDoc.replyError || null;
-    let replyText = commentDoc.replyText || null;
-    let suggestedReply = commentDoc.suggestedReply || aiResult.suggestedReply;
+    let replyStatus = 'none';
+    let replyError = null;
+    let replyText = null;
+    let suggestedReply = aiResult.suggestedReply;
 
-    // We only reply to top-level comments, never to reply comments (which have a dot in their youtubeId)
-    // and never to the channel owner's own comments.
     const isReply = commentDoc.youtubeId.includes('.');
-    const isOwnerComment = commentDoc.authorChannelId === channel.channelId;
     const isNormalComment = !isToxicOrBad && status !== 'deleted' && status !== 'flagged' && !wasHidden;
 
-    if (isNormalComment && !isReply && !isOwnerComment) {
+    if (isNormalComment && !isReply) {
       if (channel.apiKey) {
         replyStatus = 'failed';
         replyError = 'Authentication via API Key does not permit write actions (OAuth required)';
         logger.warn(`[REPLY] API Key channel. Cannot reply to comment ${commentDoc.youtubeId}.`);
       } else {
-        // Atomic distributed lock check/set to prevent duplicate replies
-        const lockedComment = await Comment.findOneAndUpdate(
-          { _id: commentDoc._id, replyStatus: { $nin: ['sent', 'pending'] } },
-          { $set: { replyStatus: 'pending' } },
-          { returnDocument: 'after' }
-        );
+        // Double check AutoReplyLog first to prevent any duplicate posting
+        const existing = await AutoReplyLog.findOne({ commentId: commentDoc.youtubeId });
+        if (existing && (existing.status === 'success' || existing.status === 'pending')) {
+          logger.warn(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply logged/pending. Skipping.`);
+          return true;
+        }
 
-        if (!lockedComment) {
-          logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply sent or pending. Skipping reply.`);
-        } else {
-          // Double check AutoReplyLog first to prevent any duplicate posting in same or parallel cycle
-          const existing = await AutoReplyLog.findOne({ commentId: commentDoc.youtubeId });
-          if (existing && (existing.status === 'success' || existing.status === 'pending')) {
-            logger.warn(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply logged/pending in AutoReplyLog. Syncing state and skipping.`);
-            await Comment.updateOne(
-              { _id: commentDoc._id },
-              {
-                $set: {
-                  replyStatus: existing.status === 'success' ? 'sent' : 'pending',
-                  replyText: existing.status === 'success' ? existing.replyText : null,
-                  aiActionTaken: true
-                }
-              }
-            );
-            return;
-          }
+        // Double check if a reply from the channel owner already exists on YouTube for this comment
+        const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const ownerReplyExists = await Comment.exists({
+          userId: channel.userId,
+          youtubeId: new RegExp('^' + escapeRegExp(commentDoc.youtubeId) + '\\.'),
+          authorChannelId: channel.channelId
+        });
 
-          // Double check the Comment database to see if a reply from the channel owner already exists for this parent comment
-          const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const ownerReplyExists = await Comment.exists({
-            userId: channel.userId,
-            youtubeId: new RegExp('^' + escapeRegExp(commentDoc.youtubeId) + '\\.'),
-            authorChannelId: channel.channelId
-          });
+        if (ownerReplyExists) {
+          logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has an owner/bot reply in the database. Skipping.`);
+          return true;
+        }
 
-          if (ownerReplyExists) {
-            logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has an owner/bot reply in the database. Marking hasReplied=true and skipping.`);
-            await Comment.updateOne(
-              { _id: commentDoc._id },
-              {
-                $set: {
-                  hasReplied: true,
-                  replyStatus: 'sent',
-                  aiActionTaken: true
-                }
-              }
-            );
-            return;
-          }
+        logger.info(`[REPLY] Sending auto-reply to comment ${commentDoc.youtubeId}`);
+        const repRes = await generateAndPostAutoReply({
+          youtube,
+          parentId: targetParentId,
+          commentText: commentDoc.text,
+          commentId: commentDoc.youtubeId,
+          videoId: commentDoc.videoId,
+          userId: channel.userId,
+          userKey
+        });
 
-          logger.info(`[REPLY] Sending auto-reply to comment ${commentDoc.youtubeId}`);
-          const repRes = await generateAndPostAutoReply({
-            youtube,
-            parentId: targetParentId,
-            commentText: commentDoc.text,
-            commentId: commentDoc.youtubeId,
-            videoId: commentDoc.videoId,
-            userId: channel.userId,
-            userKey
-          });
-          logger.info(`[REPLY] Auto-reply API response: ${JSON.stringify(repRes)}`);
+        if (repRes.success) {
+          replyStatus = 'sent';
+          aiActionTaken = true;
+          replyText = repRes.replyText;
+          suggestedReply = repRes.replyText;
 
-          if (repRes.success) {
-            replyStatus = 'sent';
-            aiActionTaken = true;
-            replyText = repRes.replyText;
-            suggestedReply = repRes.replyText;
-            // ── FIX #3: Atomically mark the original comment as replied to ───────
-            // Use findOneAndUpdate so concurrent workers cannot both proceed past this
-            await Comment.findOneAndUpdate(
-              { _id: commentDoc._id, hasReplied: { $ne: true } },
-              {
-                $set: {
-                  hasReplied: true,
-                  repliedAt: new Date()
-                }
-              }
-            );
-            logger.info(`[REPLY] [FIX #3] Marked comment ${commentDoc.youtubeId} hasReplied=true to prevent duplicates. (commentProcessingService.mjs)`);
-            // ── END FIX #3 ──────────────────────────────────────────────────────
-
-            // ── FIX #2: Save the bot reply comment in MongoDB with isBotReply=true ─
-            // This prevents the next sync from picking up and moderating this reply.
-            if (repRes.newCommentId) {
-              try {
-                await Comment.findOneAndUpdate(
-                  { youtubeId: repRes.newCommentId, userId: channel.userId },
-                  {
-                    $setOnInsert: {
-                      userId: channel.userId,
-                      youtubeId: repRes.newCommentId,
-                      channelId: channel.channelId,
-                      videoId: commentDoc.videoId,
-                      text: replyText,
-                      author: 'Bot (Auto-Reply)',
-                      authorChannelId: channel.channelId,
-                      publishedAt: new Date(),
-                    },
-                    $set: {
-                      isBotReply: true,
-                      hasReplied: false,
-                      status: 'approved',
-                      aiActionTaken: true,
-                      aiStatus: 'completed',
-                      classification: 'bot_reply',
-                      moderationStatus: 'safe',
-                      actionTaken: 'skip_bot',
-                    }
+          // Save the bot reply comment in MongoDB with isBotReply=true to skip its moderation
+          if (repRes.newCommentId) {
+            try {
+              await Comment.findOneAndUpdate(
+                { youtubeId: repRes.newCommentId, userId: channel.userId },
+                {
+                  $setOnInsert: {
+                    userId: channel.userId,
+                    youtubeId: repRes.newCommentId,
+                    channelId: channel.channelId,
+                    videoId: commentDoc.videoId,
+                    text: replyText,
+                    author: 'Bot (Auto-Reply)',
+                    authorChannelId: channel.channelId,
+                    publishedAt: new Date(),
                   },
-                  { upsert: true, new: true }
-                );
-                logger.info(`[REPLY] [FIX #2] Saved bot reply ${repRes.newCommentId} in MongoDB with isBotReply=true. (commentProcessingService.mjs)`);
-              } catch (botSaveErr) {
-                logger.error(`[REPLY] [FIX #2] Failed to save bot reply comment in MongoDB: ${botSaveErr.message}`);
-              }
+                  $set: {
+                    isBotReply: true,
+                    hasReplied: false,
+                    status: 'approved',
+                    aiActionTaken: true,
+                    aiStatus: 'completed',
+                    classification: 'bot_reply',
+                    moderationStatus: 'safe',
+                    actionTaken: 'skip_bot',
+                  }
+                },
+                { upsert: true, new: true }
+              );
+            } catch (botSaveErr) {
+              logger.error(`[REPLY] Failed to save bot reply comment in MongoDB: ${botSaveErr.message}`);
             }
-            // ── END FIX #2 ──────────────────────────────────────────────────────
-
-            await logAutomation(channel.userId, 'comment_reply', `Auto-replied to comment: ${replyText}`, { commentId: commentDoc.youtubeId, apiResponse: repRes });
-          } else {
-            replyStatus = 'failed';
-            replyError = repRes.reason;
-            suggestedReply = repRes.replyText || suggestedReply;
           }
+
+          await logAutomation(channel.userId, 'comment_reply', `Auto-replied to comment: ${replyText}`, { commentId: commentDoc.youtubeId, apiResponse: repRes });
+        } else {
+          replyStatus = 'failed';
+          replyError = repRes.reason;
         }
       }
     }
 
-    // Auto-Leads & GoWhats push (under Safe Transactions)
+    // Auto-Leads & GoWhats push
     const whatsappNumber = detectWhatsAppNumber(commentDoc.text);
     const isLeadIntent = rawAnalysis.buyingIntent === true || rawAnalysis.customer === true || aiResult.lead?.isLead === true;
 
@@ -551,41 +437,56 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       });
     }
 
-    // Save final classification updates
-    logger.info(`[MODERATION] Saving AI analysis and actions in MongoDB for comment ${commentDoc.youtubeId}`);
+    // Save final classification updates (MongoDB stores the comment ONLY AFTER the final action is completed)
+    logger.info(`[MODERATION] Storing processed comment and AI analysis in MongoDB for comment ${commentDoc.youtubeId}`);
+    
+    const newCommentData = {
+      userId: channel.userId,
+      youtubeId: commentDoc.youtubeId,
+      channelId: channel.channelId,
+      videoId: commentDoc.videoId,
+      text: commentDoc.text,
+      author: commentDoc.author,
+      authorProfileImageUrl: commentDoc.authorProfileImageUrl,
+      authorChannelId: commentDoc.authorChannelId || null,
+      publishedAt: commentDoc.publishedAt,
+      
+      sentiment: aiResult.sentiment,
+      toxicityScore: aiResult.toxicityScore,
+      confidence: aiResult.confidence,
+      language: aiResult.language,
+      detectedWords: aiResult.detectedWords,
+      status: status,
+      autoLiked: autoLiked,
+      deleteFailed,
+      deleteError: deleteErrorReason,
+      deleteReason,
+      deletedAt,
+      likeStatus: likeStatus !== 'none' ? likeStatus : 'none',
+      likeError: likeError,
+      aiActionTaken: true, // Mark classification complete
+      classification,
+      suggestedReply: suggestedReply,
+      replyText,
+      replyStatus,
+      replyError,
+      note: wasHidden ? 'Auto-hidden for privacy/compliance' : '',
+      moderationStatus,
+      aiStatus,
+      actionTaken,
+      moderationReason,
+      hasReplied: replyStatus === 'sent',
+      repliedAt: replyStatus === 'sent' ? new Date() : null
+    };
+
     const updatedComment = await Comment.findOneAndUpdate(
       { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-      {
-        sentiment: aiResult.sentiment,
-        toxicityScore: aiResult.toxicityScore,
-        confidence: aiResult.confidence,
-        language: aiResult.language,
-        detectedWords: aiResult.detectedWords,
-        status: status,
-        autoLiked: autoLiked,
-        deleteFailed,
-        deleteError: deleteErrorReason,
-        deleteReason,
-        deletedAt,
-        likeStatus: likeStatus !== 'none' ? likeStatus : 'none',
-        likeError: likeError,
-        aiActionTaken: true, // Mark classification complete
-        classification,
-        suggestedReply: suggestedReply,
-        replyText,
-        replyStatus,
-        replyError,
-        note: wasHidden ? 'Auto-hidden for privacy/compliance' : '',
-        moderationStatus,
-        aiStatus,
-        actionTaken,
-        moderationReason
-      },
-      { returnDocument: 'after' }
+      { $set: newCommentData },
+      { upsert: true, new: true }
     );
-    logger.info("MongoDB updated");
+    logger.info("MongoDB record saved/updated successfully");
 
-    // Broadcast update using Socket.IO
+    // Broadcast update using Socket.IO for Live Dashboard
     if (io && updatedComment) {
       const roomName = channel.userId.toString();
       logger.info(`[SOCKET.IO] Broadcasting comment analysis update for room: ${roomName}`);
@@ -598,8 +499,13 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       io.to(roomName).emit('stats_updated');
       logger.info("Socket event emitted");
     }
+
+    return true;
   } catch (error) {
     logger.error(`Error processing single comment ${commentDoc.youtubeId}:`, error);
+    return false;
+  } finally {
+    activeCommentsProcessing.delete(commentDoc.youtubeId);
   }
 };
 
@@ -607,6 +513,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
  * Main worker pipeline. Triggered by scheduled cron job or auth callback.
  */
 export const processComments = async (channel, tokens = null, apiKey = null, io = null, videoId = null) => {
+  let newestSyncDate = null;
   try {
     if (channel.channelId && channel.channelId.startsWith('PENDING_')) {
       logger.info(`[SYNC] Skipping pending channel: ${channel.channelId} (No YouTube API calls will be made)`);
@@ -637,6 +544,11 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         logger.info(`[SYNC] Skipping channel ${latestChannel.title || latestChannel.channelId} - synced recently (${Math.round(timeSinceLastSync / 1000)}s ago).`);
         return;
       }
+    }
+
+    // Acquire a temporary sync lock immediately by updating lastSyncedAt to current time
+    if (!videoId) {
+      await Channel.updateOne({ _id: latestChannel._id }, { $set: { lastSyncedAt: new Date() } });
     }
 
     const hasTokens = tokens && (tokens.access_token || tokens.refresh_token);
@@ -704,8 +616,6 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       logger.error(`[SYNC] User not found for channel ${channel.channelId}`);
       return;
     }
-
-    logger.info("User loaded successfully");
     
     const userSettings = user.settings || { autoMod: true, autoLike: true, confidenceThreshold: 85 };
     const userKey = user.openaiApiKey ? decrypt(user.openaiApiKey) : null;
@@ -730,129 +640,6 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
             fc.actionTaken = delRes.action;
             fc.moderationStatus = delRes.action === 'hide' ? 'hidden' : 'deleted';
             await fc.save();
-            await logAutomation(channel.userId, `comment_${delRes.action}`, `Retried and successfully ${delRes.action}d comment: ${fc.youtubeId}`, { commentId: fc.youtubeId, apiResponse: delRes });
-          } else {
-            fc.deleteError = delRes.reason;
-            await fc.save();
-          }
-        }
-
-        // Retry failed replies
-        const failedReplies = await Comment.find({ userId: channel.userId, replyStatus: 'failed' }).limit(5);
-        for (const fr of failedReplies) {
-          logger.info(`[RETRY] Retrying failed reply for comment: ${fr.youtubeId}`);
-
-          // Multi-reply prevention checks for retry loop
-          const isReply = fr.youtubeId.includes('.');
-          const isOwnerComment = fr.authorChannelId === channel.channelId;
-
-          if (isReply || isOwnerComment) {
-            logger.info(`[RETRY] Skipping reply retry for comment ${fr.youtubeId} (isReply: ${isReply}, isOwnerComment: ${isOwnerComment}).`);
-            fr.replyStatus = 'none';
-            await fr.save();
-            continue;
-          }
-
-          // Check if owner reply already exists in the database
-          const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const ownerReplyExists = await Comment.exists({
-            userId: channel.userId,
-            youtubeId: new RegExp('^' + escapeRegExp(fr.youtubeId) + '\\.'),
-            authorChannelId: channel.channelId
-          });
-
-          if (ownerReplyExists) {
-            logger.info(`[RETRY] Comment ${fr.youtubeId} already has an owner/bot reply in the database. Marking hasReplied=true and skipping retry.`);
-            fr.replyStatus = 'sent';
-            fr.hasReplied = true;
-            fr.aiActionTaken = true;
-            await fr.save();
-            continue;
-          }
-
-          const targetParentId = fr.youtubeId.includes('.') ? fr.youtubeId.split('.')[0] : fr.youtubeId;
-
-          // Double check AutoReplyLog first before retrying
-          const existing = await AutoReplyLog.findOne({ commentId: fr.youtubeId });
-          if (existing && (existing.status === 'success' || existing.status === 'pending')) {
-            logger.warn(`[RETRY] Comment ${fr.youtubeId} already has a reply logged/pending in AutoReplyLog. Syncing state and skipping.`);
-            if (existing.status === 'success') {
-              fr.replyStatus = 'sent';
-              fr.replyText = existing.replyText;
-              fr.aiActionTaken = true;
-              await fr.save();
-            }
-            continue;
-          }
-
-          // Create a pending lock
-          try {
-            await AutoReplyLog.create({
-              commentId: fr.youtubeId,
-              videoId: fr.videoId,
-              userId: channel.userId,
-              detectedLanguage: fr.language || 'English',
-              replyText: fr.suggestedReply,
-              status: 'pending'
-            });
-          } catch (lockErr) {
-            logger.warn(`[RETRY] Could not acquire lock for comment ${fr.youtubeId} during retry. Skipping.`);
-            continue;
-          }
-
-          const repRes = await replyToComment(youtube, targetParentId, fr.suggestedReply);
-          if (repRes.success) {
-            fr.replyStatus = 'sent';
-            fr.replyError = null;
-            fr.aiActionTaken = true;
-            fr.replyText = fr.suggestedReply;
-            await fr.save();
-
-            // Mark lock as success
-            await AutoReplyLog.updateOne(
-              { commentId: fr.youtubeId },
-              { $set: { status: 'success' } }
-            );
-
-            await logAutomation(channel.userId, 'comment_reply', `Retried and successfully replied to comment: ${fr.youtubeId}`, { commentId: fr.youtubeId, apiResponse: repRes });
-          } else {
-            fr.replyError = repRes.reason;
-            await fr.save();
-
-            // Delete pending lock so it can be retried again
-            await AutoReplyLog.deleteOne({ commentId: fr.youtubeId });
-          }
-        }
-
-        // Retry failed leads alerts
-        if (user.gowhatsApiKey && user.gowhatsUrl) {
-          const failedLeads = await Lead.find({ userId: channel.userId, status: 'failed' }).limit(5);
-          for (const fl of failedLeads) {
-            logger.info(`[RETRY] Retrying failed WhatsApp alert for lead: ${fl.whatsappNumber}`);
-            const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://techvaseegrah.com';
-            const msg = `Hi ${fl.authorName},\n\nThank you for showing interest in our product! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will also reach out to you shortly. Feel free to reply here if you have any questions!`;
-            
-            const decryptedGoWhatsKey = decrypt(user.gowhatsApiKey);
-            const waRes = await sendWhatsAppMessage(fl.whatsappNumber, msg, 1, decryptedGoWhatsKey, user.gowhatsUrl);
-            
-            const log = new GoWhatsLog({
-              userId: channel.userId,
-              recipientNumber: fl.whatsappNumber,
-              message: msg,
-              status: waRes.success ? 'sent' : 'failed',
-              error: waRes.success ? null : waRes.error
-            });
-            await log.save();
-
-            if (waRes.success) {
-              fl.status = 'sent';
-              fl.whatsappSent = true;
-              fl.errorLog = null;
-              await fl.save();
-            } else {
-              fl.errorLog = waRes.error;
-              await fl.save();
-            }
           }
         }
       }
@@ -873,7 +660,6 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
 
     // If channel has never been synced, perform INITIAL FULL SYNC
     if (!latestChannel.lastSyncedAt) {
-      // Set lock indicator (Jan 1, 1970 00:00:00)
       await Channel.findByIdAndUpdate(channel._id, { lastSyncedAt: new Date(0) });
       logger.info(`[INITIAL SYNC] Starting Initial Full Sync for channel: ${channel.title} (ID: ${channel.channelId})`);
 
@@ -899,57 +685,21 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
           );
         }
 
-        // Step B: Fetch ALL existing comments and replies for every video
-        let totalCommentsImported = 0;
-        logger.info("Fetching comments");
-        for (const v of allVideos) {
-          const videoComments = await fetchAllCommentsAndRepliesForVideo(youtube, v.videoId);
-          
-          for (const c of videoComments) {
-            const existing = await Comment.findOne({ userId: channel.userId, youtubeId: c.youtubeId });
-            if (!existing) {
-              try {
-                await Comment.findOneAndUpdate(
-                  { userId: channel.userId, youtubeId: c.youtubeId },
-                  {
-                    $setOnInsert: {
-                      userId: channel.userId,
-                      youtubeId: c.youtubeId,
-                      channelId: channel.channelId,
-                      videoId: c.videoId,
-                      text: c.text,
-                      author: c.author,
-                      authorProfileImageUrl: c.authorProfileImageUrl,
-                      authorChannelId: c.authorChannelId || null,
-                      publishedAt: c.publishedAt,
-                      status: 'pending',
-                      aiActionTaken: false
-                    }
-                  },
-                  { upsert: true, new: true }
-                );
-                totalCommentsImported++;
-              } catch (err) {
-                if (err.code !== 11000) throw err;
-              }
-            }
-          }
-        }
-        logger.info(`[INITIAL SYNC] Completed comment import. Imported ${totalCommentsImported} new comments as PENDING.`);
+        // Step B: Skip importing historical comments (Constraint: DO NOT store old YouTube comments)
+        logger.info(`[INITIAL SYNC] Skipped importing historical comments to avoid storing old comments.`);
 
         // Step C: Update lastSyncedAt to current date (marking sync complete)
-        await Channel.findByIdAndUpdate(channel._id, { lastSyncedAt: new Date() });
+        newestSyncDate = new Date();
         logger.info(`[INITIAL SYNC] Initial Full Sync Completed for Channel: ${channel.title}`);
       } catch (syncErr) {
         logger.error(`[INITIAL SYNC] Failed sync for channel ${channel.title}:`, syncErr);
-        // Release lock on sync error to retry
         await Channel.findByIdAndUpdate(channel._id, { lastSyncedAt: null });
         if (isQuotaError(syncErr)) throw syncErr;
         return;
       }
     } else {
       // ──────────────────────────────────────────────────────────
-      // NORMAL RECURRING SCAN (Every 30 seconds)
+      // NORMAL RECURRING SCAN
       // ──────────────────────────────────────────────────────────
       if (!videoId) {
         // Sync new uploads
@@ -992,36 +742,26 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         }
       }
 
-      // Sync latest 50 comments (to monitor new comments)
+      // Sync latest 50 comments and process new ones directly via DeepSeek (no pending status)
+      newestSyncDate = latestChannel.lastSyncedAt ? new Date(latestChannel.lastSyncedAt) : new Date(Date.now() - 300000);
       try {
-        logger.info("Fetching comments");
+        logger.info("Fetching latest comments from YouTube");
         const comments = await fetchLatestComments(youtube, channel.channelId, 50, videoId);
         if (comments && comments.length > 0) {
-          for (const c of comments) {
-            const existing = await Comment.findOne({ userId: channel.userId, youtubeId: c.youtubeId });
-            if (!existing) {
-              try {
-                await Comment.findOneAndUpdate(
-                  { userId: channel.userId, youtubeId: c.youtubeId },
-                  {
-                    $setOnInsert: {
-                      userId: channel.userId,
-                      youtubeId: c.youtubeId,
-                      channelId: channel.channelId,
-                      videoId: c.videoId,
-                      text: c.text,
-                      author: c.author,
-                      authorProfileImageUrl: c.authorProfileImageUrl,
-                      authorChannelId: c.authorChannelId || null,
-                      publishedAt: c.publishedAt,
-                      status: 'pending',
-                      aiActionTaken: false
-                    }
-                  },
-                  { upsert: true, new: true }
-                );
-              } catch (err) {
-                if (err.code !== 11000) throw err;
+          const newComments = comments.filter(c => new Date(c.publishedAt) > newestSyncDate);
+          
+          if (newComments.length > 0) {
+            logger.info(`[SYNC] Found ${newComments.length} newly fetched comments. Processing directly.`);
+            // Sort comments chronologically to advance the watermark pointer incrementally
+            newComments.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
+
+            for (const c of newComments) {
+              const success = await processSingleComment(youtube, latestChannel, userKey, userSettings, c, io);
+              if (success) {
+                const commentDate = new Date(c.publishedAt);
+                if (commentDate > newestSyncDate) {
+                  newestSyncDate = commentDate;
+                }
               }
             }
           }
@@ -1032,57 +772,20 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       }
     }
 
-    // ──────────────────────────────────────────────────────────
-    // 3. PROCESS UNPROCESSED COMMENTS USING DEEPSEEK
-    // ──────────────────────────────────────────────────────────
-    const unprocessed = await Comment.find({ 
-      userId: channel.userId, 
-      channelId: channel.channelId, 
-      aiActionTaken: false,
-      aiStatus: { $nin: ['processing', 'completed'] }
-    }).sort({ publishedAt: -1 }).limit(10);
-
-    if (unprocessed.length > 0) {
-      logger.info(`[DEEPSEEK PROCESSOR] Analyzing ${unprocessed.length} pending comments for channel: ${channel.title}...`);
-      for (const cDoc of unprocessed) {
-        // Atomic processing lock to prevent concurrent duplicate processing
-        const lockedDoc = await Comment.findOneAndUpdate(
-          { _id: cDoc._id, aiActionTaken: false, aiStatus: { $nin: ['processing', 'completed'] } },
-          { $set: { aiStatus: 'processing' } },
-          { returnDocument: 'after' }
-        );
-
-        if (!lockedDoc) {
-          logger.info(`[DEEPSEEK PROCESSOR] Comment ${cDoc.youtubeId} is already being processed by another worker. Skipping.`);
-          continue;
-        }
-
-        try {
-          await processSingleComment(youtube, channel, userKey, userSettings, lockedDoc, io);
-        } catch (procErr) {
-          logger.error(`[DEEPSEEK PROCESSOR] Failed to process comment ${lockedDoc.youtubeId}:`, procErr);
-          await Comment.updateOne(
-            { _id: lockedDoc._id },
-            { $set: { aiStatus: 'failed' } } // Reset status so it can retry
-          );
-        }
-
-        // Sleep 100ms between calls to control rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-
     // Emit stats updates
     if (io) {
       io.to(channel.userId.toString()).emit('stats_updated');
     }
 
-    // Update lastSyncedAt to now, marking sync successful, and clear quota backoff
-    await Channel.updateOne({ _id: channel._id }, { $set: { lastSyncedAt: new Date() } });
+    // Update lastSyncedAt to the newest successfully processed comment's timestamp
+    await Channel.updateOne({ _id: channel._id }, { $set: { lastSyncedAt: newestSyncDate } });
     clearQuotaBackoff(channel._id.toString());
   } catch (error) {
+    if (latestChannel && !isQuotaError(error)) {
+      // Restore original lastSyncedAt to allow retry on non-quota failure
+      await Channel.updateOne({ _id: channel._id }, { $set: { lastSyncedAt: latestChannel.lastSyncedAt } });
+    }
     if (isQuotaError(error)) {
-      logger.warn(`[SYNC] Quota exceeded for channel ${channel.title || channel.channelId}: ${error.message}`);
       handleQuotaError(channel._id.toString());
     } else {
       logger.error('Worker error:', error);
