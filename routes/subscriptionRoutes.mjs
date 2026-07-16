@@ -37,7 +37,19 @@ router.post('/create', authMiddleware, async (req, res) => {
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    if (!user.organizationId) return res.status(400).json({ error: 'User is not linked to any organization.' });
+    
+    // Auto-link legacy or dynamically registered users to default organization if missing
+    if (!user.organizationId) {
+      const defaultOrg = await Organization.findOne({ name: 'Tech Vaseegrah' });
+      if (defaultOrg) {
+        user.organizationId = defaultOrg._id;
+        await user.save();
+        logger.info(`[Subscription] Auto-linked user ${user.email} to default organization: Tech Vaseegrah`);
+      } else {
+        logger.warn(`[Subscription] User ${user.email} has no organization, and default organization was not found.`);
+        return res.status(400).json({ error: 'User is not linked to any organization.' });
+      }
+    }
 
     const org = await Organization.findById(user.organizationId);
     if (!org) return res.status(404).json({ error: 'Organization not found' });

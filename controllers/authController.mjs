@@ -17,7 +17,15 @@ export const register = async (req, res) => {
     if (exists) return res.status(400).json({ error: 'User already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword });
+    
+    // Auto-link new user to default organization: Tech Vaseegrah
+    const defaultOrg = await Organization.findOne({ name: 'Tech Vaseegrah' }).lean();
+    const user = new User({ 
+      name, 
+      email, 
+      password: hashedPassword,
+      organizationId: defaultOrg ? defaultOrg._id : undefined
+    });
     await user.save();
 
     res.status(201).json({ success: true, message: 'User registered successfully' });

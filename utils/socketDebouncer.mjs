@@ -24,11 +24,11 @@ export const debouncedEmit = (io, roomNameOrEvent, eventNameOrData, data = null,
   }
 
   const key = roomName ? `${roomName}_${eventName}` : `${eventName}`;
-  
+
   if (debouncedEmitters.has(key)) {
     return;
   }
-  
+
   const timeoutId = setTimeout(() => {
     if (roomName) {
       io.to(roomName).emit(eventName, actualData);
@@ -37,7 +37,7 @@ export const debouncedEmit = (io, roomNameOrEvent, eventNameOrData, data = null,
     }
     debouncedEmitters.delete(key);
   }, actualDelay);
-  
+
   debouncedEmitters.set(key, timeoutId);
 };
 
