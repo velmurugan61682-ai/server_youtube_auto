@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import logger from '../utils/logger.mjs';
 import Channel from '../models/Channel.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
+import axios from 'axios';
 
 export const isQuotaError = (error) => {
   if (!error) return false;
@@ -648,7 +649,7 @@ export const fetchVideoStatisticsBatch = async (youtube, videoIds) => {
     for (const chunk of chunks) {
       logger.info(`[YOUTUBE API] Request: videos.list statistics for chunk of ${chunk.length} videos`);
       const response = await youtube.videos.list({
-        part: 'snippet,statistics',
+        part: 'snippet,statistics,contentDetails',
         id: chunk.join(',')
       });
       logger.info(`[YOUTUBE API] Response: videos.list succeeded with status ${response.status}`);
@@ -667,4 +668,74 @@ export const fetchVideoStatisticsBatch = async (youtube, videoIds) => {
     return [];
   }
 };
+
+export const scrapeCommunityPosts = async (customUrl, channelId) => {
+  try {
+    const handle = customUrl ? (customUrl.startsWith('@') ? customUrl : `@${customUrl}`) : null;
+    const url = handle 
+      ? `https://www.youtube.com/${handle}/community` 
+      : `https://www.youtube.com/channel/${channelId}/community`;
+
+    logger.info(`[SCRAPER] Scraping community posts from: ${url}`);
+    
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }
+    });
+
+    const html = response.data;
+    const match = html.match(/var ytInitialData = ({.*?});/s) || html.match(/window\["ytInitialData"\] = ({.*?});/s);
+    if (!match) {
+      logger.warn(`[SCRAPER] ytInitialData not found in HTML response for ${url}`);
+      return [];
+    }
+
+    const json = JSON.parse(match[1]);
+    const tabs = json.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
+    const communityTab = tabs.find(t => t.tabRenderer?.title === 'Community' || t.tabRenderer?.endpoint?.browseEndpoint?.params === 'Egljb21tdW5pdHk%3D' || t.tabRenderer?.selected);
+    
+    if (!communityTab) {
+      logger.warn(`[SCRAPER] Community tab not found in ytInitialData for ${url}`);
+      return [];
+    }
+
+    const contents = communityTab.tabRenderer?.content?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
+    const posts = [];
+
+    for (const item of contents) {
+      const postRenderer = item.backstagePostThreadRenderer?.post?.backstagePostRenderer || item.sharedPostRenderer;
+      if (postRenderer) {
+        const postId = postRenderer.postId;
+        const author = postRenderer.authorText?.runs?.[0]?.text;
+        const text = postRenderer.contentText?.runs?.map(r => r.text).join('') || '';
+        const publishedTime = postRenderer.publishedTimeText?.runs?.[0]?.text;
+        
+        let thumbnail = '';
+        const attachment = postRenderer.backstageAttachment;
+        if (attachment?.postImageRenderer?.image?.thumbnails?.[0]?.url) {
+          thumbnail = attachment.postImageRenderer.image.thumbnails[0].url;
+        } else if (attachment?.backstageImageRenderer?.image?.thumbnails?.[0]?.url) {
+          thumbnail = attachment.backstageImageRenderer.image.thumbnails[0].url;
+        }
+        
+        posts.push({
+          postId,
+          author,
+          text,
+          publishedTime,
+          thumbnail
+        });
+      }
+    }
+
+    logger.info(`[SCRAPER] Successfully scraped ${posts.length} community posts for ${url}`);
+    return posts;
+  } catch (err) {
+    logger.error(`[SCRAPER] Error scraping community posts: ${err.message}`);
+    return [];
+  }
+};
+
 

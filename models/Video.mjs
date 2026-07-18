@@ -35,6 +35,8 @@ const videoSchema = new mongoose.Schema({
   ],
   engagementRate: { type: Number, default: 0 },
   likedByUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  duration: String,
+  isPost: { type: Boolean, default: false },
   lastFetchedAt: Date
 }, { timestamps: true });
 

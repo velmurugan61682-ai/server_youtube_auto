@@ -40,11 +40,11 @@ router.post('/create', authMiddleware, async (req, res) => {
     
     // Auto-link legacy or dynamically registered users to default organization if missing
     if (!user.organizationId) {
-      const defaultOrg = await Organization.findOne({ name: 'Tech Vaseegrah' });
+      const defaultOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } });
       if (defaultOrg) {
         user.organizationId = defaultOrg._id;
         await user.save();
-        logger.info(`[Subscription] Auto-linked user ${user.email} to default organization: Tech Vaseegrah`);
+        logger.info(`[Subscription] Auto-linked user ${user.email} to default organization: Channelmate`);
       } else {
         logger.warn(`[Subscription] User ${user.email} has no organization, and default organization was not found.`);
         return res.status(400).json({ error: 'User is not linked to any organization.' });

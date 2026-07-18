@@ -26,13 +26,13 @@ async function onboard() {
     const clients = [
       {
         name: 'Vaseegrah Veda',
-        email: 'vaseegrahveda@techvaseegrah.com',
+        email: 'vaseegrahveda@channelmate.com',
         password: 'VaseegrahVedaSecurePass2026!'
       },
       {
-        name: 'Tech Vaseegrah',
-        email: 'techvaseegrah@techvaseegrah.com',
-        password: 'TechVaseegrahSecurePass2026!'
+        name: 'Channelmate',
+        email: 'channelmate@channelmate.com',
+        password: 'ChannelmateSecurePass2026!'
       }
     ];
 

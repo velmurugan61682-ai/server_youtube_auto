@@ -406,7 +406,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           }
 
           const user = await User.findById(channel.userId);
-          const productLink = user?.productLink || process.env.PRODUCT_LINK || 'https://techvaseegrah.com';
+          const productLink = user?.productLink || process.env.PRODUCT_LINK || 'https://channelmate.com';
           const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest in our product! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will also reach out to you shortly. Feel free to reply here if you have any questions!`;
 
           const decryptedGoWhatsKey = user?.gowhatsApiKey ? decrypt(user.gowhatsApiKey) : null;

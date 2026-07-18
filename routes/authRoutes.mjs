@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { register, login, getMe, logout, sso, listOrganizations, switchOrganization } from '../controllers/authController.mjs';
+import { register, login, getMe, logout, sso, listOrganizations, switchOrganization, updateProfile } from '../controllers/authController.mjs';
 import { authMiddleware } from '../middleware/auth.mjs';
 
 const router = express.Router();
@@ -37,5 +37,6 @@ router.post('/logout', logout);
 router.post('/sso', sso);
 router.get('/organizations', authMiddleware, listOrganizations);
 router.post('/switch-org', authMiddleware, switchOrganization);
+router.put('/profile', authMiddleware, updateProfile);
 
 export default router;

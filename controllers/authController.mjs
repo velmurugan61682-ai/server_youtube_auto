@@ -18,8 +18,8 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Auto-link new user to default organization: Tech Vaseegrah
-    const defaultOrg = await Organization.findOne({ name: 'Tech Vaseegrah' }).lean();
+    // Auto-link new user to default organization: Channelmate / Tech Vaseegrah
+    const defaultOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } }).lean();
     const user = new User({ 
       name, 
       email, 
@@ -174,6 +174,39 @@ export const switchOrganization = async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email, organizationId }
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, email, password, profilePicture } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (email && email !== user.email) {
+      const emailExists = await User.findOne({ email }).lean();
+      if (emailExists) return res.status(400).json({ error: 'Email already taken by another user' });
+      user.email = email;
+    }
+
+    if (name) user.name = name;
+    if (profilePicture !== undefined) user.profilePicture = profilePicture;
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+      }
+      user.password = await bcrypt.hash(password, 10);
+    }
+
+    await user.save();
+    
+    const updatedUser = user.toObject();
+    delete updatedUser.password;
+
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    logger.error('Update Profile Error:', error);
     res.status(500).json({ error: error.message });
   }
 };

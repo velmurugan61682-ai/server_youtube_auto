@@ -28,16 +28,16 @@ export const seedOrganizations = async () => {
       logger.info('🌱 Created organization profile: Vaseegrah Veda');
     }
 
-    // 2. Seed Tech Vaseegrah
-    let techOrg = await Organization.findOne({ name: 'Tech Vaseegrah' });
+    // 2. Seed Channelmate (previously Tech Vaseegrah)
+    let techOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } });
     if (!techOrg) {
       techOrg = new Organization({
-        name: 'Tech Vaseegrah',
+        name: 'Channelmate',
         logo: '/logo.svg',
         contactDetails: {
-          email: 'contact@techvaseegrah.test',
+          email: 'contact@channelmate.test',
           phone: '+918888822222',
-          address: 'Tech Vaseegrah Hub, India'
+          address: 'Channelmate Hub, India'
         },
         subscription: {
           status: 'active',
@@ -46,25 +46,31 @@ export const seedOrganizations = async () => {
         }
       });
       await techOrg.save();
-      logger.info('🌱 Created organization profile: Tech Vaseegrah');
+      logger.info('🌱 Created organization profile: Channelmate');
+    } else if (techOrg.name === 'Tech Vaseegrah') {
+      techOrg.name = 'Channelmate';
+      techOrg.contactDetails.email = 'contact@channelmate.test';
+      techOrg.contactDetails.address = 'Channelmate Hub, India';
+      await techOrg.save();
+      logger.info('🌱 Renamed legacy organization Tech Vaseegrah to Channelmate');
     }
 
-    // 3. Migrate any legacy Users (without organizationId) to Tech Vaseegrah
+    // 3. Migrate any legacy Users (without organizationId) to Channelmate
     const userUpdateRes = await User.updateMany(
       { organizationId: { $exists: false } },
       { $set: { organizationId: techOrg._id } }
     );
     if (userUpdateRes.modifiedCount > 0) {
-      logger.info(`🌱 Migrated ${userUpdateRes.modifiedCount} legacy users to Tech Vaseegrah tenant`);
+      logger.info(`🌱 Migrated ${userUpdateRes.modifiedCount} legacy users to Channelmate tenant`);
     }
 
-    // 4. Migrate any legacy Channels (without organizationId) to Tech Vaseegrah
+    // 4. Migrate any legacy Channels (without organizationId) to Channelmate
     const channelUpdateRes = await Channel.updateMany(
       { organizationId: { $exists: false } },
       { $set: { organizationId: techOrg._id } }
     );
     if (channelUpdateRes.modifiedCount > 0) {
-      logger.info(`🌱 Migrated ${channelUpdateRes.modifiedCount} legacy channels to Tech Vaseegrah tenant`);
+      logger.info(`🌱 Migrated ${channelUpdateRes.modifiedCount} legacy channels to Channelmate tenant`);
     }
 
     logger.info('🌱 [Tenant Seeder] Organization initialization completed successfully');

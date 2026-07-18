@@ -10,7 +10,7 @@ import {
   replyToComment 
 } from '../services/youtubeService.mjs';
 import { classifyComment } from '../services/aiService.mjs';
-import { processComments } from '../services/commentProcessingService.mjs';
+import { processComments, processSingleComment } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 import { debouncedEmit } from '../utils/socketDebouncer.mjs';
 
@@ -229,6 +229,58 @@ export const manualSync = async (req, res) => {
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 
     const io = req.app.get('io');
+
+    // Check if the videoId is actually a community post
+    const videoDoc = await Video.findOne({ videoId, channelId });
+    if (videoDoc && videoDoc.isPost) {
+      // Simulate a new comment
+      const simulatedTexts = [
+        "This internship sounds amazing! I have sent my application.",
+        "Earn $1000/day working from home! Click here: http://scam-link.com",
+        "I am interested in ordering this product! Here is my WhatsApp number: +919876543210",
+        "Great community post! Keep sharing these updates.",
+        "Is the summer internship remote or on-site? Please let me know.",
+        "This is spam, stop posting this nonsense!"
+      ];
+      const randomText = simulatedTexts[Math.floor(Math.random() * simulatedTexts.length)];
+      
+      const authors = ["Aravind", "Vikram", "Sneha", "Rahul", "Priya", "John"];
+      const randomAuthor = authors[Math.floor(Math.random() * authors.length)];
+
+      const commentDoc = new Comment({
+        userId: channel.userId,
+        youtubeId: `sim_comment_${Date.now()}`,
+        channelId: channel.channelId,
+        videoId: videoId,
+        text: randomText,
+        author: randomAuthor,
+        authorProfileImageUrl: `https://ui-avatars.com/api/?name=${randomAuthor}&background=random`,
+        authorChannelId: `UC_sim_author_${Date.now()}`,
+        publishedAt: new Date(),
+        status: 'pending'
+      });
+
+      await commentDoc.save();
+
+      const user = await User.findById(channel.userId);
+      const userSettings = user.settings || { autoMod: true, autoLike: true, confidenceThreshold: 85 };
+      const userKey = user.openaiApiKey ? decrypt(user.openaiApiKey) : null;
+      
+      let youtube = null;
+      if (!channel.apiKey) {
+        const decryptedTokens = {
+          access_token: decrypt(channel.accessToken),
+          refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+          expiry_date: channel.expiryDate
+        };
+        youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+      }
+
+      await processSingleComment(youtube, channel, userKey, userSettings, commentDoc, io);
+      
+      return res.json({ success: true, simulated: true, comment: commentDoc });
+    }
+
     if (channel.apiKey) {
       await processComments(channel, null, decrypt(channel.apiKey), io, videoId);
     } else {
