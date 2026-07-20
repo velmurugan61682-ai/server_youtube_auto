@@ -6,18 +6,23 @@ const paymentSchema = new mongoose.Schema({
   razorpayPaymentId: { type: String, required: true, unique: true },
   razorpayOrderId: { type: String },
   razorpaySubscriptionId: { type: String },
+  subscriptionId: { type: String },
   razorpaySignature: { type: String },
   amount: { type: Number, required: true }, // in paise
   currency: { type: String, default: 'INR' },
   status: { type: String, required: true, enum: ['captured', 'failed', 'refunded', 'authorized', 'created'] },
+  paymentDate: { type: Date, default: Date.now },
+  invoiceId: { type: String },
   method: { type: String },
   errorDescription: { type: String },
 }, { timestamps: true });
 
-// Add index for optimized queries
-paymentSchema.index({ userId: 1 });
-paymentSchema.index({ organizationId: 1 });
+// Add indexes for optimized queries
+paymentSchema.index({ userId: 1, createdAt: -1 });
+paymentSchema.index({ organizationId: 1, createdAt: -1 });
 paymentSchema.index({ razorpayPaymentId: 1 });
 paymentSchema.index({ razorpaySubscriptionId: 1 });
+paymentSchema.index({ subscriptionId: 1 });
 
 export default mongoose.model('Payment', paymentSchema);
+

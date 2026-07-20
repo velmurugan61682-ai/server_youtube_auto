@@ -51,7 +51,7 @@ export const createRazorpaySubscription = async (planId, email) => {
             interval: 1,
             description: '1 Rupee Plan - 1 Channel Connection'
           };
-        } else if (planId.includes('monthly_345')) {
+        } else if (planId.includes('monthly_345') || planId === 'monthly') {
           planDetails = {
             name: '1 Month Plan (345)',
             amount: 34500, // ₹345 in paise
@@ -67,7 +67,7 @@ export const createRazorpaySubscription = async (planId, email) => {
             interval: 2,
             description: '2 Months Plan - 10 Channels Connection'
           };
-        } else if (planId.includes('three_months_999') || planId.includes('professional')) {
+        } else if (planId.includes('three_months_999') || planId === 'quarterly' || planId.includes('professional')) {
           planDetails = {
             name: '3 Months Plan (999)',
             amount: 99900, // ₹999 in paise
@@ -75,7 +75,16 @@ export const createRazorpaySubscription = async (planId, email) => {
             interval: 3,
             description: '3 Months Plan - Unlimited Channels Connection'
           };
+        } else if (planId === 'yearly' || planId.includes('yearly_2999')) {
+          planDetails = {
+            name: 'Yearly Plan (2999)',
+            amount: 299900, // ₹2999 in paise
+            period: 'yearly',
+            interval: 1,
+            description: 'Yearly Plan - Unlimited Channels Connection & Priority AI'
+          };
         }
+
 
         const existingPlan = plans.items?.find(p => p.item?.name === planDetails.name);
         if (existingPlan) {

@@ -2,6 +2,7 @@ import Comment from '../models/Comment.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
 import Video from '../models/Video.mjs';
+import CommentAutomationRule from '../models/CommentAutomationRule.mjs';
 import { 
   getYouTubeClient, 
   likeComment, 
@@ -296,3 +297,334 @@ export const manualSync = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// =========================================================================
+// COMMENT AUTOMATION RULES CONTROLLERS
+// =========================================================================
+
+export const getRules = async (req, res) => {
+  try {
+    const { channelId } = req.query;
+    const allowedChannelIds = await getUserChannelIds(req.user);
+
+    const query = {
+      channelId: { $in: allowedChannelIds }
+    };
+    if (req.user.organizationId) {
+      query.organizationId = req.user.organizationId;
+    } else if (req.user.id) {
+      query.userId = req.user.id;
+    }
+
+    if (channelId && allowedChannelIds.includes(channelId)) {
+      query.channelId = channelId;
+    }
+
+    const rules = await CommentAutomationRule.find(query).sort({ createdAt: -1 }).lean();
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const createRule = async (req, res) => {
+  try {
+    const {
+      channelId,
+      name,
+      triggerText,
+      triggerType = 'contains_any',
+      keywords = [],
+      replyType = 'Text',
+      followersOnly = false,
+      replyCommentText = '',
+      automatedDmContent = '',
+      carouselCards = [],
+      ruleType = 'text',
+      replyText = '',
+      replyTemplates = [],
+      templateSelectionMode = 'random',
+      videoIds = [],
+      videoId = null,
+      applyToAllVideos = true,
+      status = 'Active'
+    } = req.body;
+
+    if (!channelId || !name) {
+      return res.status(400).json({ error: 'channelId and name are required' });
+    }
+
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    if (!allowedChannelIds.includes(channelId)) {
+      return res.status(403).json({ error: 'Access denied: Channel not authorized.' });
+    }
+
+    const rule = new CommentAutomationRule({
+      userId: req.user.id,
+      organizationId: req.user.organizationId || null,
+      channelId,
+      name,
+      triggerText: triggerText || '*',
+      triggerType,
+      keywords: Array.isArray(keywords) ? keywords.map(k => k.trim().toLowerCase()) : [],
+      replyType,
+      followersOnly: !!followersOnly,
+      replyCommentText,
+      automatedDmContent,
+      carouselCards: Array.isArray(carouselCards) ? carouselCards : [],
+      ruleType,
+      replyText,
+      replyTemplates: Array.isArray(replyTemplates) ? replyTemplates : [],
+      templateSelectionMode,
+      videoIds: Array.isArray(videoIds) ? videoIds : [],
+      videoId,
+      applyToAllVideos: !!applyToAllVideos,
+      status
+    });
+
+    await rule.save();
+    res.status(201).json(rule);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const updateRule = async (req, res) => {
+  try {
+    const { ruleId, id } = req.params;
+    const targetRuleId = ruleId || id;
+
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const filter = {
+      _id: targetRuleId,
+      channelId: { $in: allowedChannelIds }
+    };
+    if (req.user.organizationId) {
+      filter.organizationId = req.user.organizationId;
+    } else if (req.user.id) {
+      filter.userId = req.user.id;
+    }
+
+    const rule = await CommentAutomationRule.findOne(filter);
+
+    if (!rule) {
+      return res.status(404).json({ error: 'Automation rule not found' });
+    }
+
+    const {
+      name,
+      triggerText,
+      triggerType,
+      keywords,
+      replyType,
+      followersOnly,
+      replyCommentText,
+      automatedDmContent,
+      carouselCards,
+      ruleType,
+      replyText,
+      replyTemplates,
+      templateSelectionMode,
+      videoIds,
+      videoId,
+      applyToAllVideos,
+      status
+    } = req.body;
+
+    if (name) rule.name = name;
+    if (triggerText !== undefined) rule.triggerText = triggerText;
+    if (triggerType) rule.triggerType = triggerType;
+    if (keywords && Array.isArray(keywords)) rule.keywords = keywords.map(k => k.trim().toLowerCase());
+    if (replyType) rule.replyType = replyType;
+    if (followersOnly !== undefined) rule.followersOnly = !!followersOnly;
+    if (replyCommentText !== undefined) rule.replyCommentText = replyCommentText;
+    if (automatedDmContent !== undefined) rule.automatedDmContent = automatedDmContent;
+    if (carouselCards && Array.isArray(carouselCards)) rule.carouselCards = carouselCards;
+    if (ruleType) rule.ruleType = ruleType;
+    if (replyText !== undefined) rule.replyText = replyText;
+    if (replyTemplates && Array.isArray(replyTemplates)) rule.replyTemplates = replyTemplates;
+    if (templateSelectionMode) rule.templateSelectionMode = templateSelectionMode;
+    if (videoIds && Array.isArray(videoIds)) rule.videoIds = videoIds;
+    if (videoId !== undefined) rule.videoId = videoId;
+    if (applyToAllVideos !== undefined) rule.applyToAllVideos = !!applyToAllVideos;
+    if (status) rule.status = status;
+
+    await rule.save();
+    res.json(rule);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const deleteRule = async (req, res) => {
+  try {
+    const { ruleId, id } = req.params;
+    const targetRuleId = ruleId || id;
+
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const filter = {
+      _id: targetRuleId,
+      channelId: { $in: allowedChannelIds }
+    };
+    if (req.user.organizationId) {
+      filter.organizationId = req.user.organizationId;
+    } else if (req.user.id) {
+      filter.userId = req.user.id;
+    }
+
+    const rule = await CommentAutomationRule.findOneAndDelete(filter);
+
+    if (!rule) {
+      return res.status(404).json({ error: 'Automation rule not found' });
+    }
+
+    res.json({ success: true, message: 'Rule successfully deleted' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * GET /api/comments/history
+ * Fetch paginated comment history scoped to tenant user
+ */
+export const getCommentHistory = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, channelId, status, sentiment } = req.query;
+    const allowedChannelIds = await getUserChannelIds(req.user);
+
+    const query = {
+      channelId: { $in: allowedChannelIds }
+    };
+    if (req.user.organizationId) {
+      query.organizationId = req.user.organizationId;
+    } else {
+      query.userId = req.user.id;
+    }
+
+    if (channelId && allowedChannelIds.includes(channelId)) {
+      query.channelId = channelId;
+    }
+    if (status) query.status = status;
+    if (sentiment) query.sentiment = sentiment;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const comments = await Comment.find(query)
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    const total = await Comment.countDocuments(query);
+
+    return res.json({
+      success: true,
+      data: comments,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * POST /api/comments/reply
+ * Send manual/AI reply to a YouTube comment
+ */
+export const replyToCommentApi = async (req, res) => {
+  try {
+    const { commentId, replyText } = req.body;
+    if (!commentId || !replyText) {
+      return res.status(400).json({ success: false, error: 'commentId and replyText are required' });
+    }
+
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const comment = await Comment.findOne({
+      $or: [{ _id: commentId }, { youtubeId: commentId }, { commentId }],
+      channelId: { $in: allowedChannelIds }
+    });
+
+    if (!comment) {
+      return res.status(404).json({ success: false, error: 'Comment not found or unauthorized' });
+    }
+
+    const channel = await Channel.findOne({ channelId: comment.channelId }).lean();
+    if (!channel) {
+      return res.status(404).json({ success: false, error: 'Associated YouTube channel not found' });
+    }
+
+    if (!channel.apiKey) {
+      const decryptedTokens = {
+        access_token: decrypt(channel.accessToken),
+        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+        expiry_date: channel.expiryDate
+      };
+      const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+      await replyToComment(youtube, comment.youtubeId, replyText);
+    }
+
+    comment.autoReplied = true;
+    comment.hasReplied = true;
+    comment.replyText = replyText;
+    comment.replyStatus = 'sent';
+    comment.repliedAt = new Date();
+    await comment.save();
+
+    return res.json({
+      success: true,
+      message: 'Reply sent successfully',
+      data: comment
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * DELETE /api/comments/:id
+ * Moderate/delete comment from YouTube and update DB status
+ */
+export const deleteCommentApi = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const allowedChannelIds = await getUserChannelIds(req.user);
+
+    const comment = await Comment.findOne({
+      $or: [{ _id: id }, { youtubeId: id }, { commentId: id }],
+      channelId: { $in: allowedChannelIds }
+    });
+
+    if (!comment) {
+      return res.status(404).json({ success: false, error: 'Comment not found or unauthorized' });
+    }
+
+    const channel = await Channel.findOne({ channelId: comment.channelId }).lean();
+    if (channel && !channel.apiKey) {
+      const decryptedTokens = {
+        access_token: decrypt(channel.accessToken),
+        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+        expiry_date: channel.expiryDate
+      };
+      const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+      await deleteCommentFromYouTube(youtube, comment.youtubeId);
+    }
+
+    comment.status = 'deleted';
+    comment.deletedAt = new Date();
+    await comment.save();
+
+    return res.json({
+      success: true,
+      message: 'Comment deleted successfully',
+      data: { id: comment._id, youtubeId: comment.youtubeId }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+};
+

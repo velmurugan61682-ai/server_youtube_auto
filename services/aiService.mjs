@@ -7,6 +7,34 @@ dotenv.config();
 let openai = null;
 let openAIAvailable = true;
 
+const callWithRetry = async (client, body, maxRetries = 1) => {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await client.chat.completions.create(body);
+    } catch (error) {
+      const status = error.status || error.response?.status;
+      const is402 = status === 402 || error.message?.includes('402') || error.message?.toLowerCase().includes('insufficient balance') || (error.response && error.response.status === 402);
+      const isTemporary = !status || (status >= 500 && status <= 599) || error.message?.includes('timeout') || error.code === 'ETIMEDOUT';
+
+      if (is402) {
+        logger.error(`[DEEPSEEK] Insufficient balance error detected (402). Disabling AI status.`);
+        global.isAiAvailable = false;
+        throw error;
+      }
+
+      if (isTemporary && attempt < maxRetries) {
+        attempt++;
+        logger.warn(`[DEEPSEEK] API call failed with temporary error. Retrying attempt ${attempt}/${maxRetries} in 1s...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+};
+
 const getOpenAI = () => {
   if (openai) return openai;
   if (!openAIAvailable) return null;
@@ -148,75 +176,56 @@ export const classifyComment = async (text, userKey = null) => {
       logger.warn('[DEEPSEEK] API Key missing, using keyword fallback.');
     }
 
+    const isToxic = detectedSentiment === 'toxic';
+    const fallbackCategoryScores = {
+      toxic: isToxic ? 0.8 : 0.0,
+      spam: 0.0,
+      hateSpeech: 0.0,
+      abuse: 0.0,
+      scam: 0.0,
+      sexualContent: 0.0
+    };
+
     return {
-      classification: detectedSentiment === 'toxic' ? 'Toxic' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral'),
+      classification: isToxic ? 'Toxic' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral'),
       sentiment: detectedSentiment || 'moderate',
-      toxicityScore: detectedSentiment === 'toxic' ? 0.8 : 0,
+      toxicityScore: isToxic ? 0.8 : 0,
       confidence: keywordDetected ? 0.9 : 0.5,
       language: 'unknown',
       detectedWords,
       lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: null },
-      suggestedReply: null
+      suggestedReply: null,
+      categoryScores: fallbackCategoryScores,
+      rawAnalysis: {
+        toxic: isToxic,
+        categoryScores: fallbackCategoryScores
+      }
     };
   }
 
   try {
     logger.info(`[DEEPSEEK] Sending chat completion request to model 'deepseek-chat'`);
-    const response = await client.chat.completions.create({
+    const response = await callWithRetry(client, {
       model: 'deepseek-chat',
       messages: [
         {
           role: 'system',
-          content: `You are an expert YouTube AI Moderator, Lead Extractor, and Engagement Agent.
-You must carefully moderate comments in English, Tamil, and Tanglish (Tamil words written in Latin/English script).
-Identify and mark "toxic", "profanity", "abuse", "badWords", or "hate" as true if the comment contains any toxic remarks, swearing, or abusive/vulgar slang in Tamil/Tanglish (e.g., words like "poda", "moodu", "kena", "koothi", "otha", "punda", "loose", "vetti", "wasteu", "kevalam", "mokka", "dei", "da", "baadu", "sunni", "gotha", "thevidiya") or English equivalents.
-Analyze the user's comment and output a JSON object containing the following keys and values. Do not output any markdown formatting (like \`\`\`json) or extra text. Output ONLY the JSON object.
-
-JSON Schema:
+          content: `You are an expert YouTube AI Moderator and Engagement Agent.
+Analyze the user's comment and output a JSON object containing EXACTLY the following keys:
 {
-  "positive": boolean, // True if the comment is appreciative, encouraging, or positive
-  "neutral": boolean,  // True if the comment is neutral, descriptive, or informational
-  
-  // Toxicity & Moderation checks (detecting all requested categories):
-  "toxic": boolean,    // True if the comment contains toxic language, rudeness, aggression
-  "spam": boolean,     // True if the comment contains spam, nonsensical text, or repetitive content
-  "abuse": boolean,    // True if the comment contains abuse, insults, name-calling, or bullying
-  "threat": boolean,   // True if the comment contains threats of violence or harm
-  "scam": boolean,     // True if the comment is a scam, phishing, or fraud
-  "hate": boolean,     // True if the comment contains hate speech, slurs, or discrimination
-  "profanity": boolean,// True if the comment contains profanity or swearing
-  "badWords": boolean, // True if the comment contains bad words
-  "maliciousReview": boolean, // True if the comment is a malicious review targeting the product or channel
-  "selfPromotion": boolean, // True if the comment is self-promotion
-  "advertisement": boolean, // True if the comment is an advertisement or sales pitch
-  "harassment": boolean, // True if the comment contains harassment or stalking behavior
-  "hateSpeech": boolean, // True if the comment contains hate speech
-  "fakeReview": boolean, // True if the comment contains a fake review or false testimonial
-  "offensiveReview": boolean, // True if the comment contains an offensive review/complaint
-  
-  // Lead & Intent Extraction:
-  "phoneNumber": string or null, // Extracted phone/mobile number (if any)
-  "whatsappNumber": string or null, // Extracted WhatsApp number (if any)
-  "email": string or null, // Extracted email address (if any)
-  "buyingIntent": boolean, // True if the user expresses interest in buying, pricing, or ordering a product/service
-  "sellingIntent": boolean, // True if the user is trying to sell something
-  "question": boolean, // True if the comment contains a genuine question or inquiry
-  "customer": boolean, // True if the user is an existing customer or showing customer behavior
-  "leadScore": number, // An integer from 0 to 100 representing how high-quality this lead is
-  "confidenceScore": number, // A float from 0.0 to 1.0 representing your confidence in this analysis
-  "emotion": string, // The primary emotion of the comment (e.g. "happy", "angry", "curious", "frustrated")
-  "urgency": string, // "low", "medium", or "high" based on how urgently the user needs a response
-  "detectedLanguage": string, // The language of the comment (e.g. "English", "Tamil", "Tanglish")
-  
-  // AI Reply Generation Rules:
-  "suggestedReply": string or null // A short, natural, human-like reply. Generate a friendly, natural suggested reply ONLY if the comment contains a genuine question or expresses buying-intent (i.e. 'question' or 'buyingIntent' is true) and is completely safe/normal. Set to null for all other comments, or if the comment contains any toxic, spam, abusive, bad words, profanity, hate speech, harassment, scam, fake/offensive reviews, self-promotion, or advertisement.
+  "category": string, // one of: "toxic", "spam", "hate speech", "abuse", "threat", "scam", "adult content", "positive", "question", "neutral feedback"
+  "confidence": number, // confidence score between 0.0 and 1.0 representing your confidence in this analysis
+  "isToxic": boolean, // true if the category is one of: "toxic", "spam", "hate speech", "abuse", "threat", "scam", "adult content". Otherwise false.
+  "suggestedReply": string or null // If isToxic is true, suggestedReply must be null. If isToxic is false, generate a friendly suggested reply matching the exact same language and script (English -> English, Tamil -> Tamil, Tanglish/Tamil written in English script -> Tanglish).
 }
 
-Examples of suggestedReply style:
-- Friendly, conversational, and direct.
-- Never sound like a robot/bot. Avoid generic greetings.
-- If the user asks a question, answer it directly or politely say we'll follow up.
-- If in Tamil/Tanglish, reply in the matching style (e.g., if in Tanglish, reply in friendly Tanglish/English).`
+Reply style requirements for suggestedReply:
+- Natural human tone
+- Short and helpful
+- Creator friendly
+- No robotic messages
+
+Do not output any markdown formatting (like \`\`\`json) or extra text. Output ONLY the JSON object.`
         },
         {
           role: 'user',
@@ -238,89 +247,76 @@ Examples of suggestedReply style:
 
     // Map classification to the most specific category detected
     let classification = 'Neutral';
-    if (result.toxic) classification = 'Toxic';
-    else if (result.profanity) classification = 'Profanity';
-    else if (result.badWords) classification = 'Bad Words';
-    else if (result.hate || result.hateSpeech) classification = 'Hate Speech';
-    else if (result.harassment) classification = 'Harassment';
-    else if (result.abuse) classification = 'Abuse';
-    else if (result.spam) classification = 'Spam';
-    else if (result.scam) classification = 'Scam';
-    else if (result.fakeReview) classification = 'Fake Review';
-    else if (result.offensiveReview || result.maliciousReview) classification = 'Offensive Review';
-    else if (result.selfPromotion) classification = 'Self Promotion';
-    else if (result.advertisement) classification = 'Advertisement';
-    else if (result.threat) classification = 'Threat';
-    else if (result.question) classification = 'Question';
-    else if (result.buyingIntent || result.customer) classification = 'Lead';
-    else if (result.positive) classification = 'Positive';
+    const cat = (result.category || '').toLowerCase().trim();
+    if (cat === 'toxic') classification = 'Toxic';
+    else if (cat === 'spam') classification = 'Spam';
+    else if (cat === 'hate speech') classification = 'Hate Speech';
+    else if (cat === 'abuse') classification = 'Abuse';
+    else if (cat === 'threat') classification = 'Threat';
+    else if (cat === 'scam') classification = 'Scam';
+    else if (cat === 'adult content') classification = 'Sexual Content';
+    else if (cat === 'positive') classification = 'Positive';
+    else if (cat === 'question') classification = 'Question';
+    else if (cat === 'neutral feedback') classification = 'Neutral';
 
     // Map sentiment
     let sentiment = 'neutral';
-    const isToxicOrBad = result.toxic || result.abuse || result.threat || result.hate || result.profanity || 
-      result.badWords || result.harassment || result.hateSpeech || result.spam || result.scam || 
-      result.fakeReview || result.offensiveReview || result.maliciousReview || result.selfPromotion || result.advertisement;
-
-    if (isToxicOrBad) {
+    if (result.isToxic) {
       sentiment = 'toxic';
-    } else if (result.positive) {
+    } else if (cat === 'positive') {
       sentiment = 'positive';
-    } else if (result.neutral) {
+    } else if (cat === 'neutral feedback' || cat === 'neutral') {
       sentiment = 'neutral';
     } else {
       sentiment = 'moderate';
     }
 
     // Map lead details
-    const isLead = !!(result.buyingIntent || result.customer || result.whatsappNumber || result.phoneNumber || result.email);
+    const isLead = cat === 'question';
     const lead = {
       isLead,
-      email: result.email || null,
-      phone: result.whatsappNumber || result.phoneNumber || null,
-      intent: result.buyingIntent ? 'Purchase Intent' : (result.customer ? 'Interested' : null),
-      productInterest: result.buyingIntent ? 'Product Interest' : null,
-      language: result.detectedLanguage || 'English',
-      notes: `Emotion: ${result.emotion || 'unknown'} | Urgency: ${result.urgency || 'low'} | Lead Score: ${result.leadScore || 0}`
+      email: null,
+      phone: null,
+      intent: isLead ? 'Inquiry' : null,
+      productInterest: null,
+      language: 'English',
+      notes: `Category: ${result.category} | Confidence: ${result.confidence}`
     };
 
-    let finalWords = result.detectedWords || [];
+    let finalWords = [];
 
-    if (
-      lowerText.length < 20 &&
-      positiveMatches.length > 0 &&
-      (sentiment === 'moderate' || sentiment === 'neutral')
-    ) {
-      sentiment = 'positive';
-      if (classification === 'Neutral') {
-        classification = 'Positive';
-      }
-
-      const existingWords = new Set(finalWords.map(w => w.word.toLowerCase()));
-      positiveMatches.forEach(w => {
-        if (!existingWords.has(w)) {
-          finalWords.push({
-            word: w,
-            category: 'appreciation'
-          });
-        }
-      });
-    }
-
-    logger.info(`[DEEPSEEK] Final classification: ${classification}, Sentiment: ${sentiment}, SuggestedReply: ${result.suggestedReply}`);
+    // Category-level breakdown scores (0.0 to 1.0)
+    const categoryScores = {
+      toxic: cat === 'toxic' ? 0.8 : 0.0,
+      spam: cat === 'spam' ? 0.8 : 0.0,
+      hateSpeech: cat === 'hate speech' ? 0.8 : 0.0,
+      abuse: cat === 'abuse' ? 0.8 : 0.0,
+      scam: cat === 'scam' ? 0.8 : 0.0,
+      sexualContent: cat === 'adult content' ? 0.8 : 0.0
+    };
 
     return {
       classification,
       sentiment,
-      toxicityScore: result.toxicityScore || (sentiment === 'toxic' ? 0.8 : (sentiment === 'moderate' ? 0.4 : 0)),
-      confidence: result.confidenceScore || 0.85,
-      language: result.detectedLanguage || 'English',
+      isToxic: result.isToxic || false,
+      toxicityScore: result.isToxic ? 0.8 : 0.0,
+      confidence: result.confidence || 0.85,
+      language: 'English', // default
       detectedWords: finalWords,
       lead,
       suggestedReply: result.suggestedReply || null,
-      rawAnalysis: result
+      categoryScores,
+      rawAnalysis: {
+        ...result,
+        categoryScores
+      }
     };
   } catch (error) {
-    if (error.status === 401) {
+    const is402 = error.status === 402 || error.message?.includes('402') || error.message?.toLowerCase().includes('insufficient balance') || (error.response && error.response.status === 402);
+    if (is402) {
+      logger.error('CRITICAL: DeepSeek API returned 402 Insufficient Balance. Marking AI as Unavailable.');
+      global.isAiAvailable = false;
+    } else if (error.status === 401) {
       logger.error('CRITICAL: DeepSeek API returned 401 Unauthorized.');
       logger.error('Check your DEEPSEEK_API_KEY in .env');
       openAIAvailable = false;
@@ -328,15 +324,31 @@ Examples of suggestedReply style:
       logger.error('AI Classification error:', error.message || error);
     }
 
+    const isToxic = detectedSentiment === 'toxic';
+    const fallbackCategoryScores = {
+      toxic: isToxic ? 0.8 : 0.0,
+      spam: 0.0,
+      hateSpeech: 0.0,
+      abuse: 0.0,
+      scam: 0.0,
+      sexualContent: 0.0
+    };
+
     return {
-      classification: detectedSentiment === 'toxic' ? 'Toxic' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral'),
+      classification: isToxic ? 'Toxic' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral'),
       sentiment: detectedSentiment || 'moderate',
-      toxicityScore: detectedSentiment === 'toxic' ? 0.8 : 0,
+      isToxic: isToxic,
+      toxicityScore: isToxic ? 0.8 : 0,
       confidence: keywordDetected ? 0.9 : 0.5,
       language: 'unknown',
       detectedWords,
       lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: null },
-      suggestedReply: null
+      suggestedReply: null,
+      categoryScores: fallbackCategoryScores,
+      rawAnalysis: {
+        toxic: isToxic,
+        categoryScores: fallbackCategoryScores
+      }
     };
   }
 };
@@ -372,7 +384,7 @@ export const analyzeVideo = async (title, description, tags = [], categoryId = '
   }
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await callWithRetry(client, {
       model: 'deepseek-chat',
       messages: [
         {
@@ -400,6 +412,11 @@ Return ONLY valid JSON.`
 
     return JSON.parse(response.choices[0].message.content);
   } catch (error) {
+    const is402 = error.status === 402 || error.message?.includes('402') || error.message?.toLowerCase().includes('insufficient balance') || (error.response && error.response.status === 402);
+    if (is402) {
+      logger.error('CRITICAL: DeepSeek API returned 402 Insufficient Balance for Video Analysis. Marking AI as Unavailable.');
+      global.isAiAvailable = false;
+    }
     logger.error('Video analysis error:', error);
     return {
       tags: tags,

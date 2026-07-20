@@ -28,6 +28,34 @@ const getOAuth2Client = () => {
   return oauth2Client;
 };
 
+const callWithRetry = async (client, body, maxRetries = 1) => {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await client.chat.completions.create(body);
+    } catch (error) {
+      const status = error.status || error.response?.status;
+      const is402 = status === 402 || error.message?.includes('402') || error.message?.toLowerCase().includes('insufficient balance') || (error.response && error.response.status === 402);
+      const isTemporary = !status || (status >= 500 && status <= 599) || error.message?.includes('timeout') || error.code === 'ETIMEDOUT';
+
+      if (is402) {
+        logger.error(`[DEEPSEEK] Insufficient balance error detected (402) in auto reply. Disabling AI status.`);
+        global.isAiAvailable = false;
+        throw error;
+      }
+
+      if (isTemporary && attempt < maxRetries) {
+        attempt++;
+        logger.warn(`[DEEPSEEK] API call failed with temporary error. Retrying attempt ${attempt}/${maxRetries} in 1s...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+};
+
 /**
  * Automatically generates a context-aware reply using DeepSeek in the original language
  * and script of the comment, posts it on YouTube, and logs the transaction.
@@ -142,7 +170,7 @@ Respond with ONLY a JSON object (no markdown, no other text) in this format:
   "reply": "generated reply text here"
 }`;
 
-    const response = await client.chat.completions.create({
+    const response = await callWithRetry(client, {
       model: 'deepseek-chat',
       messages: [
         { role: 'user', content: prompt }
@@ -181,7 +209,7 @@ Respond with ONLY a JSON object:
   "reply": "generated reply text here"
 }`;
 
-      const fallbackResponse = await client.chat.completions.create({
+      const fallbackResponse = await callWithRetry(client, {
         model: 'deepseek-chat',
         messages: [
           { role: 'user', content: fallbackPrompt }
@@ -196,6 +224,11 @@ Respond with ONLY a JSON object:
       replyText = fbParsed.reply || 'Thank you for your comment!';
     }
   } catch (err) {
+    const is402 = err.status === 402 || err.message?.includes('402') || err.message?.toLowerCase().includes('insufficient balance') || (err.response && err.response.status === 402);
+    if (is402) {
+      logger.error('CRITICAL: DeepSeek API returned 402 Insufficient Balance during auto reply. Marking AI as Unavailable.');
+      global.isAiAvailable = false;
+    }
     logger.error(`[Auto-Reply Service] DeepSeek API call failed for comment ${commentId}:`, err);
     await AutoReplyLog.deleteOne({ commentId });
     return { success: false, reason: `DeepSeek generation failed: ${err.message}` };

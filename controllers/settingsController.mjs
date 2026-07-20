@@ -14,8 +14,45 @@ export const getSettings = async (req, res) => {
     const user = await User.findById(req.user.id).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    const settings = {
+      autoMod: true,
+      autoLike: true,
+      smartAiReply: true,
+      confidenceThreshold: 85,
+      languages: ['English', 'Tamil', 'Tanglish'],
+      realTimeAlerts: true,
+      moderationAction: 'delete',
+      leadKeywords: ['price', 'details', 'course', 'join', 'contact', 'phone', 'call', 'whatsapp', 'demo', 'fees'],
+      ...user.settings
+    };
+
+    if (!settings.moderationRules) {
+      settings.moderationRules = {
+        toxicDetection: true,
+        spamDetection: true,
+        hateSpeech: true,
+        abuse: true,
+        scam: true,
+        sexualContent: true,
+        duplicateComments: true,
+        linkSpam: true
+      };
+    } else {
+      settings.moderationRules = {
+        toxicDetection: true,
+        spamDetection: true,
+        hateSpeech: true,
+        abuse: true,
+        scam: true,
+        sexualContent: true,
+        duplicateComments: true,
+        linkSpam: true,
+        ...settings.moderationRules
+      };
+    }
+
     res.json({
-      settings: user.settings,
+      settings,
       credentials: {
         youtubeApiKey: maskKey(user.youtubeApiKey),
         openaiApiKey:  maskKey(user.openaiApiKey),
@@ -33,7 +70,67 @@ export const getSettings = async (req, res) => {
 export const updateSettings = async (req, res) => {
   try {
     const { settings } = req.body;
-    const user = await User.findByIdAndUpdate(req.user.id, { $set: { settings } }, { returnDocument: 'after' });
+    if (!settings) return res.status(400).json({ error: 'Settings object is required' });
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (!user.settings) user.settings = {};
+
+    // 1. Validate & update moderationAction
+    if (settings.moderationAction !== undefined) {
+      if (!['delete', 'hold'].includes(settings.moderationAction)) {
+        return res.status(400).json({ error: 'Invalid moderationAction. Must be "delete" or "hold"' });
+      }
+      user.settings.moderationAction = settings.moderationAction;
+    }
+
+    // 2. Validate & update leadKeywords
+    if (settings.leadKeywords !== undefined) {
+      if (!Array.isArray(settings.leadKeywords)) {
+        return res.status(400).json({ error: 'leadKeywords must be an array of strings' });
+      }
+      const processedKeywords = [
+        ...new Set(
+          settings.leadKeywords
+            .map(k => String(k).trim())
+            .filter(k => k.length > 0)
+        )
+      ];
+
+      if (processedKeywords.length > 50) {
+        return res.status(400).json({ error: 'Too many lead keywords. Max is 50.' });
+      }
+      for (const kw of processedKeywords) {
+        if (kw.length > 100) {
+          return res.status(400).json({ error: 'Keyword too long. Max length is 100 characters.' });
+        }
+      }
+      user.settings.leadKeywords = processedKeywords;
+    }
+
+    // 3. Validate & update moderationRules.*
+    if (settings.moderationRules !== undefined && typeof settings.moderationRules === 'object') {
+      if (!user.settings.moderationRules) user.settings.moderationRules = {};
+      const rulesList = ['toxicDetection', 'spamDetection', 'hateSpeech', 'abuse', 'scam', 'sexualContent', 'duplicateComments', 'linkSpam'];
+      for (const rule of rulesList) {
+        if (settings.moderationRules[rule] !== undefined) {
+          user.settings.moderationRules[rule] = Boolean(settings.moderationRules[rule]);
+        }
+      }
+    }
+
+    // Support updating other existing settings keys
+    if (settings.autoMod !== undefined) user.settings.autoMod = Boolean(settings.autoMod);
+    if (settings.autoLike !== undefined) user.settings.autoLike = Boolean(settings.autoLike);
+    if (settings.smartAiReply !== undefined) user.settings.smartAiReply = Boolean(settings.smartAiReply);
+    if (settings.confidenceThreshold !== undefined) user.settings.confidenceThreshold = Number(settings.confidenceThreshold);
+    if (settings.languages !== undefined) user.settings.languages = settings.languages;
+    if (settings.realTimeAlerts !== undefined) user.settings.realTimeAlerts = Boolean(settings.realTimeAlerts);
+
+    user.markModified('settings');
+    await user.save();
+
     res.json({ success: true, settings: user.settings });
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -2,11 +2,15 @@ import mongoose from 'mongoose';
 
 const commentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   youtubeId: { type: String, required: true },
+  commentId: { type: String, unique: true, sparse: true }, // unique alias of youtubeId
   channelId: { type: String },
   videoId: { type: String, required: true },
   text: { type: String, required: true },
+  commentText: { type: String }, // alias of text
   author: { type: String, required: true },
+  username: { type: String }, // alias of author
   authorProfileImageUrl: String,
   // FIX #2: Channel ID of the comment author — used to detect bot's own replies
   authorChannelId: { type: String, default: null },
@@ -19,7 +23,7 @@ const commentSchema = new mongoose.Schema({
     word: String,
     category: String
   }],
-  status: { type: String, enum: ['pending', 'approved', 'deleted', 'flagged'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'processing', 'approved', 'deleted', 'flagged', 'moderate'], default: 'pending' },
   likeStatus: { type: String, enum: ['none', 'success', 'failed', 'not_supported', 'replied'], default: 'none' },
   likeError: String,
   aiActionTaken: { type: Boolean, default: false },
@@ -29,10 +33,14 @@ const commentSchema = new mongoose.Schema({
   moderatedBy: String,
   moderatedAt: Date,
   note: { type: String, default: '' },
+  isModerated: { type: Boolean, default: false },
+  moderationAction: { type: String, default: null },
 
   // FIX #2: True when THIS comment was posted by the bot as an auto-reply.
   // Bot-authored comments are always skipped from toxicity moderation.
   isBotReply: { type: Boolean, default: false },
+  parentCommentId: { type: String, default: null },
+  isReply: { type: Boolean, default: false },
 
   // FIX #3: True once a successful bot reply has been posted for THIS comment.
   // Used to prevent duplicate DeepSeek calls and duplicate YouTube replies.
@@ -51,6 +59,7 @@ const commentSchema = new mongoose.Schema({
   aiStatus: String,
   actionTaken: String,
   moderationReason: String,
+  textHash: { type: String, index: true },
 }, { timestamps: true });
 
 // ✅ PERFORMANCE: Added indexes for fast queries
@@ -63,6 +72,9 @@ commentSchema.index({ userId: 1, publishedAt: -1 });        // For sorting by da
 commentSchema.index({ channelId: 1 });                      // For channel filtering
 commentSchema.index({ userId: 1, channelId: 1, status: 1, publishedAt: -1 }); // Compound index for channel dashboard/moderation queries
 commentSchema.index({ userId: 1, videoId: 1, publishedAt: -1 });              // Compound index for video workspace queries
+commentSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
+commentSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
+commentSchema.index({ userId: 1, organizationId: 1, channelId: 1, videoId: 1, textHash: 1, createdAt: -1 });
 
 export default mongoose.model('Comment', commentSchema);
 // [FIX APPLIED] Bug #2 & #3 — Added authorChannelId, isBotReply, hasReplied, repliedAt fields to Comment model (models/Comment.mjs)

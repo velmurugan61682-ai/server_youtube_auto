@@ -44,7 +44,14 @@ const callDeepSeek = async (systemPrompt, userMessage, temperature, retryCount =
     return response.data.choices[0].message.content;
   } catch (error) {
     const status = error.response?.status;
+    const is402 = status === 402 || error.message?.includes('402') || error.message?.toLowerCase().includes('insufficient balance');
     const isNetworkOr5xx = !status || (status >= 500 && status <= 599);
+
+    if (is402) {
+      logger.error(`[DeepSeek Service] Insufficient balance error detected (402). Disabling AI status.`);
+      global.isAiAvailable = false;
+      throw error;
+    }
 
     if (isNetworkOr5xx && retryCount > 0) {
       logger.warn(`[DeepSeek Service] Call failed (Status: ${status || 'Network Error'}). Retrying once in 1s...`);

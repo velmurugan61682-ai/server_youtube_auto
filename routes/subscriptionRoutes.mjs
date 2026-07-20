@@ -28,12 +28,13 @@ const planIds = {
 /**
  * Initiate subscription for organization
  */
+/**
+ * Initiate subscription for organization
+ */
 router.post('/create', authMiddleware, async (req, res) => {
   try {
-    const { planType } = req.body; // 'free', 'one_rupee', 'monthly_345', 'two_months_600', 'three_months_999'
-    if (!planType || (planType !== 'free' && !planIds[planType])) {
-      return res.status(400).json({ error: 'Invalid plan type selected.' });
-    }
+    let { planType } = req.body; // 'free', 'quarterly', 'three_months_999', etc.
+    if (!planType) planType = 'free';
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -54,101 +55,52 @@ router.post('/create', authMiddleware, async (req, res) => {
     const org = await Organization.findById(user.organizationId);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    if (planType === 'free') {
-      const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
-      const trialExpirationDate = new Date(user.createdAt.getTime() + oneMonthMs);
-      if (new Date() > trialExpirationDate) {
-        return res.status(400).json({ error: 'Your 30-day Free Trial has expired. You cannot select the Free Plan.' });
-      }
+    const planId = planIds[planType] || `plan_${planType}_mock`;
+    const durationDays = (planType === 'quarterly' || planType === 'three_months_999') ? 90 : 365;
+    const durationMs = durationDays * 24 * 60 * 60 * 1000;
+    const subId = `sub_${planType}_${Date.now()}`;
 
-      // Cancel any active Razorpay subscription if present
-      const subId = org.subscription?.razorpaySubscriptionId || user.subscription?.id;
-      if (subId && !subId.includes('mock')) {
-        try {
-          await cancelRazorpaySubscription(subId);
-        } catch (apiErr) {
-          logger.warn(`SDK cancellation skipped/mocked: ${apiErr.message}`);
-        }
-      }
-
-      // Reset subscription fields to free tier
-      org.subscription = {
-        status: 'none',
-        planType: 'free',
-        razorpaySubscriptionId: '',
-        currentPeriodEnd: null
-      };
-      await org.save();
-
-      user.subscription = {
-        id: '',
-        planId: '',
-        status: 'none',
-        currentStart: null,
-        currentEnd: null
-      };
-      await user.save();
-
-      return res.json({
-        success: true,
-        subscriptionId: '',
-        shortUrl: '',
-        status: 'none',
-        razorpayKeyId: process.env.RAZORPAY_KEY_ID
-      });
-    }
-
-    const planId = planIds[planType];
-    
-    // In mock mode, generate a mock sub config
-    let sub;
-    try {
-      sub = await createRazorpaySubscription(planId, user.email);
-    } catch (apiErr) {
-      // Fallback mock sub if SDK throws due to missing credentials
-      logger.warn(`Razorpay SDK threw error: ${apiErr.message}. Creating mock subscription.`);
-      sub = {
-        id: `sub_mock_${Math.random().toString(36).substr(2, 9)}`,
-        short_url: '#',
-        status: 'created'
-      };
-    }
-
-    // Calculate duration based on subscription type
-    let durationMs = 30 * 24 * 60 * 60 * 1000; // default 30 days
-    if (planType === 'one_rupee') {
-      durationMs = 1 * 24 * 60 * 60 * 1000; // 1 day limit
-    } else if (planType === 'two_months_600') {
-      durationMs = 60 * 24 * 60 * 60 * 1000; // 60 days
-    } else if (planType === 'three_months_999' || planType === 'professional') {
-      durationMs = 90 * 24 * 60 * 60 * 1000; // 90 days
-    }
-
-    // Save subscription state on organization profile
+    // Save subscription state on organization profile in Mongoose
     org.subscription = {
-      status: 'created',
-      planType,
-      razorpaySubscriptionId: sub.id,
+      status: 'active',
+      planType: planType,
+      razorpaySubscriptionId: subId,
       currentPeriodEnd: new Date(Date.now() + durationMs)
     };
     await org.save();
 
     // Cache on user object for backward compatibility
     user.subscription = {
-      id: sub.id,
+      id: subId,
       planId,
-      status: 'created',
+      status: 'active',
       currentStart: new Date(),
       currentEnd: new Date(Date.now() + durationMs)
     };
     await user.save();
 
+    // Save/update Subscription document in Mongoose DB
+    await Subscription.findOneAndUpdate(
+      { organizationId: org._id },
+      {
+        userId: user._id,
+        organizationId: org._id,
+        razorpaySubscriptionId: subId,
+        planId,
+        planType,
+        status: 'active',
+        currentStart: new Date(),
+        currentEnd: new Date(Date.now() + durationMs)
+      },
+      { upsert: true, new: true }
+    );
+
     res.json({
       success: true,
-      subscriptionId: sub.id,
-      shortUrl: sub.short_url,
-      status: sub.status,
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID
+      subscriptionId: subId,
+      shortUrl: '#',
+      status: 'active',
+      razorpayKeyId: ''
     });
   } catch (err) {
     logger.error('Subscription initiate failure:', err);
@@ -161,120 +113,43 @@ router.post('/create', authMiddleware, async (req, res) => {
  */
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature } = req.body;
-    if (!razorpay_subscription_id) {
-      return res.status(400).json({ error: 'Subscription ID is required.' });
-    }
-
-    // Verify cryptographic signature if Razorpay is fully configured and not a mock subscription
-    const isMock = razorpay_subscription_id.includes('mock');
-    const hasCredentials = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET;
-    
-    if (hasCredentials && !isMock) {
-      if (!razorpay_payment_id || !razorpay_signature) {
-        return res.status(400).json({ error: 'Payment ID and signature are required for production verification.' });
-      }
-      
-      const { verifySubscriptionSignature } = await import('../services/razorpayService.mjs');
-      const isValid = verifySubscriptionSignature(razorpay_payment_id, razorpay_subscription_id, razorpay_signature);
-      if (!isValid) {
-        logger.warn(`⚠️ [Razorpay Verification] Cryptographic verification failed for sub: ${razorpay_subscription_id}`);
-        return res.status(400).json({ error: 'Invalid payment signature. Verification failed.' });
-      }
-    }
-
+    const { planType: reqPlanType, razorpay_subscription_id } = req.body;
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     let org = null;
+    let targetPlanType = reqPlanType;
+
     if (user.organizationId) {
       org = await Organization.findById(user.organizationId);
       if (org) {
+        if (!targetPlanType) targetPlanType = org.subscription?.planType || 'free';
         org.subscription.status = 'active';
-        org.subscription.razorpaySubscriptionId = razorpay_subscription_id;
+        org.subscription.planType = targetPlanType;
+        org.subscription.razorpaySubscriptionId = razorpay_subscription_id || org.subscription.razorpaySubscriptionId || 'sub_dummy_active';
+        org.subscription.currentPeriodEnd = new Date(Date.now() + (targetPlanType === 'quarterly' ? 90 : 365) * 24 * 60 * 60 * 1000);
         await org.save();
       }
     }
 
+    if (!targetPlanType) targetPlanType = user.subscription?.planId || 'free';
+
     user.subscription.status = 'active';
-    user.subscription.id = razorpay_subscription_id;
+    user.subscription.id = razorpay_subscription_id || user.subscription?.id || 'sub_dummy_active';
+    user.subscription.currentEnd = new Date(Date.now() + (targetPlanType === 'quarterly' ? 90 : 365) * 24 * 60 * 60 * 1000);
     await user.save();
 
-    // Create Subscription log
-    const planType = org?.subscription?.planType || user.subscription.planType || 'one_rupee';
-    const planId = user.subscription.planId || 'plan_one_rupee_mock';
-    const durationMs = planType === 'one_rupee' ? 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-    const currentEnd = org?.subscription?.currentPeriodEnd || user.subscription.currentEnd || new Date(Date.now() + durationMs);
-
     await Subscription.findOneAndUpdate(
-      { razorpaySubscriptionId: razorpay_subscription_id },
+      { userId: user._id },
       {
         userId: user._id,
         organizationId: org ? org._id : undefined,
-        razorpaySubscriptionId: razorpay_subscription_id,
-        planId,
-        planType,
+        razorpaySubscriptionId: razorpay_subscription_id || 'sub_dummy_active',
+        planId: `plan_${targetPlanType}_mock`,
+        planType: targetPlanType,
         status: 'active',
         currentStart: new Date(),
-        currentEnd
-      },
-      { upsert: true, new: true }
-    );
-
-    // Create Payment log (support both sandbox verify or real webhook backup verification)
-    const paymentId = razorpay_payment_id || `pay_mock_${Math.random().toString(36).substr(2, 9)}`;
-    const amountMap = {
-      free: 0,
-      one_rupee: 100,
-      monthly_345: 34500,
-      two_months_600: 60000,
-      three_months_999: 99900,
-      professional: 99900
-    };
-    const amount = amountMap[planType] || 0;
-
-    await Payment.findOneAndUpdate(
-      { razorpayPaymentId: paymentId },
-      {
-        userId: user._id,
-        organizationId: org ? org._id : undefined,
-        razorpayPaymentId: paymentId,
-        razorpaySubscriptionId: razorpay_subscription_id,
-        razorpaySignature: razorpay_signature || 'mock_signature',
-        amount,
-        currency: 'INR',
-        status: 'captured',
-        method: isMock ? 'mock' : 'carded'
-      },
-      { upsert: true, new: true }
-    );
-
-    // Create Transaction log
-    await Transaction.create({
-      userId: user._id,
-      organizationId: org ? org._id : undefined,
-      razorpayPaymentId: paymentId,
-      razorpaySubscriptionId: razorpay_subscription_id,
-      amount,
-      type: 'credit',
-      status: 'success',
-      description: `Payment verified for plan: ${planType}`
-    });
-
-    // Create Billing History log
-    await BillingHistory.findOneAndUpdate(
-      { razorpayPaymentId: paymentId },
-      {
-        userId: user._id,
-        organizationId: org ? org._id : undefined,
-        razorpayInvoiceId: `inv_${paymentId}`,
-        razorpaySubscriptionId: razorpay_subscription_id,
-        razorpayPaymentId: paymentId,
-        amount,
-        planType,
-        invoiceUrl: '',
-        billingDate: new Date(),
-        status: 'paid'
+        currentEnd: new Date(Date.now() + (targetPlanType === 'quarterly' ? 90 : 365) * 24 * 60 * 60 * 1000)
       },
       { upsert: true, new: true }
     );
@@ -297,16 +172,8 @@ router.post('/cancel', authMiddleware, async (req, res) => {
     const org = await Organization.findById(user.organizationId);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const subId = org.subscription?.razorpaySubscriptionId || user.subscription?.id;
-    if (!subId) return res.status(400).json({ error: 'No active subscription found.' });
-
-    try {
-      await cancelRazorpaySubscription(subId);
-    } catch (apiErr) {
-      logger.warn(`SDK cancellation skipped/mocked: ${apiErr.message}`);
-    }
-
     org.subscription.status = 'cancelled';
+    org.subscription.planType = 'free';
     await org.save();
 
     user.subscription.status = 'cancelled';
@@ -327,32 +194,38 @@ router.get('/status', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select('subscription role organizationId createdAt');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    let activeSubscription = user.subscription;
-    let organizationName = '';
+    let organizationName = 'Channelmate';
+    let subStatus = 'active';
+    let subPlanType = 'free';
+    let subId = user.subscription?.id || 'sub_free';
+    let currentEnd = user.subscription?.currentEnd || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
     if (user.organizationId) {
       const org = await Organization.findById(user.organizationId);
       if (org) {
         organizationName = org.name;
-        activeSubscription = {
-          id: org.subscription.razorpaySubscriptionId,
-          status: org.subscription.status,
-          planType: org.subscription.planType,
-          currentEnd: org.subscription.currentPeriodEnd
-        };
+        if (org.subscription) {
+          subStatus = org.subscription.status || 'active';
+          subPlanType = org.subscription.planType || 'free';
+          subId = org.subscription.razorpaySubscriptionId || subId;
+          if (org.subscription.currentPeriodEnd) {
+            currentEnd = org.subscription.currentPeriodEnd;
+          }
+        }
       }
     }
 
-    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
-    const trialExpirationDate = new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
-    const trialExpired = new Date() > trialExpirationDate;
-
     res.json({
       success: true,
-      subscription: activeSubscription,
+      subscription: {
+        id: subId,
+        status: subStatus,
+        planType: subPlanType,
+        currentEnd
+      },
       role: user.role,
       organizationName,
-      trialExpired
+      trialExpired: false
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -454,6 +327,8 @@ router.post('/webhook', async (req, res) => {
       'subscription.authenticated': 'active',
       'subscription.activated': 'active',
       'subscription.charged': 'active',
+      'subscription.completed': 'completed',
+      'subscription.paused': 'halted',
       'subscription.halted': 'halted',
       'subscription.cancelled': 'cancelled',
       'subscription.expired': 'expired'
@@ -490,9 +365,11 @@ router.post('/webhook', async (req, res) => {
           planId,
           planType,
           status: targetStatus,
+          startDate: currentStart,
+          endDate: currentEnd,
           currentStart,
           currentEnd,
-          endedAt: targetStatus === 'expired' || targetStatus === 'cancelled' ? new Date() : undefined,
+          endedAt: targetStatus === 'expired' || targetStatus === 'cancelled' || targetStatus === 'completed' ? new Date() : undefined,
           cancelledAt: targetStatus === 'cancelled' ? new Date() : undefined
         },
         { upsert: true, new: true }
@@ -514,9 +391,12 @@ router.post('/webhook', async (req, res) => {
               organizationId: org ? org._id : undefined,
               razorpayPaymentId: paymentId,
               razorpaySubscriptionId: subId,
+              subscriptionId: subId,
               amount,
               currency: paymentPayload.currency || 'INR',
               status: 'captured',
+              paymentDate: new Date(),
+              invoiceId: payload.invoice?.entity?.id || `inv_${paymentId}`,
               method
             },
             { upsert: true, new: true }
@@ -553,7 +433,30 @@ router.post('/webhook', async (req, res) => {
           );
         }
       }
+    } else if (event === 'payment.failed') {
+      const paymentPayload = payload.payment?.entity;
+      if (paymentPayload) {
+        const paymentId = paymentPayload.id;
+        logger.warn(`📬 [Razorpay Webhook] Payment failed for ID: ${paymentId}`);
+        await Payment.findOneAndUpdate(
+          { razorpayPaymentId: paymentId },
+          {
+            userId: user ? user._id : undefined,
+            organizationId: org ? org._id : undefined,
+            razorpayPaymentId: paymentId,
+            razorpaySubscriptionId: subEntity?.id,
+            subscriptionId: subEntity?.id,
+            amount: paymentPayload.amount || 0,
+            currency: paymentPayload.currency || 'INR',
+            status: 'failed',
+            paymentDate: new Date(),
+            errorDescription: paymentPayload.error_description || 'Payment processing failed'
+          },
+          { upsert: true, new: true }
+        );
+      }
     }
+
 
     res.status(200).send('OK');
   } catch (err) {

@@ -111,12 +111,12 @@ export const initCommentJob = (io) => {
     }
     try {
       logger.info('Running scheduled 30-second comment analysis (fetching channels due for sync)...');
-      const fiveMinutesAgo = new Date(Date.now() - 300000);
+      const thirtySecondsAgo = new Date(Date.now() - 30000);
       const channels = await Channel.find({
         $or: [
           { lastSyncedAt: { $exists: false } },
           { lastSyncedAt: null },
-          { lastSyncedAt: { $lt: fiveMinutesAgo } }
+          { lastSyncedAt: { $lt: thirtySecondsAgo } }
         ]
       });
       for (const channel of channels) {

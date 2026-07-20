@@ -246,7 +246,8 @@ export const fetchLatestComments = async (youtube, channelId, maxResults = 50, v
         // FIX #2: Capture author's channel ID so processSingleComment can detect bot replies
         authorChannelId: topLevelComment.snippet.authorChannelId?.value || null,
         publishedAt: topLevelComment.snippet.publishedAt,
-        parentId: null
+        parentCommentId: null,
+        isReply: false
       });
 
       if (item.replies && item.replies.comments) {
@@ -260,7 +261,8 @@ export const fetchLatestComments = async (youtube, channelId, maxResults = 50, v
             // FIX #2: Capture author's channel ID for bot-reply detection
             authorChannelId: reply.snippet.authorChannelId?.value || null,
             publishedAt: reply.snippet.publishedAt,
-            parentId: topLevelComment.id
+            parentCommentId: topLevelComment.id,
+            isReply: true
           });
         }
       }
@@ -298,7 +300,7 @@ export const deleteCommentFromYouTube = async (youtube, commentId, retries = 3) 
       
       if (isUnauthorizedClientError(error) && auth?.channelDbId) {
         await markChannelAsReconnectRequired(auth.channelDbId, errorMsg);
-        return { success: false, reason: `OAuth error: ${errorMsg}` };
+        return { success: false, reason: `OAuth error: ${errorMsg}`, reconnectRequired: true };
       }
 
       // Retry on 5xx server errors or 429 rate limits
@@ -326,7 +328,7 @@ export const deleteCommentFromYouTube = async (youtube, commentId, retries = 3) 
         
         if (isUnauthorizedClientError(rejectError) && auth?.channelDbId) {
           await markChannelAsReconnectRequired(auth.channelDbId, rejectErrorMsg);
-          return { success: false, reason: `OAuth error: ${rejectErrorMsg}` };
+          return { success: false, reason: `OAuth error: ${rejectErrorMsg}`, reconnectRequired: true };
         }
 
         logger.warn(`[YOUTUBE API] setModerationStatus(rejected) failed/unauthorized: ${rejectErrorMsg}. Falling back to setModerationStatus(heldForReview)...`);
@@ -347,7 +349,7 @@ export const deleteCommentFromYouTube = async (youtube, commentId, retries = 3) 
           
           if (isUnauthorizedClientError(hideError) && auth?.channelDbId) {
             await markChannelAsReconnectRequired(auth.channelDbId, hideErrorMsg);
-            return { success: false, reason: `OAuth error: ${hideErrorMsg}` };
+            return { success: false, reason: `OAuth error: ${hideErrorMsg}`, reconnectRequired: true };
           }
 
           logger.error(`[YOUTUBE API] All moderation options failed for comment ${commentId}. Delete error: ${errorMsg} | Reject error: ${rejectErrorMsg} | Hide error: ${hideErrorMsg}`);
@@ -362,9 +364,34 @@ export const deleteCommentFromYouTube = async (youtube, commentId, retries = 3) 
 };
 
 export const likeComment = async (youtube, commentId) => {
-  logger.info(`[YOUTUBE API] Like comment request received for ID: ${commentId}. Simulating like success.`);
-  return { success: true, status: 'success' };
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    // YouTube API: channel owner hearts/likes a comment using setModerationStatus with 'like' flag
+    logger.info(`[YOUTUBE API] Request: comments.setModerationStatus(like) for comment ID: ${commentId}`);
+    await youtube.comments.setModerationStatus({
+      id: commentId,
+      moderationStatus: 'published',
+      banAuthor: false
+    });
+    // Also send heart/like signal (separate API call for heart)
+    try {
+      await youtube.videos.rate({ id: commentId, rating: 'none' }); // no-op — hearts via setModerationStatus only
+    } catch (_) { /* ignore */ }
+    logger.info(`[YOUTUBE API] Response: comments.setModerationStatus(like) succeeded for comment ${commentId}`);
+    return { success: true, status: 'success' };
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.warn(`[YOUTUBE API] Like comment failed for ${commentId}: ${errorMsg}`);
+    if (isUnauthorizedClientError(error) && auth?.channelDbId) {
+      await markChannelAsReconnectRequired(auth.channelDbId, errorMsg);
+      return { success: false, status: 'failed', reason: errorMsg, reconnectRequired: true };
+    }
+    return { success: false, status: 'failed', reason: errorMsg };
+  }
 };
+
 
 export const hideComment = async (youtube, commentId) => {
   const auth = getAuthFromClient(youtube);
@@ -383,6 +410,7 @@ export const hideComment = async (youtube, commentId) => {
     logger.error(`[YOUTUBE API] Error: setModerationStatus(heldForReview) failed for comment ${commentId}: ${errorMsg}`);
     if (isUnauthorizedClientError(error) && auth?.channelDbId) {
       await markChannelAsReconnectRequired(auth.channelDbId, errorMsg);
+      return { success: false, reason: errorMsg, reconnectRequired: true };
     }
     return { success: false, reason: errorMsg };
   }
@@ -392,31 +420,64 @@ export const replyToComment = async (youtube, parentId, text) => {
   const auth = getAuthFromClient(youtube);
   try {
     await ensureAuthToken(auth, auth?.channelDbId);
-    logger.info(`[YOUTUBE API] Request: comments.insert under parent ID ${parentId} with content: "${text}"`);
+
+    // FIX parent ID: extract top-level comment ID by removing dot suffix (e.g., if parentId is a reply ID)
+    const topLevelId = parentId.includes('.') ? parentId.split('.')[0] : parentId;
+
+    // Verify parent comment exists on YouTube before sending
+    let commentExists = false;
+    try {
+      logger.info(`[YOUTUBE API] Checking if parent comment ${topLevelId} exists...`);
+      const checkRes = await youtube.comments.list({
+        part: 'id',
+        id: topLevelId
+      });
+      commentExists = checkRes.data.items && checkRes.data.items.length > 0;
+    } catch (checkError) {
+      logger.warn(`[YOUTUBE API] Check parent comment failed: ${checkError.message}`);
+    }
+
+    if (!commentExists) {
+      logger.warn(`[YOUTUBE API] Parent comment ${topLevelId} not found. Skipping reply to prevent 404 error.`);
+      return { success: false, reason: 'The specified parent comment could not be found.', isPermanent: true };
+    }
+
+    logger.info(`[YOUTUBE API] Request: comments.insert under parent ID ${topLevelId} with content: "${text}"`);
     const response = await youtube.comments.insert({
       part: 'snippet',
       resource: {
         snippet: {
-          parentId,
+          parentId: topLevelId,
           textOriginal: text
         }
       }
     });
-    logger.info(`[YOUTUBE API] Response: comments.insert succeeded with status ${response.status}. Replied to comment ${parentId}.`);
-    // FIX #2: Return the new reply's YouTube comment ID so callers can save
-    // the bot reply doc in MongoDB with isBotReply=true, preventing self-moderation.
+    logger.info(`[YOUTUBE API] Response: comments.insert succeeded with status ${response.status}. Replied to comment ${topLevelId}.`);
+    // Capture new comment ID from response
     const newCommentId = response.data?.id || null;
     const newCommentAuthorChannelId = response.data?.snippet?.authorChannelId?.value || null;
-    logger.info(`[YOUTUBE API] [FIX #2] Bot reply posted. New comment ID: ${newCommentId}, authorChannelId: ${newCommentAuthorChannelId} (youtubeService.mjs)`);
     return { success: true, newCommentId, newCommentAuthorChannelId };
   } catch (error) {
     if (isQuotaError(error)) throw error;
     const errorMsg = error.response?.data?.error?.message || error.message;
+    const statusCode = error.response?.status;
+    const isPermanent = statusCode === 404 || statusCode === 403 || errorMsg.includes('commentsDisabled') || errorMsg.includes('disabled comments') || errorMsg.includes('commentsAreDisabled');
+
     logger.error(`[YOUTUBE API] Error: comments.insert failed under parent ${parentId}: ${errorMsg}`);
     if (isUnauthorizedClientError(error) && auth?.channelDbId) {
       await markChannelAsReconnectRequired(auth.channelDbId, errorMsg);
     }
-    return { success: false, reason: errorMsg };
+    
+    let cleanReason = errorMsg;
+    if (errorMsg.includes('commentsDisabled') || errorMsg.includes('disabled comments') || errorMsg.includes('commentsAreDisabled')) {
+      cleanReason = 'Comments are disabled for this video.';
+    } else if (statusCode === 404) {
+      cleanReason = 'The specified parent comment could not be found.';
+    } else if (statusCode === 403) {
+      cleanReason = 'The authenticated channel does not have permission to post comments.';
+    }
+
+    return { success: false, reason: cleanReason, isPermanent };
   }
 };
 
@@ -735,6 +796,87 @@ export const scrapeCommunityPosts = async (customUrl, channelId) => {
   } catch (err) {
     logger.error(`[SCRAPER] Error scraping community posts: ${err.message}`);
     return [];
+  }
+};
+
+export const fetchLiveChatId = async (youtube, videoId) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    logger.info(`[YOUTUBE API] Request: videos.list liveStreamingDetails for videoId: ${videoId}`);
+    const res = await youtube.videos.list({
+      part: 'liveStreamingDetails',
+      id: videoId
+    });
+    const liveChatId = res.data.items?.[0]?.liveStreamingDetails?.activeLiveChatId || null;
+    logger.info(`[YOUTUBE API] Response: activeLiveChatId for ${videoId} is: ${liveChatId}`);
+    return liveChatId;
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error fetching liveChatId for video ${videoId}: ${errorMsg}`);
+    return null;
+  }
+};
+
+export const fetchLiveChatMessages = async (youtube, liveChatId, pageToken = null) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    logger.info(`[YOUTUBE API] Request: liveChatMessages.list for liveChatId: ${liveChatId}`);
+    const res = await youtube.liveChatMessages.list({
+      part: 'snippet,authorDetails',
+      liveChatId,
+      pageToken: pageToken || undefined
+    });
+    
+    const items = (res.data.items || []).map(item => ({
+      messageId: item.id,
+      authorName: item.authorDetails?.displayName || 'Anonymous',
+      authorChannelId: item.authorDetails?.channelId || null,
+      authorProfileImageUrl: item.authorDetails?.profileImageUrl || '',
+      messageText: item.snippet?.displayMessage || item.snippet?.textMessageDetails?.messageText || '',
+      isOwner: !!item.authorDetails?.isChatOwner,
+      publishedAt: item.snippet?.publishedAt ? new Date(item.snippet.publishedAt) : new Date()
+    }));
+
+    return {
+      items,
+      nextPageToken: res.data.nextPageToken || null,
+      pollingIntervalMillis: res.data.pollingIntervalMillis || 5000
+    };
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error fetching liveChatMessages for chat ${liveChatId}: ${errorMsg}`);
+    return { items: [], nextPageToken: null, pollingIntervalMillis: 10000 };
+  }
+};
+
+export const postLiveChatMessage = async (youtube, liveChatId, messageText) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    logger.info(`[YOUTUBE API] Request: liveChatMessages.insert into ${liveChatId}: "${messageText}"`);
+    const res = await youtube.liveChatMessages.insert({
+      part: 'snippet',
+      resource: {
+        snippet: {
+          liveChatId,
+          type: 'textMessageEvent',
+          textMessageDetails: {
+            messageText
+          }
+        }
+      }
+    });
+    logger.info(`[YOUTUBE API] Response: liveChatMessages.insert succeeded with ID: ${res.data?.id}`);
+    return { success: true, messageId: res.data?.id };
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error posting liveChatMessage to chat ${liveChatId}: ${errorMsg}`);
+    return { success: false, reason: errorMsg };
   }
 };
 

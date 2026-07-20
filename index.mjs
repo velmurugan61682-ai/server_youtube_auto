@@ -17,8 +17,10 @@ import routes from './routes/index.mjs';
 import jwt from 'jsonwebtoken';
 import compression from 'compression';
 import { initCommentJob } from './jobs/commentJob.mjs';
-import { initAutoDmCron } from './jobs/autoDmCron.js';
+import { initYouTubeCommentWorker } from './jobs/youtubeCommentWorker.mjs';
 import { seedOrganizations } from './utils/tenantSeeder.mjs';
+import { seedSingleAdmin } from './utils/adminSeeder.mjs';
+
 
 
 // ── Global Error Handlers ─────────────────────────────────────
@@ -208,7 +210,12 @@ io.on('connection', (socket) => {
   if (socket.user && socket.user.id) {
     const roomName = socket.user.id.toString();
     socket.join(roomName);
-    logger.info(`🏠 [Socket Room] Socket ${socket.id} joined room: ${roomName}`);
+    logger.info(`🏠 [Socket Room] Socket ${socket.id} joined user room: ${roomName}`);
+  }
+  if (socket.user && socket.user.organizationId) {
+    const orgRoom = socket.user.organizationId.toString();
+    socket.join(orgRoom);
+    logger.info(`🏠 [Socket Room] Socket ${socket.id} joined organization room: ${orgRoom}`);
   }
 
   // Log transport upgrades (but NOT every heartbeat — those flood the logs)
@@ -379,9 +386,28 @@ app.get('/auth/google/callback', (req, res) => {
   res.redirect(`/api/youtube/callback?${query}`);
 });
 
+app.get('/health', (_req, res) => {
+  const dbState = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.status(200).json({
+    status: 'running',
+    database: dbState,
+    version: '1.0.0'
+  });
+});
+
+app.get('/api/health', (_req, res) => {
+  const dbState = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  res.status(200).json({
+    status: 'running',
+    database: dbState,
+    version: '1.0.0'
+  });
+});
+
 app.get('/', (_req, res) => {
   res.send('AI YouTube Moderator API is running.');
 });
+
 
 // ── Startup Sequence ─────────────────────────────────────────
 async function startServer() {
@@ -407,9 +433,11 @@ async function startServer() {
     try {
       const seedRes = await seedOrganizations();
       techOrgId = seedRes.techOrgId;
+      await seedSingleAdmin();
     } catch (seedErr) {
-      logger.error('Organization seeding failed during startup:', seedErr);
+      logger.error('Organization or Admin seeding failed during startup:', seedErr);
     }
+
 
     // Development Admin Reset
     try {
@@ -455,7 +483,7 @@ async function startServer() {
         );
 
         initCommentJob(io);
-        initAutoDmCron();
+        initYouTubeCommentWorker(io);
       }
     );
   } catch (err) {

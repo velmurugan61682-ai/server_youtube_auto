@@ -8,8 +8,15 @@ import GoWhatsLog from '../models/GoWhatsLog.mjs';
 import AutomationLog from '../models/AutomationLog.mjs';
 import AutoReplyLog from '../models/AutoReplyLog.mjs';
 import AutoLikeLog from '../models/AutoLikeLog.mjs';
+import CommentAutomationRule from '../models/CommentAutomationRule.mjs';
+import AutoReplyRule from '../models/AutoReplyRule.mjs';
+import CommentAutomationLog from '../models/CommentAutomationLog.mjs';
+import ModerationLog from '../models/ModerationLog.mjs';
+import ModerationRule from '../models/ModerationRule.mjs';
+import OpenAI from 'openai';
 import logger from '../utils/logger.mjs';
 import moment from 'moment-timezone';
+import crypto from 'crypto';
 import { 
   getYouTubeClient, 
   getYouTubeClientWithApiKey, 
@@ -120,213 +127,840 @@ const runInTransaction = async (fn) => {
   }
 };
 
-/**
- * Moderates and processes a single comment using DeepSeek AI.
- * Receives a Mongoose Comment document.
- */
+// Get OpenAI instance for DeepSeek custom key fallback
+const getOpenAIClient = (userKey) => {
+  let apiKey = userKey;
+  if (!apiKey) {
+    apiKey = (process.env.DEEPSEEK_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+  }
+  if (!apiKey) return null;
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://api.deepseek.com'
+  });
+};
+
+const callWithRetry = async (client, body, maxRetries = 1) => {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await client.chat.completions.create(body);
+    } catch (error) {
+      const status = error.status || error.response?.status;
+      const is402 = status === 402 || error.message?.includes('402') || error.message?.toLowerCase().includes('insufficient balance') || (error.response && error.response.status === 402);
+      const isTemporary = !status || (status >= 500 && status <= 599) || error.message?.includes('timeout') || error.code === 'ETIMEDOUT';
+
+      if (is402) {
+        logger.error(`[DEEPSEEK] Insufficient balance error detected (402) in comment processing. Disabling AI status.`);
+        global.isAiAvailable = false;
+        throw error;
+      }
+
+      if (isTemporary && attempt < maxRetries) {
+        attempt++;
+        logger.warn(`[DEEPSEEK] API call failed with temporary error. Retrying attempt ${attempt}/${maxRetries} in 1s...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+
+      throw error;
+    }
+  }
+};
+
+// Check if a comment matches a rule using AI intent
+const checkAiIntent = async (commentText, keywords, ruleName, userKey) => {
+  const client = getOpenAIClient(userKey);
+  if (!client) return false;
+  try {
+    const prompt = `Evaluate if the following YouTube comment expresses an intent, interest, or question related to the topic: "${ruleName}" or these keywords: ${keywords.join(', ')}.
+Comment: "${commentText}"
+
+Respond with ONLY a JSON object:
+{
+  "intentMatched": boolean
+}`;
+    const response = await callWithRetry(client, {
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' }
+    });
+    const result = JSON.parse(response.choices[0].message.content.trim());
+    return !!result.intentMatched;
+  } catch (err) {
+    const is402 = err.status === 402 || err.message?.includes('402') || err.message?.toLowerCase().includes('insufficient balance') || (err.response && err.response.status === 402);
+    if (is402) {
+      logger.error('CRITICAL: DeepSeek API returned 402 Insufficient Balance during checkAiIntent. Marking AI as Unavailable.');
+      global.isAiAvailable = false;
+    } else {
+      logger.error('Error in checkAiIntent:', err);
+    }
+    return false;
+  }
+};
+
+// Generate reply with AI tone
+const generateAiToneReply = async (commentText, tone, customTone, maxLength, userKey) => {
+  const client = getOpenAIClient(userKey);
+  if (!client) return 'Thank you for your comment!';
+  try {
+    const activeTone = tone === 'Custom' ? customTone : tone;
+    const prompt = `You are replying to a YouTube comment on behalf of the channel owner.
+Comment: "${commentText}"
+Tone to use: ${activeTone}
+
+Generate a reply in the exact same language and script (Tamil, Tanglish, or English) of the comment.
+Keep the response warm, natural, helpful, and matching the requested tone.
+Ensure the reply is brief and does not exceed ${maxLength || 200} characters.
+
+Respond with ONLY a JSON object:
+{
+  "reply": "your generated reply text"
+}`;
+    const response = await callWithRetry(client, {
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' }
+    });
+    const result = JSON.parse(response.choices[0].message.content.trim());
+    return result.reply || 'Thank you for your feedback!';
+  } catch (err) {
+    const is402 = err.status === 402 || err.message?.includes('402') || err.message?.toLowerCase().includes('insufficient balance') || (err.response && err.response.status === 402);
+    if (is402) {
+      logger.error('CRITICAL: DeepSeek API returned 402 Insufficient Balance during generateAiToneReply. Marking AI as Unavailable.');
+      global.isAiAvailable = false;
+    } else {
+      logger.error('Error in generateAiToneReply:', err);
+    }
+    return 'Thank you for your comment!';
+  }
+};
+
+const generateDeepseekHumanReply = async (commentText, ruleBaseText, userKey) => {
+  const client = getOpenAIClient(userKey);
+  if (!client) return ruleBaseText || 'Thank you for your comment!';
+  try {
+    const prompt = `You are replying to a YouTube comment on behalf of the channel owner.
+Comment: "${commentText}"
+Base response guidance / template: "${ruleBaseText}"
+
+Generate a natural, human-like, conversational response that answers or acknowledges the comment, respecting the same language and script (Tamil, Tanglish, or English) of the comment.
+Ensure the response incorporates the guidance from the base response template (if any), sounds completely natural (avoiding robotic templates), respects the comment language, and does not exceed 200 characters.
+
+Respond with ONLY a JSON object:
+{
+  "reply": "your generated reply text"
+}`;
+    const response = await callWithRetry(client, {
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' }
+    });
+    const result = JSON.parse(response.choices[0].message.content.trim());
+    return result.reply || ruleBaseText || 'Thank you for your comment!';
+  } catch (err) {
+    const is402 = err.status === 402 || err.message?.includes('402') || err.message?.toLowerCase().includes('insufficient balance') || (err.response && err.response.status === 402);
+    if (is402) {
+      logger.error('CRITICAL: DeepSeek API returned 402 Insufficient Balance during generateDeepseekHumanReply. Marking AI as Unavailable.');
+      global.isAiAvailable = false;
+    } else {
+      logger.error('Error in generateDeepseekHumanReply:', err);
+    }
+    return ruleBaseText || 'Thank you for your comment!';
+  }
+};
+
+// Helper to log automation actions and notify user (avoiding duplicates)
+const createAutomationNotification = async (userId, actionType, description, details = null, io = null) => {
+  try {
+    // Prevent duplicate notifications within 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 300000);
+    const duplicate = await AutomationLog.findOne({
+      userId,
+      actionType,
+      description,
+      createdAt: { $gt: fiveMinutesAgo }
+    });
+
+    if (duplicate) {
+      logger.info(`[Notification] Skipped duplicate notification: "${description}"`);
+      return;
+    }
+
+    const log = new AutomationLog({
+      userId,
+      actionType,
+      description,
+      details,
+      timestamp: new Date()
+    });
+    await log.save();
+
+    if (io) {
+      const roomName = userId.toString();
+      io.to(roomName).emit('automation_notification', {
+        id: log._id,
+        actionType,
+        description,
+        details,
+        createdAt: log.createdAt
+      });
+      // Also broadcast stats update
+      io.to(roomName).emit('stats_updated');
+    }
+  } catch (err) {
+    logger.error(`[Notification] Error logging notification: ${err.message}`);
+  }
+};
+
+// =========================================================================
+// CENTRAL CATEGORY MAPPER
+// =========================================================================
+export const mapClassificationToRule = (classification, rawAnalysis = {}) => {
+  const cls = (classification || '').toLowerCase().trim();
+  const raw = rawAnalysis || {};
+
+  if (raw.isLinkSpam) return 'linkSpam';
+  if (raw.isDuplicate) return 'duplicateComments';
+
+  if (
+    ['hate', 'hate_speech', 'hate speech'].includes(cls) ||
+    raw.hate || raw.hateSpeech
+  ) {
+    return 'hateSpeech';
+  }
+
+  if (
+    ['abuse', 'threat', 'bullying', 'violence', 'harassment'].includes(cls) ||
+    raw.abuse || raw.threat || raw.harassment
+  ) {
+    return 'abuse';
+  }
+
+  if (cls === 'scam' || raw.scam) {
+    return 'scam';
+  }
+
+  if (
+    ['adult', 'sexual', 'sexualcontent', 'sexual content'].includes(cls) ||
+    raw.adult || raw.sexualContent || raw.sexual
+  ) {
+    return 'sexualContent';
+  }
+
+  if (
+    ['spam', 'promotion', 'selfpromotion', 'advertisement', 'self promotion'].includes(cls) ||
+    raw.spam || raw.selfPromotion || raw.advertisement
+  ) {
+    return 'spam';
+  }
+
+  if (
+    ['toxic', 'profanity', 'bad_words', 'bad words', 'offensive', 'malicious_review', 'fake_review', 'offensive_review', 'fake review', 'offensive review'].includes(cls) ||
+    raw.toxic || raw.profanity || raw.badWords || raw.offensive || raw.maliciousReview || raw.fakeReview || raw.offensiveReview
+  ) {
+    return 'toxic';
+  }
+
+  return 'safe';
+};
+
+// =========================================================================
+// TEXT NORMALIZATION & HASHING
+// =========================================================================
+export const normalizeCommentText = (text) => {
+  if (!text) return '';
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, ''); // Remove punctuation
+};
+
+export const generateTextHash = (normalizedText) => {
+  return crypto.createHash('md5').update(normalizedText).digest('hex');
+};
+
+// =========================================================================
+// DUPLICATE DETECTOR
+// =========================================================================
+export const checkDuplicateComment = async (userId, organizationId, channelId, videoId, text, currentCommentId) => {
+  const normalized = normalizeCommentText(text);
+  if (normalized.length < 10) {
+    return false; // Too short to be duplicate spam
+  }
+  const textHash = generateTextHash(normalized);
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const query = {
+    userId,
+    organizationId,
+    channelId,
+    videoId,
+    textHash,
+    createdAt: { $gte: twentyFourHoursAgo }
+  };
+  if (currentCommentId) {
+    query._id = { $ne: currentCommentId };
+  }
+
+  const occurrences = await Comment.countDocuments(query);
+  return occurrences >= 2;
+};
+
+// =========================================================================
+// LINK SPAM DETECTOR
+// =========================================================================
+export const checkLinkSpam = (text, userSettings, channel) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const urls = text.match(urlRegex);
+  if (!urls || urls.length === 0) return false;
+
+  const productDomain = userSettings.productLink ? new URL(userSettings.productLink).hostname : '';
+  const channelDomain = channel.customUrl ? channel.customUrl : '';
+  
+  const whitelist = ['youtube.com', 'youtu.be', 'channelmate.com', 'gowhats.app', 'gowhats.com'];
+  if (productDomain) whitelist.push(productDomain);
+
+  const isViolating = urls.some(urlStr => {
+    try {
+      const parsedUrl = new URL(urlStr);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      return !whitelist.some(domain => hostname === domain || hostname.endsWith('.' + domain));
+    } catch (e) {
+      return true; // Suspect URL
+    }
+  });
+
+  return isViolating;
+};
+
+// =========================================================================
+// LEAD KEYWORDS DETECTOR
+// =========================================================================
+export const checkLeadKeywordsMatched = (text, keywords) => {
+  const normalizedComment = text.toLowerCase();
+  return keywords.some(kw => {
+    const kwLower = kw.toLowerCase().trim();
+    if (!kwLower) return false;
+    const escapedKw = kwLower.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`\\b${escapedKw}\\b`, 'i');
+    return regex.test(normalizedComment);
+  });
+};
+
+// =========================================================================
+// PROCESS SINGLE COMMENT PIPELINE
+// =========================================================================
 export const processSingleComment = async (youtube, channel, userKey, userSettings, commentDoc, io) => {
+  // 1. Validate tenant and channel ownership
+  const dbChannel = await Channel.findOne({
+    channelId: commentDoc.channelId || channel.channelId,
+    userId: channel.userId,
+    organizationId: channel.organizationId
+  });
+  if (!dbChannel) {
+    logger.warn(`[Pipeline] Channel ownership validation failed for comment ${commentDoc.youtubeId}`);
+    return false;
+  }
+
+  // 2. Skip bot replies and child replies when unsupported
+  const isReply = Boolean(commentDoc.parentCommentId || commentDoc.isReply);
+  if (isReply) {
+    logger.info(`[Pipeline] Comment ${commentDoc.youtubeId} is a child reply. Skipping.`);
+    return false;
+  }
+  if (commentDoc.authorChannelId === channel.channelId || commentDoc.isBotReply) {
+    logger.info(`[Pipeline] Comment ${commentDoc.youtubeId} is posted by the channel owner or bot. Skipping.`);
+    return false;
+  }
+
+  // 3. Atomic duplicate-processing guard
   if (activeCommentsProcessing.has(commentDoc.youtubeId)) {
-    logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} is already being processed. Skipping.`);
+    logger.info(`[Pipeline] Comment ${commentDoc.youtubeId} is already being processed. Skipping.`);
     return false;
   }
 
   try {
     activeCommentsProcessing.add(commentDoc.youtubeId);
 
-    const confidenceThresholdDecimal = (userSettings.confidenceThreshold || 85) / 100;
-    const targetParentId = commentDoc.youtubeId.includes('.') ? commentDoc.youtubeId.split('.')[0] : commentDoc.youtubeId;
+    // 4. Check existing Logs and restore missing comments
+    const existingComment = await Comment.findOne({
+      youtubeId: commentDoc.youtubeId,
+      userId: channel.userId
+    });
 
-    // Never process comments posted by the channel owner
-    if (commentDoc.authorChannelId === channel.channelId) {
-      logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} is posted by the channel owner. Skipping processing.`);
+    const isAlreadyProcessedInDb = existingComment && (
+      existingComment.isModerated || 
+      existingComment.hasReplied || 
+      existingComment.aiStatus === 'completed' || 
+      existingComment.isBotReply
+    );
+
+    if (isAlreadyProcessedInDb) {
+      logger.info(`[Pipeline] Comment ${commentDoc.youtubeId} already processed in DB. Skipping.`);
       return false;
     }
 
-    logger.info(`[MODERATION] Initiating DeepSeek analysis for comment ID ${commentDoc.youtubeId} by ${commentDoc.author}: "${commentDoc.text}"`);
+    // Check logs to see if it should be restored/recreated
+    const mLog = await ModerationLog.findOne({
+      commentId: commentDoc.youtubeId,
+      userId: channel.userId,
+      organizationId: channel.organizationId
+    }).lean();
 
-    // DeepSeek Classifier (Direct Pipeline - No DB Lookup, No Pending Status)
+    const aLog = await CommentAutomationLog.findOne({
+      commentId: commentDoc.youtubeId,
+      userId: channel.userId,
+      organizationId: channel.organizationId
+    }).lean();
+
+    const autoRepLog = await AutoReplyLog.findOne({
+      commentId: commentDoc.youtubeId,
+      userId: channel.userId
+    }).lean();
+
+    const hasLogRecord = mLog || aLog || autoRepLog;
+
+    if (hasLogRecord) {
+      logger.info(`[Pipeline] Restoring missing/unprocessed comment ${commentDoc.youtubeId} from logs.`);
+
+      // Reconstruct fields based on log records
+      const isModerated = !!mLog;
+      const hasReplied = !!aLog || !!autoRepLog;
+      
+      let moderationAction = 'none';
+      if (mLog) {
+        moderationAction = mLog.action || mLog.executedAction || 'delete';
+      }
+
+      let status = 'approved';
+      if (isModerated) {
+        status = (moderationAction === 'delete' || moderationAction === 'deleted') ? 'deleted' : 'flagged';
+      }
+
+      const replyText = aLog?.replyText || autoRepLog?.replyText || null;
+      const repliedAt = aLog?.createdAt || autoRepLog?.createdAt || new Date();
+
+      const commentData = {
+        userId: channel.userId,
+        organizationId: channel.organizationId,
+        youtubeId: commentDoc.youtubeId,
+        commentId: commentDoc.youtubeId,
+        channelId: channel.channelId,
+        videoId: commentDoc.videoId,
+        text: commentDoc.text,
+        commentText: commentDoc.text,
+        author: commentDoc.author || 'Anonymous',
+        username: commentDoc.author || 'Anonymous',
+        authorProfileImageUrl: commentDoc.authorProfileImageUrl || '',
+        authorChannelId: commentDoc.authorChannelId || null,
+        publishedAt: commentDoc.publishedAt,
+        parentCommentId: commentDoc.parentCommentId || null,
+        isReply: commentDoc.isReply || false,
+
+        status,
+        sentiment: 'neutral',
+        isModerated,
+        moderationAction,
+        hasReplied,
+        repliedAt: hasReplied ? repliedAt : undefined,
+        replyText,
+        replyStatus: hasReplied ? 'sent' : 'none',
+        aiStatus: 'completed'
+      };
+
+      const restoredComment = await Comment.findOneAndUpdate(
+        { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+        { $set: commentData },
+        { upsert: true, new: true }
+      );
+
+      logger.info(`[Pipeline] Successfully restored comment ${commentDoc.youtubeId} to DB (Status: ${status}).`);
+
+      // Broadcast real-time Socket.IO updates if reconstructed
+      if (io && restoredComment) {
+        const roomName = channel.userId.toString();
+        io.to(roomName).emit('live_activity', {
+          ...restoredComment.toObject(),
+          id: restoredComment._id,
+          type: status === 'deleted' ? 'delete' : (status === 'flagged' ? 'hold' : 'new_comment')
+        });
+        io.to(roomName).emit('new_comment_analyzed', restoredComment);
+        io.to(roomName).emit('stats_updated');
+      }
+
+      return false; // Skip rest of pipeline because it is already historically handled!
+    }
+
+    // 5. Load tenant moderation settings (per-channel ModerationRule, scoped by organizationId + channelId)
+    const user = await User.findById(channel.userId);
+    if (!user) {
+      logger.error(`[Pipeline] User not found for ID ${channel.userId}`);
+      return false;
+    }
+
+    let channelModRule = await ModerationRule.findOne({
+      organizationId: channel.organizationId,
+      channelId: channel.channelId
+    }).lean();
+
+    const tenantSettings = {
+      autoMod: channelModRule ? channelModRule.autoMod : true,
+      autoLike: user.settings ? (user.settings.autoLike !== undefined ? user.settings.autoLike : true) : true,
+      smartAiReply: user.settings ? (user.settings.smartAiReply !== undefined ? user.settings.smartAiReply : true) : true,
+      confidenceThreshold: channelModRule ? channelModRule.confidenceThreshold : (user.settings?.confidenceThreshold || 85),
+      languages: user.settings?.languages || ['English', 'Tamil', 'Tanglish'],
+      realTimeAlerts: user.settings?.realTimeAlerts !== undefined ? user.settings.realTimeAlerts : true,
+      moderationAction: channelModRule ? channelModRule.action : (user.settings?.moderationAction || 'delete'),
+      leadKeywords: user.settings?.leadKeywords || ['price', 'details', 'course', 'join', 'contact', 'phone', 'call', 'whatsapp', 'demo', 'fees'],
+      moderationRules: channelModRule ? channelModRule.rules : {
+        toxicDetection: true,
+        spamDetection: true,
+        hateSpeech: true,
+        abuse: true,
+        scam: true,
+        sexualContent: true,
+        duplicateComments: true,
+        linkSpam: true
+      }
+    };
+
+    // 6. Normalize comment
+    const normalizedText = normalizeCommentText(commentDoc.text);
+    const textHash = generateTextHash(normalizedText);
+
+    // 6a. Persist comment as 'processing' immediately — MongoDB is source of truth.
+    // If worker crashes during DeepSeek/YouTube API calls, the record still exists.
+    try {
+      await Comment.findOneAndUpdate(
+        { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+        {
+          $setOnInsert: {
+            userId: channel.userId,
+            organizationId: channel.organizationId,
+            youtubeId: commentDoc.youtubeId,
+            commentId: commentDoc.youtubeId,
+            channelId: channel.channelId,
+            videoId: commentDoc.videoId,
+            text: commentDoc.text,
+            commentText: commentDoc.text,
+            author: commentDoc.author || 'Anonymous',
+            username: commentDoc.author || 'Anonymous',
+            authorProfileImageUrl: commentDoc.authorProfileImageUrl || '',
+            authorChannelId: commentDoc.authorChannelId || null,
+            publishedAt: commentDoc.publishedAt,
+            parentCommentId: commentDoc.parentCommentId || null,
+            isReply: commentDoc.isReply || false,
+            status: 'processing',
+            aiStatus: 'pending',
+            sentiment: 'neutral',
+            textHash
+          }
+        },
+        { upsert: true }
+      );
+    } catch (initSaveErr) {
+      logger.error(`[Pipeline] Failed initial processing save for comment ${commentDoc.youtubeId}: ${initSaveErr.message}`);
+    }
+
+    // 7. AI and local moderation analysis
+    const confidenceThresholdDecimal = (tenantSettings.confidenceThreshold || 85) / 100;
     const aiResult = await classifyComment(commentDoc.text, userKey);
-    logger.info("DeepSeek analysis completed");
     const classification = aiResult.classification || 'Neutral';
     const rawAnalysis = aiResult.rawAnalysis || {};
-    
+
     const confidence = aiResult.confidence || 0;
     const isConfident = confidence >= confidenceThresholdDecimal;
-    const isMeaningful = commentDoc.text && commentDoc.text.trim().length > 3;
 
+    // Local Checks
+    const isDuplicateLocal = await checkDuplicateComment(
+      channel.userId,
+      channel.organizationId,
+      channel.channelId,
+      commentDoc.videoId,
+      commentDoc.text,
+      commentDoc._id
+    );
+    if (isDuplicateLocal) {
+      rawAnalysis.isDuplicate = true;
+    }
+
+    const isLinkSpamLocal = checkLinkSpam(commentDoc.text, tenantSettings, channel);
+    if (isLinkSpamLocal) {
+      rawAnalysis.isLinkSpam = true;
+    }
+
+    // 8. Evaluate enabled moderation rules
+    const matchedCategory = mapClassificationToRule(classification, rawAnalysis);
+    
+    let isUnsafe = false;
+    if (aiResult.isToxic === true) {
+      isUnsafe = true;
+    } else if (matchedCategory !== 'safe') {
+      const ruleName = `${matchedCategory}Detection`;
+      if (tenantSettings.moderationRules[ruleName]) {
+        isUnsafe = true;
+      }
+    }
+
+    let moderationActionTaken = false;
+    let replyStatus = 'none';
+    let leadStatus = 'none';
+    let executedAction = 'none';
     let status = 'approved';
-    let deleteFailed = false;
-    let deleteErrorReason = null;
+    let wasHidden = false;
     let deleteReason = null;
     let deletedAt = null;
-    let aiActionTaken = false;
-    let wasHidden = false;
+    let moderationStatus = 'safe';
+    let deleteFailed = false;
+    let deleteErrorReason = null;
 
-    // Moderation fields
-    let moderationStatus = undefined;
-    let aiStatus = 'completed';
-    let actionTaken = undefined;
-    let moderationReason = undefined;
-
-    // Toxicity / Bad Category check
-    const isToxicOrBad = [
-      'spam', 'promotion', 'toxic', 'abuse', 'threat', 'scam', 'hate', 'profanity', 
-      'selfpromotion', 'advertisement', 'adult', 'bullying', 'violence', 'malicious_review', 'bad_words',
-      'harassment', 'hate_speech', 'offensive', 'fake_review', 'offensive_review', 'bad words', 'hate speech',
-      'self promotion', 'fake review', 'offensive review'
-    ].includes(classification.toLowerCase()) || 
-    rawAnalysis.toxic || rawAnalysis.spam || rawAnalysis.abuse || rawAnalysis.threat || 
-    rawAnalysis.scam || rawAnalysis.hate || rawAnalysis.profanity || rawAnalysis.selfPromotion || 
-    rawAnalysis.advertisement || rawAnalysis.maliciousReview || rawAnalysis.badWords ||
-    rawAnalysis.harassment || rawAnalysis.hateSpeech || rawAnalysis.offensive ||
-    rawAnalysis.fakeReview || rawAnalysis.offensiveReview;
-
-    logger.info(`[MODERATION] Comment ${commentDoc.youtubeId} classification: ${classification}, isToxicOrBad: ${isToxicOrBad}`);
-
-    // Auto-Delete / Auto-Hide Mod Action
-    if (isToxicOrBad) {
-      moderationReason = classification;
+    // 9. If unsafe: Delete or hold for review
+    if (isUnsafe) {
+      moderationActionTaken = true;
+      const modAction = tenantSettings.moderationAction || 'delete';
 
       if (channel.apiKey) {
         status = 'flagged';
-        moderationStatus = 'hidden';
-        actionTaken = 'hide';
+        moderationStatus = 'heldForReview';
+        executedAction = 'hold';
         deleteFailed = true;
         deleteErrorReason = 'Authentication via API Key does not permit write actions (OAuth required)';
-        logger.warn(`[MODERATION] Channel connected via API Key. Cannot moderate comment ${commentDoc.youtubeId} on YouTube.`);
       } else {
-        logger.info(`[MODERATION] Attempting deletion cascade for toxic comment ${commentDoc.youtubeId}`);
-        const modRes = await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
-        logger.info(`[MODERATION] YouTube moderation cascade result: ${JSON.stringify(modRes)}`);
-
-        if (modRes.success) {
-          aiActionTaken = true;
-          if (modRes.action === 'delete' || modRes.action === 'reject') {
+        if (modAction === 'delete') {
+          const delRes = await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
+          if (delRes.success) {
             status = 'deleted';
-            deleteReason = `Auto-deleted/rejected bad comment: ${classification}`;
             deletedAt = new Date();
+            deleteReason = `Auto-deleted bad comment: ${matchedCategory}`;
             moderationStatus = 'deleted';
-            actionTaken = 'delete';
-            await logAutomation(channel.userId, 'comment_delete', `Auto-deleted comment (action: ${modRes.action}) due to ${classification}`, { commentId: commentDoc.youtubeId, apiResponse: modRes });
-          } else if (modRes.action === 'hide') {
+            executedAction = 'delete';
+          } else {
+            deleteFailed = true;
+            deleteErrorReason = delRes.reason;
             status = 'flagged';
-            wasHidden = true;
-            deleteReason = `Auto-hidden comment (delete fallback): ${classification}`;
-            moderationStatus = 'hidden';
-            actionTaken = 'hide';
-            await logAutomation(channel.userId, 'comment_hide', `Auto-hid comment (action: ${modRes.action}) due to ${classification}`, { commentId: commentDoc.youtubeId, apiResponse: modRes });
+            moderationStatus = 'heldForReview';
+            executedAction = 'hold';
+            if (delRes.reconnectRequired) {
+              await Channel.findByIdAndUpdate(channel._id, { reconnectRequired: true, reconnectReason: 'Missing manage comments permission (youtube.force-ssl)' });
+            }
           }
         } else {
-          deleteFailed = true;
-          deleteErrorReason = modRes.reason;
-          status = 'flagged';
-          moderationStatus = 'hidden';
-          actionTaken = 'hide';
-          await logAutomation(channel.userId, 'comment_mod_failed', `Failed to moderate comment ${commentDoc.youtubeId}: ${modRes.reason}`, { commentId: commentDoc.youtubeId, apiResponse: modRes });
-        }
-      }
-    }
-
-    // Auto-Like positive comments
-    let autoLiked = false;
-    let likeStatus = 'none';
-    let likeError = null;
-
-    // Ignore toxic, spam, and moderate comments. Only process good/positive comments.
-    const isToxicOrSpamOrModerate = isToxicOrBad || aiResult.sentiment === 'toxic' || aiResult.sentiment === 'moderate';
-    const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident && !isToxicOrSpamOrModerate;
-
-    if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && userSettings.autoLike) {
-      if (channel.apiKey) {
-        likeStatus = 'not_supported';
-        likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
-      } else {
-        logger.info(`[MODERATION] Attempting to auto-like comment ${commentDoc.youtubeId}`);
-        const result = await likeComment(youtube, commentDoc.youtubeId);
-        likeStatus = result.status;
-        likeError = result.reason;
-        autoLiked = result.success;
-        if (autoLiked) {
-          aiActionTaken = true;
-        }
-      }
-
-      // Save Auto Like action in MongoDB
-      try {
-        await AutoLikeLog.findOneAndUpdate(
-          { commentId: commentDoc.youtubeId },
-          {
-            $setOnInsert: {
-              userId: channel.userId,
-              organizationId: channel.organizationId || null,
-              channelId: channel.channelId,
-              videoId: commentDoc.videoId,
-              commentId: commentDoc.youtubeId,
-              processedAt: new Date(),
-              autoLiked: true,
-              status: likeStatus
+          // hold for review
+          const hideRes = await hideComment(youtube, commentDoc.youtubeId);
+          if (hideRes.success) {
+            status = 'flagged';
+            wasHidden = true;
+            deleteReason = `Auto-held comment: ${matchedCategory}`;
+            moderationStatus = 'heldForReview';
+            executedAction = 'hold';
+          } else {
+            deleteFailed = true;
+            deleteErrorReason = hideRes.reason;
+            status = 'flagged';
+            moderationStatus = 'heldForReview';
+            executedAction = 'hold';
+            if (hideRes.reconnectRequired) {
+              await Channel.findByIdAndUpdate(channel._id, { reconnectRequired: true, reconnectReason: 'Missing manage comments permission (youtube.force-ssl)' });
             }
-          },
-          { upsert: true, new: true }
+          }
+        }
+      }
+
+      const loggedAction = executedAction === 'delete' ? 'deleted' : 'hidden';
+
+      // Always save ModerationLog — both on success AND failure.
+      // This ensures Comment History shows failed moderation attempts.
+      try {
+        const modLogData = {
+          userId: channel.userId,
+          organizationId: channel.organizationId,
+          channelId: channel.channelId,
+          videoId: commentDoc.videoId,
+          commentId: commentDoc.youtubeId,
+          authorName: commentDoc.author || 'Anonymous',
+          commentText: commentDoc.text || '',
+          category: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
+          confidence: aiResult.confidence || 0.85,
+          reason: `Auto-detected: ${matchedCategory}`,
+          action: loggedAction,
+          executedAction: loggedAction,
+          status: deleteFailed ? 'Failed' : 'Success',
+          failureReason: deleteFailed ? (deleteErrorReason || 'YouTube API call failed') : null
+        };
+        // Upsert: one ModerationLog per commentId (first action wins)
+        await ModerationLog.findOneAndUpdate(
+          { commentId: commentDoc.youtubeId, userId: channel.userId },
+          { $setOnInsert: modLogData },
+          { upsert: true }
         );
-      } catch (logErr) {
-        logger.error(`[AUTO-LIKE] Failed to save AutoLikeLog: ${logErr.message}`);
+        if (!deleteFailed) {
+          await logAutomation(
+            channel.userId,
+            executedAction === 'delete' ? 'comment_delete' : 'comment_hide',
+            `Auto-moderated comment (action: ${executedAction}) due to ${matchedCategory}`,
+            { commentId: commentDoc.youtubeId, category: matchedCategory }
+          );
+        }
+      } catch (modLogErr) {
+        logger.error(`[Pipeline] Failed to save ModerationLog for ${commentDoc.youtubeId}: ${modLogErr.message}`);
+      }
+
+      // Save final classification updates and stop processing
+      const newCommentData = {
+        userId: channel.userId,
+        organizationId: channel.organizationId,
+        youtubeId: commentDoc.youtubeId,
+        commentId: commentDoc.youtubeId, // alias
+        channelId: channel.channelId,
+        videoId: commentDoc.videoId,
+        text: commentDoc.text,
+        commentText: commentDoc.text, // alias
+        author: commentDoc.author,
+        username: commentDoc.author, // alias
+        authorProfileImageUrl: commentDoc.authorProfileImageUrl,
+        authorChannelId: commentDoc.authorChannelId || null,
+        publishedAt: commentDoc.publishedAt,
+        parentCommentId: commentDoc.parentCommentId || null,
+        isReply: commentDoc.isReply || false,
+
+        sentiment: aiResult.sentiment,
+        toxicityScore: aiResult.toxicityScore,
+        confidence: aiResult.confidence,
+        language: aiResult.language,
+        detectedWords: aiResult.detectedWords,
+        status: status,
+        autoLiked: false,
+        deleteFailed,
+        deleteError: deleteErrorReason,
+        deleteReason,
+        deletedAt,
+        aiActionTaken: true,
+        classification,
+        moderationStatus,
+        aiStatus: 'completed',
+        actionTaken: executedAction,
+        moderationReason: matchedCategory,
+        textHash,
+        isModerated: true,
+        moderationAction: loggedAction
+      };
+
+      const updatedComment = await Comment.findOneAndUpdate(
+        { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+        { $set: newCommentData },
+        { upsert: true, new: true }
+      );
+
+      if (io && updatedComment) {
+        const roomName = channel.userId.toString();
+        io.to(roomName).emit('live_activity', {
+          ...updatedComment.toObject(),
+          id: updatedComment._id,
+          type: status === 'deleted' ? 'delete' : 'hold'
+        });
+        io.to(roomName).emit('new_comment_analyzed', updatedComment);
+        io.to(roomName).emit('stats_updated');
+        io.to(roomName).emit('moderationUpdate');
+      }
+
+      return true; // Stop processing
+    }
+
+    // 10. If safe: Match active reply rule
+    let ruleMatchedAndExecuted = false;
+    let replyText = null;
+    let replyError = null;
+
+    const rules = await AutoReplyRule.find({
+      channelId: channel.channelId,
+      userId: channel.userId,
+      isActive: true
+    });
+
+    let matchedRule = null;
+    let matchedKeyword = null;
+
+    for (const rule of rules) {
+      // Filter by videoIds if specified (empty array or 'all' contentType means channel-wide)
+      const videoMatch = rule.contentType === 'all' || (rule.videoIds && rule.videoIds.includes(commentDoc.videoId));
+      if (!videoMatch) continue;
+
+      const textLower = commentDoc.text.toLowerCase().trim();
+      let matched = false;
+
+      if (rule.matchType === 'any_comment' || rule.triggerKeywords.includes('*')) {
+        matched = true;
+        matchedKeyword = '*';
+      } else if (rule.matchType === 'contains_any') {
+        matchedKeyword = rule.triggerKeywords.find(kw => textLower.includes(kw.toLowerCase().trim()));
+        matched = !!matchedKeyword;
+      } else if (rule.matchType === 'contains_all') {
+        matched = rule.triggerKeywords.every(kw => textLower.includes(kw.toLowerCase().trim()));
+        if (matched) matchedKeyword = rule.triggerKeywords.join(', ');
+      } else if (rule.matchType === 'exact_match') {
+        matchedKeyword = rule.triggerKeywords.find(kw => textLower === kw.toLowerCase().trim());
+        matched = !!matchedKeyword;
+      }
+
+      if (matched) {
+        matchedRule = rule;
+        break;
       }
     }
 
-    // Auto-Reply logic (replies to all good comments, never reply to toxic/spam/deleted comments)
-    let replyStatus = 'none';
-    let replyError = null;
-    let replyText = null;
-    let suggestedReply = aiResult.suggestedReply;
+    if (matchedRule) {
+      // Generate context-aware human-like reply using DeepSeek
+      const ruleBaseText = matchedRule.replyText || matchedRule.dmContent || 'Thank you for your comment!';
+      replyText = await generateDeepseekHumanReply(commentDoc.text, ruleBaseText, userKey);
 
-    const isReply = commentDoc.youtubeId.includes('.');
-    const isNormalComment = !isToxicOrBad && status !== 'deleted' && status !== 'flagged' && !wasHidden;
-
-    if (isNormalComment && !isReply) {
-      if (channel.apiKey) {
-        replyStatus = 'failed';
-        replyError = 'Authentication via API Key does not permit write actions (OAuth required)';
-        logger.warn(`[REPLY] API Key channel. Cannot reply to comment ${commentDoc.youtubeId}.`);
-      } else {
-        // Double check AutoReplyLog first to prevent any duplicate posting
-        const existing = await AutoReplyLog.findOne({ commentId: commentDoc.youtubeId });
-        if (existing && (existing.status === 'success' || existing.status === 'pending')) {
-          logger.warn(`[REPLY] Comment ${commentDoc.youtubeId} already has a reply logged/pending. Skipping.`);
-          return true;
-        }
-
-        // Double check if a reply from the channel owner already exists on YouTube for this comment
-        const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const ownerReplyExists = await Comment.exists({
-          userId: channel.userId,
-          youtubeId: new RegExp('^' + escapeRegExp(commentDoc.youtubeId) + '\\.'),
-          authorChannelId: channel.channelId
-        });
-
-        if (ownerReplyExists) {
-          logger.info(`[REPLY] Comment ${commentDoc.youtubeId} already has an owner/bot reply in the database. Skipping.`);
-          return true;
-        }
-
-        logger.info(`[REPLY] Sending auto-reply to comment ${commentDoc.youtubeId}`);
-        const repRes = await generateAndPostAutoReply({
-          youtube,
-          parentId: targetParentId,
-          commentText: commentDoc.text,
-          commentId: commentDoc.youtubeId,
-          videoId: commentDoc.videoId,
-          userId: channel.userId,
-          userKey
-        });
-
+      if (replyText && !channel.apiKey) {
+        // Post reply on YouTube
+        const repRes = await replyToComment(youtube, commentDoc.youtubeId, replyText);
         if (repRes.success) {
           replyStatus = 'sent';
-          aiActionTaken = true;
-          replyText = repRes.replyText;
-          suggestedReply = repRes.replyText;
+          ruleMatchedAndExecuted = true;
 
-          // Save the bot reply comment in MongoDB with isBotReply=true to skip its moderation
+          // Save AutoReplyLog — success
+          try {
+            const autoLog = new AutoReplyLog({
+              commentId: commentDoc.youtubeId,
+              userId: channel.userId,
+              organizationId: channel.organizationId,
+              channelId: channel.channelId,
+              videoId: commentDoc.videoId,
+              username: commentDoc.author || 'Anonymous',
+              commentText: commentDoc.text,
+              triggerKeyword: matchedKeyword || '*',
+              replyText: replyText,
+              aiReply: replyText,
+              deepseekResponse: replyText,
+              youtubeReplyId: repRes.newCommentId,
+              status: 'success'
+            });
+            await autoLog.save();
+          } catch (logErr) {
+            if (logErr.code !== 11000) logger.error(`[Reply] Failed to save AutoReplyLog: ${logErr.message}`);
+          }
+
+          // Update Comment with reply details
+          await Comment.findOneAndUpdate(
+            { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+            { $set: {
+              sentiment: aiResult.sentiment || 'positive',
+              status: 'approved',
+              hasReplied: true,
+              repliedAt: new Date(),
+              replyText,
+              replyStatus: 'sent',
+              youtubeReplyId: repRes.newCommentId,
+              aiStatus: 'completed'
+            }},
+            { upsert: true }
+          );
+
+          // Save bot reply comment to skip moderation downstream
           if (repRes.newCommentId) {
             try {
               await Comment.findOneAndUpdate(
@@ -334,11 +968,15 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                 {
                   $setOnInsert: {
                     userId: channel.userId,
+                    organizationId: channel.organizationId,
                     youtubeId: repRes.newCommentId,
+                    commentId: repRes.newCommentId,
                     channelId: channel.channelId,
                     videoId: commentDoc.videoId,
                     text: replyText,
-                    author: 'Bot (Auto-Reply)',
+                    commentText: replyText,
+                    author: 'Bot (Comment Automation)',
+                    username: 'Bot (Comment Automation)',
                     authorChannelId: channel.channelId,
                     publishedAt: new Date(),
                   },
@@ -356,148 +994,374 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                 { upsert: true, new: true }
               );
             } catch (botSaveErr) {
-              logger.error(`[REPLY] Failed to save bot reply comment in MongoDB: ${botSaveErr.message}`);
+              logger.error(`[Comment Automation] Failed to save bot reply: ${botSaveErr.message}`);
             }
           }
 
-          await logAutomation(channel.userId, 'comment_reply', `Auto-replied to comment: ${replyText}`, { commentId: commentDoc.youtubeId, apiResponse: repRes });
+          // Broadcast Socket updates
+          if (io) {
+            const roomName = channel.userId.toString();
+            io.to(roomName).emit('live_activity', {
+              youtubeId: commentDoc.youtubeId,
+              commentId: commentDoc.youtubeId,
+              text: commentDoc.text,
+              commentText: commentDoc.text,
+              author: commentDoc.author,
+              username: commentDoc.author,
+              replyText,
+              aiReply: replyText,
+              type: 'new_comment',
+              confidence: 1.0
+            });
+            io.to(roomName).emit('stats_updated');
+            io.to(roomName).emit('replyUpdate');
+          }
         } else {
+          // Reply failed — save AutoReplyLog with status:failed so Comment History shows it
           replyStatus = 'failed';
-          replyError = repRes.reason;
+          replyError = repRes.reason || 'YouTube reply API failed';
+          try {
+            const failLog = new AutoReplyLog({
+              commentId: commentDoc.youtubeId,
+              userId: channel.userId,
+              organizationId: channel.organizationId,
+              channelId: channel.channelId,
+              videoId: commentDoc.videoId,
+              username: commentDoc.author || 'Anonymous',
+              commentText: commentDoc.text,
+              triggerKeyword: matchedKeyword || '*',
+              replyText: replyText,
+              aiReply: replyText,
+              status: 'failed',
+              failureReason: replyError
+            });
+            await failLog.save();
+          } catch (logErr) {
+            if (logErr.code !== 11000) logger.error(`[Reply] Failed to save failed AutoReplyLog: ${logErr.message}`);
+          }
+        }
+      }
+    } else if (tenantSettings.smartAiReply && aiResult.suggestedReply && !channel.apiKey) {
+      replyText = aiResult.suggestedReply;
+
+      // Post reply on YouTube
+      const repRes = await replyToComment(youtube, commentDoc.youtubeId, replyText);
+      if (repRes.success) {
+        replyStatus = 'sent';
+        ruleMatchedAndExecuted = true;
+
+        // Save AutoReplyLog — success
+        try {
+          const autoLog = new AutoReplyLog({
+            commentId: commentDoc.youtubeId,
+            userId: channel.userId,
+            organizationId: channel.organizationId,
+            channelId: channel.channelId,
+            videoId: commentDoc.videoId,
+            username: commentDoc.author || 'Anonymous',
+            commentText: commentDoc.text,
+            triggerKeyword: 'AI Smart Reply',
+            replyText: replyText,
+            aiReply: replyText,
+            deepseekResponse: replyText,
+            youtubeReplyId: repRes.newCommentId,
+            status: 'success'
+          });
+          await autoLog.save();
+        } catch (logErr) {
+          if (logErr.code !== 11000) logger.error(`[SmartReply] Failed to save AutoReplyLog: ${logErr.message}`);
+        }
+
+        // Update Comment with reply details
+        await Comment.findOneAndUpdate(
+          { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+          { $set: {
+            sentiment: aiResult.sentiment || 'positive',
+            status: 'approved',
+            hasReplied: true,
+            repliedAt: new Date(),
+            replyText,
+            replyStatus: 'sent',
+            youtubeReplyId: repRes.newCommentId,
+            aiStatus: 'completed'
+          }},
+          { upsert: true }
+        );
+
+        // Save bot reply comment to skip moderation downstream
+        if (repRes.newCommentId) {
+          try {
+            await Comment.findOneAndUpdate(
+              { youtubeId: repRes.newCommentId, userId: channel.userId },
+              {
+                $setOnInsert: {
+                  userId: channel.userId,
+                  organizationId: channel.organizationId,
+                  youtubeId: repRes.newCommentId,
+                  commentId: repRes.newCommentId,
+                  channelId: channel.channelId,
+                  videoId: commentDoc.videoId,
+                  text: replyText,
+                  commentText: replyText,
+                  author: 'Bot (Comment Automation)',
+                  username: 'Bot (Comment Automation)',
+                  authorChannelId: channel.channelId,
+                  publishedAt: new Date(),
+                },
+                $set: {
+                  isBotReply: true,
+                  hasReplied: false,
+                  status: 'approved',
+                  aiActionTaken: true,
+                  aiStatus: 'completed',
+                  classification: 'bot_reply',
+                  moderationStatus: 'safe',
+                  actionTaken: 'skip_bot',
+                }
+              },
+              { upsert: true, new: true }
+            );
+          } catch (botSaveErr) {
+            logger.error(`[Comment Automation] Failed to save bot reply: ${botSaveErr.message}`);
+          }
+        }
+
+        // Broadcast Socket updates
+        if (io) {
+          const roomName = channel.userId.toString();
+          io.to(roomName).emit('live_activity', {
+            youtubeId: commentDoc.youtubeId,
+            commentId: commentDoc.youtubeId,
+            text: commentDoc.text,
+            commentText: commentDoc.text,
+            author: commentDoc.author,
+            username: commentDoc.author,
+            replyText,
+            aiReply: replyText,
+            type: 'new_comment',
+            confidence: 1.0
+          });
+          io.to(roomName).emit('stats_updated');
+          io.to(roomName).emit('replyUpdate');
+        }
+      } else {
+        // SmartReply failed — save AutoReplyLog with status:failed so Comment History shows it
+        replyStatus = 'failed';
+        replyError = repRes.reason || 'YouTube reply API failed';
+        try {
+          const failLog = new AutoReplyLog({
+            commentId: commentDoc.youtubeId,
+            userId: channel.userId,
+            organizationId: channel.organizationId,
+            channelId: channel.channelId,
+            videoId: commentDoc.videoId,
+            username: commentDoc.author || 'Anonymous',
+            commentText: commentDoc.text,
+            triggerKeyword: 'AI Smart Reply',
+            replyText: replyText,
+            aiReply: replyText,
+            status: 'failed',
+            failureReason: replyError
+          });
+          await failLog.save();
+        } catch (logErr) {
+          if (logErr.code !== 11000) logger.error(`[SmartReply] Failed to save failed AutoReplyLog: ${logErr.message}`);
         }
       }
     }
 
-    // Auto-Leads & GoWhats push
-    const whatsappNumber = detectWhatsAppNumber(commentDoc.text);
-    const isLeadIntent = rawAnalysis.buyingIntent === true || rawAnalysis.customer === true || aiResult.lead?.isLead === true;
+    // Auto Like positive comments (if safe and positive)
+    let autoLiked = false;
+    let likeStatus = 'none';
+    let likeError = null;
 
-    if (status !== 'deleted' && (whatsappNumber || isLeadIntent)) {
-      await runInTransaction(async (session) => {
-        const phoneToUse = whatsappNumber || rawAnalysis.whatsappNumber || rawAnalysis.phoneNumber || aiResult.lead?.phone;
-        const emailToUse = rawAnalysis.email || aiResult.lead?.email;
-        const intentToUse = rawAnalysis.buyingIntent ? 'Purchase Intent' : (rawAnalysis.customer ? 'Interested' : 'Interest');
-        const notesText = `Product: ${rawAnalysis.productInterest || 'General'} | Language: ${rawAnalysis.detectedLanguage || 'English'} | Emotion: ${rawAnalysis.emotion || 'unknown'} | Urgency: ${rawAnalysis.urgency || 'low'}`;
+    const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident;
+    const isMeaningful = commentDoc.text && commentDoc.text.trim().length > 3;
 
-        logger.info(`[LEADS] Creating lead for comment ${commentDoc.youtubeId} by ${commentDoc.author}`);
-        const { lead, isDuplicate } = await createLead({
-          userId: channel.userId,
-          channelId: channel.channelId,
-          videoId: commentDoc.videoId,
-          commentId: commentDoc.youtubeId,
-          authorName: commentDoc.author,
-          originalComment: commentDoc.text,
-          whatsappNumber: phoneToUse || 'None',
-          email: emailToUse || null,
-          intent: intentToUse,
-          productInterest: rawAnalysis.productInterest || 'General',
-          language: rawAnalysis.detectedLanguage || 'English',
-          notes: notesText,
-        }, { session });
+    if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && tenantSettings.autoLike) {
+      if (channel.apiKey) {
+        likeStatus = 'not_supported';
+        likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
+      } else {
+        const result = await likeComment(youtube, commentDoc.youtubeId);
+        likeStatus = result.status;
+        likeError = result.reason;
+        autoLiked = result.success;
+      }
 
-        if (!isDuplicate && !channel.apiKey && phoneToUse && phoneToUse !== 'None') {
-          // Hide the comment to protect phone number privacy
-          logger.info(`[LEADS] Hiding comment ${commentDoc.youtubeId} to protect user privacy (WhatsApp number detected)`);
-          const hideRes = await hideComment(youtube, commentDoc.youtubeId);
-          if (hideRes.success) {
-            lead.isHidden = true;
-            status = 'flagged';
-            wasHidden = true;
-          }
-
-          const user = await User.findById(channel.userId);
-          const productLink = user?.productLink || process.env.PRODUCT_LINK || 'https://channelmate.com';
-          const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest in our product! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will also reach out to you shortly. Feel free to reply here if you have any questions!`;
-
-          const decryptedGoWhatsKey = user?.gowhatsApiKey ? decrypt(user.gowhatsApiKey) : null;
-          logger.info(`[LEADS] Sending WhatsApp alert to ${phoneToUse}`);
-          const waRes = await sendWhatsAppMessage(phoneToUse, messageTemplate, 3, decryptedGoWhatsKey, user?.gowhatsUrl);
-
-          const waLog = new GoWhatsLog({
-            userId: channel.userId,
-            recipientNumber: phoneToUse,
-            message: messageTemplate,
-            status: waRes.success ? 'sent' : 'failed',
-            error: waRes.success ? null : waRes.error
-          });
-          await waLog.save({ session });
-
-          if (waRes.success) {
-            lead.status = 'sent';
-            lead.whatsappSent = true;
-            logger.info(`[LEADS] WhatsApp alert sent successfully to ${phoneToUse}`);
-          } else {
-            lead.status = 'failed';
-            lead.errorLog = waRes.error;
-            logger.error(`[LEADS] WhatsApp alert failed: ${waRes.error}`);
-          }
-
-          await lead.save({ session });
-        }
-      });
+      try {
+        await AutoLikeLog.findOneAndUpdate(
+          { commentId: commentDoc.youtubeId },
+          {
+            $setOnInsert: {
+              userId: channel.userId,
+              organizationId: channel.organizationId,
+              channelId: channel.channelId,
+              videoId: commentDoc.videoId,
+              commentId: commentDoc.youtubeId,
+              processedAt: new Date(),
+              autoLiked: true,
+              status: likeStatus
+            }
+          },
+          { upsert: true, new: true }
+        );
+      } catch (logErr) {
+        logger.error(`[AUTO-LIKE] Failed to save AutoLikeLog: ${logErr.message}`);
+      }
     }
 
-    // Save final classification updates (MongoDB stores the comment ONLY AFTER the final action is completed)
-    logger.info(`[MODERATION] Storing processed comment and AI analysis in MongoDB for comment ${commentDoc.youtubeId}`);
-    
-    const newCommentData = {
-      userId: channel.userId,
-      youtubeId: commentDoc.youtubeId,
-      channelId: channel.channelId,
-      videoId: commentDoc.videoId,
-      text: commentDoc.text,
-      author: commentDoc.author,
-      authorProfileImageUrl: commentDoc.authorProfileImageUrl,
-      authorChannelId: commentDoc.authorChannelId || null,
-      publishedAt: commentDoc.publishedAt,
-      
-      sentiment: aiResult.sentiment,
-      toxicityScore: aiResult.toxicityScore,
-      confidence: aiResult.confidence,
-      language: aiResult.language,
-      detectedWords: aiResult.detectedWords,
-      status: status,
-      autoLiked: autoLiked,
-      deleteFailed,
-      deleteError: deleteErrorReason,
-      deleteReason,
-      deletedAt,
-      likeStatus: likeStatus !== 'none' ? likeStatus : 'none',
-      likeError: likeError,
-      aiActionTaken: true, // Mark classification complete
-      classification,
-      suggestedReply: suggestedReply,
-      replyText,
-      replyStatus,
-      replyError,
-      note: wasHidden ? 'Auto-hidden for privacy/compliance' : '',
-      moderationStatus,
-      aiStatus,
-      actionTaken,
-      moderationReason,
-      hasReplied: replyStatus === 'sent',
-      repliedAt: replyStatus === 'sent' ? new Date() : null
-    };
+    // 14. Lead Capture Workflow
+    // Capture a lead whenever a SAFE comment (not toxic) contains ANY lead keyword.
+    // WhatsApp DM is sent only if a phone number is also detected.
+    const whatsappNumber = detectWhatsAppNumber(commentDoc.text);
+    const leadKeywords = tenantSettings.leadKeywords || ['price', 'details', 'course', 'join', 'contact', 'phone', 'call', 'whatsapp', 'demo', 'fees'];
+    const matchesLeadKeywords = checkLeadKeywordsMatched(commentDoc.text, leadKeywords);
 
-    const updatedComment = await Comment.findOneAndUpdate(
-      { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-      { $set: newCommentData },
-      { upsert: true, new: true }
-    );
-    logger.info("MongoDB record saved/updated successfully");
+    // Capture lead if: comment is safe (not moderated), matches a lead keyword, and AI replied
+    if (!moderationActionTaken && matchesLeadKeywords && replyStatus !== 'none') {
+      leadStatus = 'processing';
+      const idempotencyKey = `${channel.organizationId || channel.userId}_${channel.channelId}_${commentDoc.youtubeId}_lead`;
 
-    // Broadcast update using Socket.IO for Live Dashboard
-    if (io && updatedComment) {
-      const roomName = channel.userId.toString();
-      logger.info(`[SOCKET.IO] Broadcasting comment analysis update for room: ${roomName}`);
-      io.to(roomName).emit('live_activity', {
-        ...updatedComment.toObject(),
-        id: updatedComment._id,
-        type: status === 'deleted' ? 'delete' : (autoLiked ? 'like' : 'new_comment')
-      });
-      io.to(roomName).emit('new_comment_analyzed', updatedComment);
-      io.to(roomName).emit('stats_updated');
-      logger.info("Socket event emitted");
+      const leadExists = await Lead.exists({ idempotencyKey });
+      if (!leadExists) {
+        try {
+          const phoneToUse = whatsappNumber || rawAnalysis?.whatsappNumber || rawAnalysis?.phoneNumber || aiResult?.lead?.phone;
+          const emailToUse = rawAnalysis?.email || aiResult?.lead?.email;
+          const intentToUse = rawAnalysis?.buyingIntent ? 'Purchase Intent' : (rawAnalysis?.customer ? 'Interested' : 'Interest');
+          const notesText = `Product: ${rawAnalysis?.productInterest || 'General'} | Language: ${rawAnalysis?.detectedLanguage || 'English'} | Keywords: ${leadKeywords.filter(k => commentDoc.text.toLowerCase().includes(k)).join(', ')}`;
+
+          logger.info(`[LEADS] Creating lead for comment ${commentDoc.youtubeId} (keyword match)`);
+          const { lead, isDuplicate } = await createLead({
+            userId: channel.userId,
+            organizationId: channel.organizationId,
+            idempotencyKey,
+            channelId: channel.channelId,
+            videoId: commentDoc.videoId,
+            commentId: commentDoc.youtubeId,
+            authorName: commentDoc.author,
+            originalComment: commentDoc.text,
+            whatsappNumber: phoneToUse || 'None',
+            email: emailToUse || null,
+            intent: intentToUse,
+            productInterest: rawAnalysis?.productInterest || 'General',
+            language: rawAnalysis?.detectedLanguage || 'English',
+            notes: notesText,
+          });
+          leadStatus = isDuplicate ? 'duplicate' : 'pending';
+
+          // Only send WhatsApp DM if phone number detected AND GoWhats configured
+          if (!isDuplicate && phoneToUse && phoneToUse !== 'None' && user.gowhatsApiKey) {
+            // Hide the comment to protect phone number privacy
+            const hideRes = await hideComment(youtube, commentDoc.youtubeId);
+            if (hideRes.success) {
+              lead.isHidden = true;
+              status = 'flagged';
+              wasHidden = true;
+            }
+            const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://channelmate.com';
+            const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will reach out to you shortly. Feel free to reply if you have any questions!`;
+            const decryptedGoWhatsKey = user.gowhatsApiKey ? decrypt(user.gowhatsApiKey) : null;
+            logger.info(`[LEADS] Sending WhatsApp alert to ${phoneToUse}`);
+            const waRes = await sendWhatsAppMessage(phoneToUse, messageTemplate, 3, decryptedGoWhatsKey, user.gowhatsUrl);
+
+            const waLog = new GoWhatsLog({
+              userId: channel.userId,
+              leadId: lead._id,
+              channelId: channel.channelId,
+              videoId: commentDoc.videoId,
+              recipientNumber: phoneToUse,
+              message: messageTemplate,
+              status: waRes.success ? 'sent' : 'failed',
+              error: waRes.success ? null : waRes.error
+            });
+            await waLog.save();
+
+            lead.status = waRes.success ? 'sent' : 'failed';
+            lead.whatsappSent = waRes.success;
+            lead.errorLog = waRes.success ? null : waRes.error;
+            leadStatus = waRes.success ? 'sent' : 'failed';
+            await lead.save();
+          }
+        } catch (leadErr) {
+          if (leadErr.code === 11000) {
+            logger.info(`[LEADS] Duplicate lead blocked for ${commentDoc.youtubeId}`);
+          } else {
+            logger.error(`[LEADS] Failed to create lead: ${leadErr.message}`);
+          }
+        }
+      } else {
+        logger.info(`[LEADS] Duplicate lead workflow blocked for comment ${commentDoc.youtubeId}`);
+      }
+    }
+
+    // Save final updates only if a successful action (like, reply, moderation, or lead capture) was performed
+    // Always save final Comment state — every analyzed comment must be persisted.
+    // Previously this was gated by action success, which left safe/unmatched comments invisible.
+    if (true) { // unconditional: MongoDB is source of truth for all analyzed comments
+      const newCommentData = {
+        userId: channel.userId,
+        organizationId: channel.organizationId,
+        youtubeId: commentDoc.youtubeId,
+        commentId: commentDoc.youtubeId, // alias
+        channelId: channel.channelId,
+        videoId: commentDoc.videoId,
+        text: commentDoc.text,
+        commentText: commentDoc.text, // alias
+        author: commentDoc.author,
+        username: commentDoc.author, // alias
+        authorProfileImageUrl: commentDoc.authorProfileImageUrl,
+        authorChannelId: commentDoc.authorChannelId || null,
+        publishedAt: commentDoc.publishedAt,
+        parentCommentId: commentDoc.parentCommentId || null,
+        isReply: commentDoc.isReply || false,
+
+        sentiment: aiResult.sentiment,
+        toxicityScore: aiResult.toxicityScore,
+        confidence: aiResult.confidence,
+        language: aiResult.language,
+        detectedWords: aiResult.detectedWords,
+        status: status,
+        autoLiked: autoLiked,
+        deleteFailed,
+        deleteError: deleteErrorReason,
+        deleteReason,
+        deletedAt,
+        likeStatus: likeStatus !== 'none' ? likeStatus : 'none',
+        likeError: likeError,
+        aiActionTaken: true,
+        classification,
+        suggestedReply: replyText || aiResult.suggestedReply,
+        replyText,
+        replyStatus,
+        replyError,
+        note: wasHidden ? 'Auto-hidden for privacy/compliance' : '',
+        moderationStatus: wasHidden ? 'heldForReview' : moderationStatus,
+        aiStatus: 'completed',
+        actionTaken: executedAction,
+        moderationReason: matchedCategory !== 'safe' ? matchedCategory : undefined,
+        hasReplied: replyStatus === 'sent',
+        repliedAt: replyStatus === 'sent' ? new Date() : null,
+        textHash
+      };
+
+      const updatedComment = await Comment.findOneAndUpdate(
+        { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+        { $set: newCommentData },
+        { upsert: true, new: true }
+      );
+
+      // Broadcast update using Socket.IO for Live Dashboard
+      if (io && updatedComment) {
+        const roomName = channel.userId.toString();
+        io.to(roomName).emit('live_activity', {
+          ...updatedComment.toObject(),
+          id: updatedComment._id,
+          type: status === 'deleted' ? 'delete' : (autoLiked ? 'like' : 'new_comment')
+        });
+        io.to(roomName).emit('new_comment_analyzed', updatedComment);
+        io.to(roomName).emit('stats_updated');
+      }
     }
 
     return true;
@@ -537,10 +1401,10 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       return;
     }
 
-    // Cooldown check (5 minutes / 300,000 ms) - bypassed if videoId is provided (manual sync)
+    // Cooldown check (30 seconds / 30,000 ms) - bypassed if videoId is provided (manual sync)
     if (!videoId && latestChannel.lastSyncedAt) {
       const timeSinceLastSync = Date.now() - latestChannel.lastSyncedAt.getTime();
-      if (timeSinceLastSync < 300000) {
+      if (timeSinceLastSync < 30000) {
         logger.info(`[SYNC] Skipping channel ${latestChannel.title || latestChannel.channelId} - synced recently (${Math.round(timeSinceLastSync / 1000)}s ago).`);
         return;
       }
@@ -597,9 +1461,6 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         }, latestChannel._id);
       }
     }
-    if (youtube) {
-      logger.info("YouTube client initialized");
-    }
 
     let user = await User.findById(channel.userId);
     if (!user) {
@@ -652,20 +1513,16 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
     // ──────────────────────────────────────────────────────────
     latestChannel = await Channel.findById(channel._id);
     
-    // Check if initial full sync is in progress
     if (latestChannel.lastSyncedAt && latestChannel.lastSyncedAt.getTime() === 0) {
       logger.info(`Initial Full Sync currently in progress for channel: ${channel.title}. Sync call skipped.`);
       return;
     }
 
-    // If channel has never been synced, perform INITIAL FULL SYNC
     if (!latestChannel.lastSyncedAt) {
       await Channel.findByIdAndUpdate(channel._id, { lastSyncedAt: new Date(0) });
       logger.info(`[INITIAL SYNC] Starting Initial Full Sync for channel: ${channel.title} (ID: ${channel.channelId})`);
 
       try {
-        // Step A: Fetch ALL existing videos and save them to MongoDB
-        logger.info("Fetching videos");
         const allVideos = await fetchAllVideos(youtube, channel.channelId);
         logger.info(`[INITIAL SYNC] Fetched ${allVideos.length} videos from YouTube for channel ${channel.title}`);
 
@@ -685,10 +1542,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
           );
         }
 
-        // Step B: Skip importing historical comments (Constraint: DO NOT store old YouTube comments)
         logger.info(`[INITIAL SYNC] Skipped importing historical comments to avoid storing old comments.`);
-
-        // Step C: Update lastSyncedAt to current date (marking sync complete)
         newestSyncDate = new Date();
         logger.info(`[INITIAL SYNC] Initial Full Sync Completed for Channel: ${channel.title}`);
       } catch (syncErr) {
@@ -698,13 +1552,8 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         return;
       }
     } else {
-      // ──────────────────────────────────────────────────────────
-      // NORMAL RECURRING SCAN
-      // ──────────────────────────────────────────────────────────
       if (!videoId) {
-        // Sync new uploads
         try {
-          logger.info("Fetching videos");
           const fetchedVideos = await fetchVideos(youtube, channel.channelId, channel.uploadsPlaylistId);
           for (const v of fetchedVideos) {
             const existingVideo = await Video.findOne({ userId: channel.userId, videoId: v.videoId });
@@ -742,26 +1591,20 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         }
       }
 
-      // Sync latest 50 comments and process new ones directly via DeepSeek (no pending status)
       newestSyncDate = latestChannel.lastSyncedAt ? new Date(latestChannel.lastSyncedAt) : new Date(Date.now() - 300000);
       try {
-        logger.info("Fetching latest comments from YouTube");
         const comments = await fetchLatestComments(youtube, channel.channelId, 50, videoId);
         if (comments && comments.length > 0) {
-          const newComments = comments.filter(c => new Date(c.publishedAt) > newestSyncDate);
+          logger.info(`[SYNC] Fetched ${comments.length} comments from YouTube. Processing list...`);
           
-          if (newComments.length > 0) {
-            logger.info(`[SYNC] Found ${newComments.length} newly fetched comments. Processing directly.`);
-            // Sort comments chronologically to advance the watermark pointer incrementally
-            newComments.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
+          const sortedComments = [...comments].sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
 
-            for (const c of newComments) {
-              const success = await processSingleComment(youtube, latestChannel, userKey, userSettings, c, io);
-              if (success) {
-                const commentDate = new Date(c.publishedAt);
-                if (commentDate > newestSyncDate) {
-                  newestSyncDate = commentDate;
-                }
+          for (const c of sortedComments) {
+            const success = await processSingleComment(youtube, latestChannel, userKey, userSettings, c, io);
+            if (success) {
+              const commentDate = new Date(c.publishedAt);
+              if (commentDate > newestSyncDate) {
+                newestSyncDate = commentDate;
               }
             }
           }
@@ -772,17 +1615,14 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       }
     }
 
-    // Emit stats updates
     if (io) {
       io.to(channel.userId.toString()).emit('stats_updated');
     }
 
-    // Update lastSyncedAt to the newest successfully processed comment's timestamp
     await Channel.updateOne({ _id: channel._id }, { $set: { lastSyncedAt: newestSyncDate } });
     clearQuotaBackoff(channel._id.toString());
   } catch (error) {
     if (latestChannel && !isQuotaError(error)) {
-      // Restore original lastSyncedAt to allow retry on non-quota failure
       await Channel.updateOne({ _id: channel._id }, { $set: { lastSyncedAt: latestChannel.lastSyncedAt } });
     }
     if (isQuotaError(error)) {
