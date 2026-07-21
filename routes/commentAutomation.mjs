@@ -369,6 +369,13 @@ router.post('/rules/:id/test', authMiddleware, async (req, res) => {
       }
     }
 
+    if (rule.replyType === 'Carousel' && rule.carouselCards && rule.carouselCards.length > 0) {
+      const cardsFormatted = rule.carouselCards.map(card => {
+        return `Card:\nImage:\n${card.imageUrl || ''}\n\nTitle:\n${card.title || ''}\n\nDescription:\n${card.description || ''}\n\nButton:\n${card.btnLabel || card.buttonText || 'View Detail'}\n\nURL:\n${card.link || card.buttonUrl || ''}`;
+      }).join('\n\n');
+      generatedReply = cardsFormatted;
+    }
+
     return res.json({
       matched: true,
       matchedKeyword,

@@ -371,7 +371,15 @@ export const createRule = async (req, res) => {
       followersOnly: !!followersOnly,
       replyCommentText,
       automatedDmContent,
-      carouselCards: Array.isArray(carouselCards) ? carouselCards : [],
+      carouselCards: Array.isArray(carouselCards) ? carouselCards.map(c => ({
+        imageUrl: c.imageUrl || '',
+        title: c.title || '',
+        description: c.description || '',
+        btnLabel: c.btnLabel || c.buttonText || 'View Detail',
+        buttonText: c.buttonText || c.btnLabel || 'View Detail',
+        link: c.link || c.buttonUrl || '',
+        buttonUrl: c.buttonUrl || c.link || ''
+      })) : [],
       ruleType,
       replyText,
       replyTemplates: Array.isArray(replyTemplates) ? replyTemplates : [],
@@ -439,7 +447,17 @@ export const updateRule = async (req, res) => {
     if (followersOnly !== undefined) rule.followersOnly = !!followersOnly;
     if (replyCommentText !== undefined) rule.replyCommentText = replyCommentText;
     if (automatedDmContent !== undefined) rule.automatedDmContent = automatedDmContent;
-    if (carouselCards && Array.isArray(carouselCards)) rule.carouselCards = carouselCards;
+    if (carouselCards && Array.isArray(carouselCards)) {
+      rule.carouselCards = carouselCards.map(c => ({
+        imageUrl: c.imageUrl || '',
+        title: c.title || '',
+        description: c.description || '',
+        btnLabel: c.btnLabel || c.buttonText || 'View Detail',
+        buttonText: c.buttonText || c.btnLabel || 'View Detail',
+        link: c.link || c.buttonUrl || '',
+        buttonUrl: c.buttonUrl || c.link || ''
+      }));
+    }
     if (ruleType) rule.ruleType = ruleType;
     if (replyText !== undefined) rule.replyText = replyText;
     if (replyTemplates && Array.isArray(replyTemplates)) rule.replyTemplates = replyTemplates;

@@ -41,9 +41,18 @@ router.post('/rules', authMiddleware, async (req, res) => {
     const matchType = req.body.matchType || req.body.triggerType || 'contains_any';
     const replyType = req.body.replyType || 'Text';
     const replyText = req.body.replyText || req.body.replyCommentText || '';
-    const carouselCards = req.body.carouselCards || [];
+    const carouselCards = Array.isArray(req.body.carouselCards) ? req.body.carouselCards.map(c => ({
+        imageUrl: c.imageUrl || '',
+        title: c.title || '',
+        description: c.description || '',
+        btnLabel: c.btnLabel || c.buttonText || 'View Detail',
+        buttonText: c.buttonText || c.btnLabel || 'View Detail',
+        link: c.link || c.buttonUrl || '',
+        buttonUrl: c.buttonUrl || c.link || ''
+    })) : [];
     const subscribersOnly = req.body.subscribersOnly !== undefined ? req.body.subscribersOnly : (req.body.followersOnly !== undefined ? req.body.followersOnly : false);
     const isActive = req.body.isActive !== undefined ? req.body.isActive : (req.body.status !== undefined ? req.body.status === 'Active' : true);
+    const dmContent = req.body.dmContent !== undefined ? req.body.dmContent : (req.body.automatedDmContent || '');
 
     const rule = new AutoReplyRule({
       name,
@@ -158,7 +167,17 @@ router.patch('/rules/:id', authMiddleware, async (req, res) => {
     if (req.body.dmContent !== undefined) rule.dmContent = req.body.dmContent;
     else if (req.body.automatedDmContent !== undefined) rule.dmContent = req.body.automatedDmContent;
 
-    if (req.body.carouselCards !== undefined) rule.carouselCards = req.body.carouselCards;
+    if (req.body.carouselCards !== undefined && Array.isArray(req.body.carouselCards)) {
+      rule.carouselCards = req.body.carouselCards.map(c => ({
+        imageUrl: c.imageUrl || '',
+        title: c.title || '',
+        description: c.description || '',
+        btnLabel: c.btnLabel || c.buttonText || 'View Detail',
+        buttonText: c.buttonText || c.btnLabel || 'View Detail',
+        link: c.link || c.buttonUrl || '',
+        buttonUrl: c.buttonUrl || c.link || ''
+      }));
+    }
     
     if (req.body.subscribersOnly !== undefined) rule.subscribersOnly = req.body.subscribersOnly;
     else if (req.body.followersOnly !== undefined) rule.subscribersOnly = req.body.followersOnly;

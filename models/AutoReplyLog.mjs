@@ -50,6 +50,19 @@ const autoReplyLogSchema = new mongoose.Schema({
     enum: ['pending', 'success', 'failed'],
     default: 'success'
   },
+  replyType: {
+    type: String,
+    default: 'Text'
+  },
+  carouselCards: [{
+    imageUrl: { type: String, default: '' },
+    title: { type: String, default: '' },
+    description: { type: String, default: '' },
+    btnLabel: { type: String, default: 'View Detail' },
+    link: { type: String, default: '' },
+    buttonText: { type: String, default: 'View Detail' },
+    buttonUrl: { type: String, default: '' }
+  }],
   failureReason: {
     type: String
   }

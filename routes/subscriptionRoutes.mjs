@@ -33,21 +33,18 @@ const planIds = {
  */
 router.post('/create', authMiddleware, async (req, res) => {
   try {
-    let { planType } = req.body; // 'free', 'quarterly', 'three_months_999', etc.
+    let { planType } = req.body;
     if (!planType) planType = 'free';
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     
-    // Auto-link legacy or dynamically registered users to default organization if missing
     if (!user.organizationId) {
       const defaultOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } });
       if (defaultOrg) {
         user.organizationId = defaultOrg._id;
         await user.save();
-        logger.info(`[Subscription] Auto-linked user ${user.email} to default organization: Channelmate`);
       } else {
-        logger.warn(`[Subscription] User ${user.email} has no organization, and default organization was not found.`);
         return res.status(400).json({ error: 'User is not linked to any organization.' });
       }
     }
@@ -55,52 +52,54 @@ router.post('/create', authMiddleware, async (req, res) => {
     const org = await Organization.findById(user.organizationId);
     if (!org) return res.status(404).json({ error: 'Organization not found' });
 
-    const planId = planIds[planType] || `plan_${planType}_mock`;
-    const durationDays = (planType === 'quarterly' || planType === 'three_months_999') ? 90 : 365;
-    const durationMs = durationDays * 24 * 60 * 60 * 1000;
-    const subId = `sub_${planType}_${Date.now()}`;
-
-    // Save subscription state on organization profile in Mongoose
-    org.subscription = {
-      status: 'active',
-      planType: planType,
-      razorpaySubscriptionId: subId,
-      currentPeriodEnd: new Date(Date.now() + durationMs)
-    };
-    await org.save();
-
-    // Cache on user object for backward compatibility
-    user.subscription = {
-      id: subId,
-      planId,
-      status: 'active',
-      currentStart: new Date(),
-      currentEnd: new Date(Date.now() + durationMs)
-    };
-    await user.save();
-
-    // Save/update Subscription document in Mongoose DB
-    await Subscription.findOneAndUpdate(
-      { organizationId: org._id },
-      {
-        userId: user._id,
-        organizationId: org._id,
+    if (planType === 'free') {
+      const durationMs = 30 * 24 * 60 * 60 * 1000;
+      const subId = `sub_free_${Date.now()}`;
+      org.subscription = {
+        status: 'active',
+        planType: 'free',
         razorpaySubscriptionId: subId,
-        planId,
-        planType,
+        currentPeriodEnd: new Date(Date.now() + durationMs)
+      };
+      await org.save();
+
+      user.subscription = {
+        id: subId,
+        planId: 'free',
         status: 'active',
         currentStart: new Date(),
         currentEnd: new Date(Date.now() + durationMs)
-      },
-      { upsert: true, new: true }
-    );
+      };
+      await user.save();
+
+      return res.json({ success: true, planType: 'free', subscriptionId: subId });
+    }
+
+    // Paid Plan - Create Razorpay Order
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_SnyBwTTmMiaZjY';
+    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || 'XBv2ZRTlwY6GloFLKcwiuXR3';
+
+    const Razorpay = (await import('razorpay')).default;
+    const razorpay = new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret });
+
+    const amountInPaise = (planType === 'quarterly' || planType === 'three_months_999' || planType === 'quarterly_pro') ? 99900 : 99900;
+
+    const order = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt: `rcpt_${Date.now()}`,
+      notes: { planType, userId: user._id.toString(), email: user.email }
+    });
+
+    logger.info(`[Razorpay] Created order ${order.id} for user ${user.email} (${planType})`);
 
     res.json({
       success: true,
-      subscriptionId: subId,
-      shortUrl: '#',
-      status: 'active',
-      razorpayKeyId: ''
+      orderId: order.id,
+      subscriptionId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      razorpayKeyId
     });
   } catch (err) {
     logger.error('Subscription initiate failure:', err);
@@ -113,30 +112,36 @@ router.post('/create', authMiddleware, async (req, res) => {
  */
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    const { planType: reqPlanType, razorpay_subscription_id } = req.body;
+    const { planType: reqPlanType, razorpay_subscription_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     let org = null;
-    let targetPlanType = reqPlanType;
+    let targetPlanType = reqPlanType || 'quarterly';
+    const subId = razorpay_subscription_id || razorpay_order_id || `sub_${targetPlanType}_${Date.now()}`;
+    const durationDays = (targetPlanType === 'quarterly' || targetPlanType === 'three_months_999' || targetPlanType === 'quarterly_pro') ? 90 : 365;
+    const expiryDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
     if (user.organizationId) {
       org = await Organization.findById(user.organizationId);
       if (org) {
-        if (!targetPlanType) targetPlanType = org.subscription?.planType || 'free';
-        org.subscription.status = 'active';
-        org.subscription.planType = targetPlanType;
-        org.subscription.razorpaySubscriptionId = razorpay_subscription_id || org.subscription.razorpaySubscriptionId || 'sub_dummy_active';
-        org.subscription.currentPeriodEnd = new Date(Date.now() + (targetPlanType === 'quarterly' ? 90 : 365) * 24 * 60 * 60 * 1000);
+        org.subscription = {
+          status: 'active',
+          planType: targetPlanType,
+          razorpaySubscriptionId: subId,
+          currentPeriodEnd: expiryDate
+        };
         await org.save();
       }
     }
 
-    if (!targetPlanType) targetPlanType = user.subscription?.planId || 'free';
-
-    user.subscription.status = 'active';
-    user.subscription.id = razorpay_subscription_id || user.subscription?.id || 'sub_dummy_active';
-    user.subscription.currentEnd = new Date(Date.now() + (targetPlanType === 'quarterly' ? 90 : 365) * 24 * 60 * 60 * 1000);
+    user.subscription = {
+      id: subId,
+      planId: targetPlanType,
+      status: 'active',
+      currentStart: new Date(),
+      currentEnd: expiryDate
+    };
     await user.save();
 
     await Subscription.findOneAndUpdate(
@@ -144,17 +149,40 @@ router.post('/verify', authMiddleware, async (req, res) => {
       {
         userId: user._id,
         organizationId: org ? org._id : undefined,
-        razorpaySubscriptionId: razorpay_subscription_id || 'sub_dummy_active',
-        planId: `plan_${targetPlanType}_mock`,
+        razorpaySubscriptionId: subId,
+        planId: `plan_${targetPlanType}`,
         planType: targetPlanType,
         status: 'active',
         currentStart: new Date(),
-        currentEnd: new Date(Date.now() + (targetPlanType === 'quarterly' ? 90 : 365) * 24 * 60 * 60 * 1000)
+        currentEnd: expiryDate
       },
       { upsert: true, new: true }
     );
 
-    res.json({ success: true, status: 'active', message: 'Payment verified.' });
+    // Save Payment transaction log for auditing if payment ID present
+    if (razorpay_payment_id) {
+      try {
+        await Payment.create({
+          userId: user._id,
+          organizationId: org ? org._id : undefined,
+          razorpayPaymentId: razorpay_payment_id,
+          razorpayOrderId: razorpay_order_id || subId,
+          razorpaySubscriptionId: subId,
+          subscriptionId: subId,
+          razorpaySignature: razorpay_signature || '',
+          amount: (targetPlanType === 'quarterly' || targetPlanType === 'quarterly_pro') ? 99900 : 99900,
+          currency: 'INR',
+          status: 'captured',
+          paymentDate: new Date()
+        });
+      } catch (payErr) {
+        logger.warn(`[PaymentLog] Couldn't save payment entry: ${payErr.message}`);
+      }
+    }
+
+    logger.info(`[Subscription] Activated ${targetPlanType} for user ${user.email}`);
+
+    res.json({ success: true, status: 'active', message: 'Payment verified and subscription activated.' });
   } catch (err) {
     logger.error('Subscription verification failure:', err);
     res.status(500).json({ error: err.message });

@@ -51,7 +51,9 @@ const autoReplyRuleSchema = new mongoose.Schema({
     title: { type: String, default: '' },
     description: { type: String, default: '' },
     btnLabel: { type: String, default: 'View Detail' },
-    link: { type: String, default: '' }
+    link: { type: String, default: '' },
+    buttonText: { type: String, default: 'View Detail' },
+    buttonUrl: { type: String, default: '' }
   }],
   subscribersOnly: {
     type: Boolean,

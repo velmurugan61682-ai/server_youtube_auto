@@ -159,10 +159,16 @@ export const generateAndPostAutoReply = async ({
     const prompt = `You are replying to a YouTube comment on behalf of the channel owner.
 Comment: "${commentText}"
 
-First, analyze and detect the language and script of the comment (e.g., Tamil script, Tanglish/Latin script, English, Hindi, Hinglish, etc.).
-Then, generate a natural, relevant, warm, and friendly reply in the exact SAME language and script as the comment.
-CRITICAL RULE: You must reply in the exact same language and script. If the comment is in Tamil (using Tamil script), reply in Tamil script. If the comment is in Tanglish (Tamil words written in English/Latin script), reply in Tanglish. If the comment is in English, reply in English. Do not mix languages or scripts unless the comment does. Keep the reply short (1-2 sentences), warm, and relevant to what the commenter said. Do not use generic or templated replies.
-If you cannot determine the language, or if language detection fails, default to generating the reply in English.
+Analyze and detect the language and script of the comment (e.g., Tamil script, Tanglish/Latin script, English, Hindi, Hinglish, Spanish, Malayalam, Telugu, Kannada, French, German, etc.).
+Generate a natural, warm, and friendly reply in the EXACT SAME language and script as the comment.
+CRITICAL MULTI-LANGUAGE RULE:
+You MUST reply in the exact same language and script used in the comment.
+- If the comment is in Tamil (using Tamil script), reply in Tamil script.
+- If the comment is in Tanglish (Tamil words written in English/Latin script, e.g. "super bro", "nalla iruku"), reply in Tanglish!
+- If the comment is in Hindi / Hinglish, reply in Hinglish or Hindi script matching the comment.
+- If the comment is in Spanish, French, Telugu, Malayalam, etc., reply in that exact language.
+- Keep the reply short (1-2 sentences), warm, and contextually relevant.
+- Do not use hashtags or generic templates.
 
 Respond with ONLY a JSON object (no markdown, no other text) in this format:
 {

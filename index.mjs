@@ -367,6 +367,7 @@ app.use('/api/auth/register', authLimiter);
 app.use('/api', apiLimiter);
 
 // ── Routes ───────────────────────────────────────────────────
+app.use('/api/v1', routes);
 app.use('/api', routes);
 
 try {

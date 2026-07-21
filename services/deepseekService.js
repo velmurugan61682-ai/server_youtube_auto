@@ -155,16 +155,18 @@ export const generateReply = async (commentText, videoContext = {}) => {
 Video title: ${title}
 Video description (short): ${description}
 
-First, detect the language/script the comment is written in (Tamil, English, Tanglish, Hindi, or other).
-Then write a short, warm, natural reply (1-2 sentences max) in the SAME language and SAME script as the comment.
-- If it's Tanglish (Tamil words in English letters), reply in Tanglish too, not formal Tamil script.
-- Sound human, not robotic or corporate.
-- Do not use hashtags. Max 1 emoji, optional.
+Analyze the input comment and detect its language and script (Tamil script, Tanglish/Latin, English, Hindi, Hinglish, Spanish, Malayalam, Telugu, Kannada, or any other language).
+Write a short, warm, natural reply (1-2 sentences max) in the EXACT SAME language and script as the comment.
+- If it's Tanglish (Tamil words written in English letters), reply in Tanglish.
+- If it's Hinglish/Hindi, reply in Hinglish or Hindi matching the comment.
+- Match the user's language tone and script accurately.
+- Sound human, warm, and conversational.
+- Do not use hashtags. Max 1 emoji optional.
 - Never mention you are an AI.
 
 Respond with ONLY a JSON object (no markdown, no other text) in this format:
 {
-  "detectedLanguage": "Tamil | English | Tanglish | Hindi | other",
+  "detectedLanguage": "detected language here",
   "reply": "your reply text here"
 }`;
 

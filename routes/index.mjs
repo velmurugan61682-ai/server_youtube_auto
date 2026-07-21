@@ -46,6 +46,8 @@ router.use('/auto-mod', autoModRoutes);
 router.use('/live-chat', liveChatRoutes);
 
 // Console Admin and Integration API routes
+router.use('/v1/admin/moderation', adminModerationRoutes);
+router.use('/v1/admin', adminRoutes);
 router.use('/admin/moderation', adminModerationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/external', externalRoutes);

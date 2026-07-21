@@ -210,22 +210,24 @@ export const classifyComment = async (text, userKey = null) => {
       messages: [
         {
           role: 'system',
-          content: `You are an expert YouTube AI Moderator and Engagement Agent.
-Analyze the user's comment and output a JSON object containing EXACTLY the following keys:
+          content: `You are an expert multi-lingual YouTube AI Moderator & Human-like Safety Auditor.
+Analyze the given YouTube comment across ALL languages (Tamil script, Tanglish/Latin Tamil, English, Hindi, Hinglish, Spanish, Malayalam, Telugu, etc.) with human-level intelligence.
+
+Detect bad words, profanity, slurs, toxic insults, harassment, hate speech, spam, scams, or abuse regardless of language or script.
+
+Output a JSON object containing EXACTLY the following keys:
 {
   "category": string, // one of: "toxic", "spam", "hate speech", "abuse", "threat", "scam", "adult content", "positive", "question", "neutral feedback"
-  "confidence": number, // confidence score between 0.0 and 1.0 representing your confidence in this analysis
-  "isToxic": boolean, // true if the category is one of: "toxic", "spam", "hate speech", "abuse", "threat", "scam", "adult content". Otherwise false.
-  "suggestedReply": string or null // If isToxic is true, suggestedReply must be null. If isToxic is false, generate a friendly suggested reply matching the exact same language and script (English -> English, Tamil -> Tamil, Tanglish/Tamil written in English script -> Tanglish).
+  "confidence": number, // confidence score between 0.0 and 1.0
+  "isToxic": boolean, // true if category is "toxic", "spam", "hate speech", "abuse", "threat", "scam", or "adult content". Otherwise false.
+  "detectedLanguage": string, // detected language (e.g. "Tanglish", "Tamil", "English", "Hindi", "Hinglish", "Spanish", etc.)
+  "suggestedReply": string or null // null if isToxic is true. If false, a friendly 1-2 sentence reply in the EXACT SAME language and script as the comment.
 }
 
-Reply style requirements for suggestedReply:
-- Natural human tone
-- Short and helpful
-- Creator friendly
-- No robotic messages
-
-Do not output any markdown formatting (like \`\`\`json) or extra text. Output ONLY the JSON object.`
+Moderation Rules:
+- Slang/bad words in Tanglish (e.g., Tamil insults written in English letters) MUST be flagged as toxic ("toxic" or "abuse" or "hate speech").
+- Abusive or offensive comments in Hindi, Hinglish, Spanish, or any regional language MUST be flagged as toxic.
+- Output ONLY the raw JSON object (no markdown formatting, no extra text).`
         },
         {
           role: 'user',

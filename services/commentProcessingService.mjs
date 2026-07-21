@@ -244,8 +244,13 @@ const generateDeepseekHumanReply = async (commentText, ruleBaseText, userKey) =>
 Comment: "${commentText}"
 Base response guidance / template: "${ruleBaseText}"
 
-Generate a natural, human-like, conversational response that answers or acknowledges the comment, respecting the same language and script (Tamil, Tanglish, or English) of the comment.
-Ensure the response incorporates the guidance from the base response template (if any), sounds completely natural (avoiding robotic templates), respects the comment language, and does not exceed 200 characters.
+Analyze and detect the exact language and script of the comment (e.g. Tamil script, Tanglish/Latin, Hindi script, Hinglish, Spanish, Malayalam, Telugu, English, etc.).
+Generate a natural, human-like, conversational response that answers or acknowledges the comment in the EXACT SAME language and script as the comment.
+- If the comment is in Tanglish (Tamil words written in English/Latin letters), reply in Tanglish!
+- If the comment is in Hindi / Hinglish, reply in Hinglish or Hindi script matching the comment.
+- If the comment is in Tamil script, reply in Tamil script.
+- If the comment is in any other language, reply in that exact language and script.
+Ensure the response incorporates the guidance from the base response template (if any), sounds completely natural, and does not exceed 200 characters.
 
 Respond with ONLY a JSON object:
 {
@@ -915,6 +920,13 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       const ruleBaseText = matchedRule.replyText || matchedRule.dmContent || 'Thank you for your comment!';
       replyText = await generateDeepseekHumanReply(commentDoc.text, ruleBaseText, userKey);
 
+      if (matchedRule.replyType === 'Carousel' && matchedRule.carouselCards && matchedRule.carouselCards.length > 0) {
+        const cardsFormatted = matchedRule.carouselCards.map(card => {
+          return `Card:\nImage:\n${card.imageUrl || ''}\n\nTitle:\n${card.title || ''}\n\nDescription:\n${card.description || ''}\n\nButton:\n${card.btnLabel || card.buttonText || 'View Detail'}\n\nURL:\n${card.link || card.buttonUrl || ''}`;
+        }).join('\n\n');
+        replyText = cardsFormatted;
+      }
+
       if (replyText && !channel.apiKey) {
         // Post reply on YouTube
         const repRes = await replyToComment(youtube, commentDoc.youtubeId, replyText);
@@ -933,6 +945,8 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
               username: commentDoc.author || 'Anonymous',
               commentText: commentDoc.text,
               triggerKeyword: matchedKeyword || '*',
+              replyType: matchedRule.replyType || 'Text',
+              carouselCards: matchedRule.replyType === 'Carousel' ? matchedRule.carouselCards : [],
               replyText: replyText,
               aiReply: replyText,
               deepseekResponse: replyText,
