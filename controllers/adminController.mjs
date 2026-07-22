@@ -40,6 +40,29 @@ const maskKey = (key) => {
   return `${key.substring(0, 7)}••••••••${key.substring(key.length - 4)}`;
 };
 
+const toInt = (value, fallback, max = 100) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, max);
+};
+
+const buildUserFilter = ({ search, status, plan }) => {
+  const filter = { role: { $ne: 'superadmin' } };
+
+  if (search) {
+    filter.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } },
+      { organization: { $regex: search, $options: 'i' } },
+      { tenantId: { $regex: search, $options: 'i' } }
+    ];
+  }
+  if (status && status !== 'all') filter.status = status;
+  if (plan && plan !== 'all') filter['subscription.planId'] = plan;
+
+  return filter;
+};
+
 /**
  * POST /api/v1/admin/login & POST /api/admin/login
  * Strictly authenticates admin accounts from the Admin collection ONLY.
@@ -362,6 +385,174 @@ export const getAdminUsers = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/v1/admin/customers/details
+ * Admin-only full customer detail export/list endpoint.
+ */
+export const getAllCustomerDetails = async (req, res) => {
+  try {
+    const { search = '', status = 'all', plan = 'all', page = 1, limit = 50, includeRecent = 'true' } = req.query;
+    const pageNum = toInt(page, 1, 10000);
+    const limitNum = toInt(limit, 50, 100);
+    const skip = (pageNum - 1) * limitNum;
+    const filter = buildUserFilter({ search, status, plan });
+
+    const [totalCustomers, users] = await Promise.all([
+      User.countDocuments(filter),
+      User.find(filter)
+        .select('-password -passwordHash -youtubeApiKey -openaiApiKey -gowhatsApiKey')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean()
+    ]);
+
+    const customers = await Promise.all(users.map(async (user) => {
+      const userId = user._id;
+      const recentEnabled = includeRecent !== 'false';
+
+      const [
+        channels,
+        subscription,
+        subscriptionHistory,
+        payments,
+        metrics,
+        recentLeads,
+        recentComments,
+        recentModeration,
+        recentAutoReplies,
+        recentAutoLikes
+      ] = await Promise.all([
+        Channel.find({ userId })
+          .select('-accessToken -refreshToken')
+          .sort({ createdAt: -1 })
+          .lean(),
+        Subscription.findOne({ $or: [{ user: userId }, { userId }] }).sort({ createdAt: -1 }).lean(),
+        Subscription.find({ $or: [{ user: userId }, { userId }] }).sort({ createdAt: -1 }).limit(10).lean(),
+        Payment.find({ userId }).sort({ createdAt: -1 }).limit(10).lean(),
+        Promise.all([
+          Comment.countDocuments({ userId }),
+          Comment.countDocuments({ userId, sentiment: 'positive' }),
+          Comment.countDocuments({ userId, sentiment: 'toxic' }),
+          Comment.countDocuments({ userId, status: { $in: ['moderate', 'flagged'] } }),
+          Lead.countDocuments({ userId }),
+          Lead.countDocuments({ userId, whatsappSent: true }),
+          AutoReplyLog.countDocuments({ userId, status: { $in: ['success', 'Success'] } }),
+          AutoLikeLog.countDocuments({ userId, autoLiked: true }),
+          ModerationLog.countDocuments({ userId, status: { $in: ['Success', 'success'] } })
+        ]),
+        recentEnabled ? Lead.find({ userId }).sort({ createdAt: -1 }).limit(10).lean() : [],
+        recentEnabled ? Comment.find({ userId }).select('-detectedWords').sort({ createdAt: -1 }).limit(10).lean() : [],
+        recentEnabled ? ModerationLog.find({ userId }).sort({ createdAt: -1 }).limit(10).lean() : [],
+        recentEnabled ? AutoReplyLog.find({ userId }).sort({ createdAt: -1 }).limit(10).lean() : [],
+        recentEnabled ? AutoLikeLog.find({ userId }).sort({ createdAt: -1 }).limit(10).lean() : []
+      ]);
+
+      const [
+        totalComments,
+        positiveComments,
+        toxicComments,
+        pendingModeration,
+        leadsGenerated,
+        whatsappLeadsSent,
+        autoRepliesSent,
+        autoLikes,
+        autoModerationActions
+      ] = metrics;
+
+      const currentSubscription = subscription || user.subscription || {};
+
+      return {
+        id: user._id,
+        _id: user._id,
+        tenantId: user.tenantId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        organization: user.organization || '',
+        organizationId: user.organizationId,
+        status: user.status || 'active',
+        assignedAgent: user.assignedAgent,
+        assignedAgentType: user.assignedAgentType,
+        profilePicture: user.profilePicture || '',
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+        deletedAt: user.deletedAt,
+        settings: user.settings || {},
+        subscription: {
+          id: currentSubscription._id || currentSubscription.id || null,
+          subscriptionId: currentSubscription.subscriptionId || currentSubscription.id || null,
+          plan: currentSubscription.plan || currentSubscription.planId || user.subscription?.planId || 'free',
+          planId: currentSubscription.planId || currentSubscription.plan || user.subscription?.planId || 'free',
+          status: currentSubscription.status || user.subscription?.status || 'none',
+          amount: currentSubscription.amount || 0,
+          currency: currentSubscription.currency || 'INR',
+          currentStart: currentSubscription.currentStart || currentSubscription.startDate || user.subscription?.currentStart,
+          currentEnd: currentSubscription.currentEnd || currentSubscription.renewalDate || currentSubscription.endDate || user.subscription?.currentEnd,
+          history: subscriptionHistory
+        },
+        youtube: {
+          connectedChannelCount: channels.length,
+          connectedChannels: channels.map(channel => ({
+            id: channel._id,
+            channelId: channel.channelId,
+            title: channel.title,
+            thumbnailUrl: channel.thumbnailUrl,
+            customUrl: channel.customUrl,
+            connectedAt: channel.createdAt,
+            lastSyncedAt: channel.lastSyncedAt,
+            reconnectRequired: channel.reconnectRequired || false,
+            reconnectReason: channel.reconnectReason || null,
+            authType: channel.apiKey ? 'api_key' : 'oauth',
+            statistics: channel.statistics || {}
+          }))
+        },
+        metrics: {
+          totalComments,
+          positiveComments,
+          toxicComments,
+          pendingModeration,
+          leadsGenerated,
+          whatsappLeadsSent,
+          autoRepliesSent,
+          autoLikes,
+          autoModerationActions
+        },
+        recent: {
+          leads: recentLeads,
+          comments: recentComments,
+          moderation: recentModeration,
+          autoReplies: recentAutoReplies,
+          autoLikes: recentAutoLikes,
+          payments
+        }
+      };
+    }));
+
+    await logAudit(req.admin?.id, req.admin?.email, 'VIEW_ALL_CUSTOMER_DETAILS', 'User', 'all', {
+      page: pageNum,
+      limit: limitNum,
+      search,
+      status,
+      plan
+    });
+
+    return res.json({
+      success: true,
+      count: customers.length,
+      customers,
+      pagination: {
+        total: totalCustomers,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(totalCustomers / limitNum)
+      }
+    });
+  } catch (error) {
+    logger.error('[Admin Controller] getAllCustomerDetails failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to retrieve customer details.' });
+  }
+};
 /**
  * GET /api/v1/admin/clients/:id & GET /api/v1/admin/users/:id
  * Full client detail view

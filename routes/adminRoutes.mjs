@@ -5,6 +5,7 @@ import {
   getAdminProfile,
   onboardClient,
   getAdminUsers,
+  getAllCustomerDetails,
   getAdminClientById,
   updateAdminClient,
   deleteAdminUser,
@@ -41,6 +42,9 @@ router.get('/audit-logs', adminAuth, getAdminAuditLogs);
 // ── Client & User Management ─────────────────────────────────────
 router.post('/clients', adminAuth, onboardClient);
 router.get('/clients', adminAuth, getAdminUsers);
+router.get('/customers/details', adminAuth, getAllCustomerDetails);
+router.get('/clients/details/all', adminAuth, getAllCustomerDetails);
+router.get('/users/details/all', adminAuth, getAllCustomerDetails);
 router.get('/clients/:id', adminAuth, getAdminClientById);
 router.put('/clients/:id', adminAuth, updateAdminClient);
 router.patch('/clients/:id', adminAuth, updateAdminClient);
