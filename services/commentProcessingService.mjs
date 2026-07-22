@@ -700,24 +700,26 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     const matchedCategory = mapClassificationToRule(classification, rawAnalysis);
     
     let isUnsafe = false;
-    if (aiResult.isToxic === true) {
+    if (aiResult.isToxic === true && isConfident) {
       isUnsafe = true;
-    } else if (matchedCategory !== 'safe') {
+    } else if (matchedCategory !== 'safe' && isConfident) {
       const ruleName = `${matchedCategory}Detection`;
       if (tenantSettings.moderationRules[ruleName]) {
         isUnsafe = true;
       }
     }
 
+    const needsManualReview = !isUnsafe && !isConfident && (aiResult.isToxic === true || matchedCategory !== 'safe');
+
     let moderationActionTaken = false;
     let replyStatus = 'none';
     let leadStatus = 'none';
     let executedAction = 'none';
-    let status = 'approved';
+    let status = needsManualReview ? 'moderate' : 'approved';
     let wasHidden = false;
     let deleteReason = null;
     let deletedAt = null;
-    let moderationStatus = 'safe';
+    let moderationStatus = needsManualReview ? 'needsReview' : 'safe';
     let deleteFailed = false;
     let deleteErrorReason = null;
 
@@ -736,11 +738,14 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         if (modAction === 'delete') {
           const delRes = await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
           if (delRes.success) {
-            status = 'deleted';
-            deletedAt = new Date();
-            deleteReason = `Auto-deleted bad comment: ${matchedCategory}`;
-            moderationStatus = 'deleted';
-            executedAction = 'delete';
+            const youtubeAction = delRes.action || 'delete';
+            const removedFromPublic = youtubeAction === 'delete' || youtubeAction === 'reject';
+            status = removedFromPublic ? 'deleted' : 'flagged';
+            deletedAt = removedFromPublic ? new Date() : null;
+            deleteReason = `Auto-${youtubeAction} bad comment: ${matchedCategory}`;
+            moderationStatus = removedFromPublic ? 'deleted' : 'heldForReview';
+            executedAction = youtubeAction === 'reject' ? 'delete' : youtubeAction;
+            wasHidden = youtubeAction === 'hide';
           } else {
             deleteFailed = true;
             deleteErrorReason = delRes.reason;
@@ -788,7 +793,8 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           commentText: commentDoc.text || '',
           category: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
           confidence: aiResult.confidence || 0.85,
-          reason: `Auto-detected: ${matchedCategory}`,
+          toxicityScore: aiResult.toxicityScore || 0,
+          reason: `Auto-detected: ${matchedCategory}`, 
           action: loggedAction,
           executedAction: loggedAction,
           status: deleteFailed ? 'Failed' : 'Success',
@@ -1229,11 +1235,20 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     // Capture a lead whenever a SAFE comment (not toxic) contains ANY lead keyword.
     // WhatsApp DM is sent only if a phone number is also detected.
     const whatsappNumber = detectWhatsAppNumber(commentDoc.text);
-    const leadKeywords = tenantSettings.leadKeywords || ['price', 'details', 'course', 'join', 'contact', 'phone', 'call', 'whatsapp', 'demo', 'fees'];
+    const defaultLeadKeywords = [
+      'price', 'rate', 'cost', 'amount', 'details', 'detail', 'course', 'join', 'contact', 'phone', 'call', 'whatsapp', 'demo', 'fees',
+      'buy', 'order', 'purchase', 'interested', 'dm', 'message', 'number', 'available', 'booking', 'enroll', 'apply',
+      'vilai', 'evlo', 'evalo', 'eppadi join', 'contact pannunga', 'whatsapp pannunga'
+    ];
+    const leadKeywords = Array.isArray(tenantSettings.leadKeywords) && tenantSettings.leadKeywords.length > 0
+      ? [...new Set([...tenantSettings.leadKeywords, ...defaultLeadKeywords])]
+      : defaultLeadKeywords;
     const matchesLeadKeywords = checkLeadKeywordsMatched(commentDoc.text, leadKeywords);
+    const aiLeadDetected = aiResult?.lead?.isLead === true || rawAnalysis?.buyingIntent === true || rawAnalysis?.customer === true;
+    const hasLeadSignal = matchesLeadKeywords || Boolean(whatsappNumber) || aiLeadDetected;
 
-    // Capture lead if: comment is safe (not moderated), matches a lead keyword, and AI replied
-    if (!moderationActionTaken && matchesLeadKeywords && replyStatus !== 'none') {
+    // Capture lead for safe comments whenever a lead signal exists. Auto-reply success is not required.
+    if (!moderationActionTaken && status !== 'deleted' && hasLeadSignal) {
       leadStatus = 'processing';
       const idempotencyKey = `${channel.organizationId || channel.userId}_${channel.channelId}_${commentDoc.youtubeId}_lead`;
 
@@ -1242,8 +1257,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         try {
           const phoneToUse = whatsappNumber || rawAnalysis?.whatsappNumber || rawAnalysis?.phoneNumber || aiResult?.lead?.phone;
           const emailToUse = rawAnalysis?.email || aiResult?.lead?.email;
-          const intentToUse = rawAnalysis?.buyingIntent ? 'Purchase Intent' : (rawAnalysis?.customer ? 'Interested' : 'Interest');
-          const notesText = `Product: ${rawAnalysis?.productInterest || 'General'} | Language: ${rawAnalysis?.detectedLanguage || 'English'} | Keywords: ${leadKeywords.filter(k => commentDoc.text.toLowerCase().includes(k)).join(', ')}`;
+          const intentToUse = aiResult?.lead?.intent || (rawAnalysis?.buyingIntent ? 'Purchase Intent' : (rawAnalysis?.customer ? 'Interested' : (matchesLeadKeywords ? 'Keyword Match' : 'Contact Request')));
+          const matchedLeadKeywords = leadKeywords.filter(k => commentDoc.text.toLowerCase().includes(String(k).toLowerCase()));
+          const notesText = `Product: ${rawAnalysis?.productInterest || 'General'} | Language: ${aiResult?.language || rawAnalysis?.detectedLanguage || 'Unknown'} | Keywords: ${matchedLeadKeywords.join(', ') || 'AI/phone signal'}`;
 
           logger.info(`[LEADS] Creating lead for comment ${commentDoc.youtubeId} (keyword match)`);
           const { lead, isDuplicate } = await createLead({
@@ -1258,20 +1274,22 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
             whatsappNumber: phoneToUse || 'None',
             email: emailToUse || null,
             intent: intentToUse,
-            productInterest: rawAnalysis?.productInterest || 'General',
-            language: rawAnalysis?.detectedLanguage || 'English',
+            productInterest: aiResult?.lead?.productInterest || rawAnalysis?.productInterest || 'General',
+            language: aiResult?.language || rawAnalysis?.detectedLanguage || 'Unknown',
             notes: notesText,
           });
           leadStatus = isDuplicate ? 'duplicate' : 'pending';
 
           // Only send WhatsApp DM if phone number detected AND GoWhats configured
           if (!isDuplicate && phoneToUse && phoneToUse !== 'None' && user.gowhatsApiKey) {
-            // Hide the comment to protect phone number privacy
-            const hideRes = await hideComment(youtube, commentDoc.youtubeId);
-            if (hideRes.success) {
-              lead.isHidden = true;
-              status = 'flagged';
-              wasHidden = true;
+            // Hide the comment to protect phone number privacy when OAuth write access is available.
+            if (!channel.apiKey && youtube) {
+              const hideRes = await hideComment(youtube, commentDoc.youtubeId);
+              if (hideRes.success) {
+                lead.isHidden = true;
+                status = 'flagged';
+                wasHidden = true;
+              }
             }
             const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://channelmate.com';
             const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will reach out to you shortly. Feel free to reply if you have any questions!`;
@@ -1296,6 +1314,11 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
             lead.errorLog = waRes.success ? null : waRes.error;
             leadStatus = waRes.success ? 'sent' : 'failed';
             await lead.save();
+          }
+
+          if (io) {
+            io.to(channel.userId.toString()).emit('lead_created', lead);
+            io.to(channel.userId.toString()).emit('stats_updated');
           }
         } catch (leadErr) {
           if (leadErr.code === 11000) {

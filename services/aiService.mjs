@@ -86,38 +86,29 @@ const TOXIC_KEYWORDS = [
   'scammer', 'clickbait'
 ];
 
+const normalizeLanguage = (value, text = '') => {
+  const language = String(value || '').trim();
+  if (language && !['unknown', 'undefined', 'null'].includes(language.toLowerCase())) {
+    return language;
+  }
+
+  if (new RegExp('[\\u0B80-\\u0BFF]').test(text)) return 'Tamil';
+  if (new RegExp('[\\u0900-\\u097F]').test(text)) return 'Hindi';
+  if (new RegExp('[\\u0C00-\\u0C7F]').test(text)) return 'Telugu';
+  if (new RegExp('[\\u0D00-\\u0D7F]').test(text)) return 'Malayalam';
+  if (new RegExp('[\\u0C80-\\u0CFF]').test(text)) return 'Kannada';
+
+  const lower = String(text || '').toLowerCase();
+  if (/\b(da|dei|poda|machi|nanba|semma|nalla|thala|mokka|loosu|omala|punda|otha|mayiru)\b/.test(lower)) {
+    return 'Tanglish';
+  }
+
+  return text ? 'English' : 'Unknown';
+};
+
 export const classifyComment = async (text, userKey = null) => {
   const lowerText = text.toLowerCase().trim();
-  const hasFire = text.includes('🔥') || lowerText.includes('fire');
-  const hasDetail = lowerText.includes('detail');
-
-  if (hasFire || hasDetail) {
-    logger.info(`[MODERATION] Bypassing AI classification for fire/detail comment: "${text}"`);
-    const isFire = hasFire;
-    return {
-      classification: isFire ? 'Positive' : 'Neutral',
-      sentiment: isFire ? 'positive' : 'neutral',
-      toxicityScore: 0,
-      confidence: 1.0,
-      language: 'unknown',
-      detectedWords: isFire ? [{ word: 'fire', category: 'appreciation' }] : [],
-      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: null },
-      suggestedReply: null,
-      rawAnalysis: {
-        positive: isFire,
-        neutral: !isFire,
-        toxic: false,
-        spam: false,
-        abuse: false,
-        threat: false,
-        scam: false,
-        hate: false,
-        profanity: false,
-        badWords: false,
-        question: !isFire
-      }
-    };
-  }
+  const fallbackLanguage = normalizeLanguage(null, text);
 
   let client;
   if (userKey) {
@@ -191,9 +182,9 @@ export const classifyComment = async (text, userKey = null) => {
       sentiment: detectedSentiment || 'moderate',
       toxicityScore: isToxic ? 0.8 : 0,
       confidence: keywordDetected ? 0.9 : 0.5,
-      language: 'unknown',
+      language: fallbackLanguage,
       detectedWords,
-      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: null },
+      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: fallbackLanguage },
       suggestedReply: null,
       categoryScores: fallbackCategoryScores,
       rawAnalysis: {
@@ -273,6 +264,9 @@ Moderation Rules:
       sentiment = 'moderate';
     }
 
+    const detectedLanguage = normalizeLanguage(result.detectedLanguage || result.language, text);
+    const confidenceScore = Number.isFinite(Number(result.confidence)) ? Number(result.confidence) : 0.85;
+
     // Map lead details
     const isLead = cat === 'question';
     const lead = {
@@ -281,29 +275,29 @@ Moderation Rules:
       phone: null,
       intent: isLead ? 'Inquiry' : null,
       productInterest: null,
-      language: 'English',
-      notes: `Category: ${result.category} | Confidence: ${result.confidence}`
+      language: detectedLanguage,
+      notes: `Category: ${result.category} | Confidence: ${confidenceScore}`
     };
 
     let finalWords = [];
 
     // Category-level breakdown scores (0.0 to 1.0)
     const categoryScores = {
-      toxic: cat === 'toxic' ? 0.8 : 0.0,
-      spam: cat === 'spam' ? 0.8 : 0.0,
-      hateSpeech: cat === 'hate speech' ? 0.8 : 0.0,
-      abuse: cat === 'abuse' ? 0.8 : 0.0,
-      scam: cat === 'scam' ? 0.8 : 0.0,
-      sexualContent: cat === 'adult content' ? 0.8 : 0.0
+      toxic: cat === 'toxic' ? confidenceScore : 0.0,
+      spam: cat === 'spam' ? confidenceScore : 0.0,
+      hateSpeech: cat === 'hate speech' ? confidenceScore : 0.0,
+      abuse: cat === 'abuse' ? confidenceScore : 0.0,
+      scam: cat === 'scam' ? confidenceScore : 0.0,
+      sexualContent: cat === 'adult content' ? confidenceScore : 0.0
     };
 
     return {
       classification,
       sentiment,
       isToxic: result.isToxic || false,
-      toxicityScore: result.isToxic ? 0.8 : 0.0,
-      confidence: result.confidence || 0.85,
-      language: 'English', // default
+      toxicityScore: result.isToxic ? confidenceScore : 0.0,
+      confidence: confidenceScore,
+      language: detectedLanguage,
       detectedWords: finalWords,
       lead,
       suggestedReply: result.suggestedReply || null,
@@ -342,9 +336,9 @@ Moderation Rules:
       isToxic: isToxic,
       toxicityScore: isToxic ? 0.8 : 0,
       confidence: keywordDetected ? 0.9 : 0.5,
-      language: 'unknown',
+      language: fallbackLanguage,
       detectedWords,
-      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: null },
+      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: fallbackLanguage },
       suggestedReply: null,
       categoryScores: fallbackCategoryScores,
       rawAnalysis: {

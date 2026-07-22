@@ -247,15 +247,15 @@ export const getAnalytics = async (req, res) => {
       },
       {
         $addFields: {
-          // Normalize language: treat null/unknown/empty as 'English'
+          // Keep AI-detected language buckets honest. Unknown data should not be counted as English.
           normalizedLang: {
             $cond: [
               { $or: [
                 { $eq: ['$language', null] },
                 { $eq: ['$language', ''] },
-                { $eq: ['$language', 'unknown'] }
+                { $eq: [{ $toLower: { $ifNull: ['$language', ''] } }, 'unknown'] }
               ]},
-              'English',
+              'Unknown',
               '$language'
             ]
           }

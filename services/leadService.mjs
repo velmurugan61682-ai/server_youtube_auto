@@ -45,6 +45,8 @@ export const detectWhatsAppNumber = (text) => {
  * Check if a lead with same number was recently created (duplicate protection)
  */
 export const isDuplicateLead = async (number, userId) => {
+  if (!number || number === 'None') return false;
+
   // Consider duplicate if same number exists for this user in last 24 hours
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const existing = await Lead.findOne({
