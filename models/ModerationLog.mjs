@@ -6,11 +6,11 @@ const moderationLogSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // organizationId index defined in schema.index() below — NOT inline to avoid duplicate
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
   channelId: {
     type: String,
@@ -75,7 +75,8 @@ const moderationLogSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
+// All indexes defined at schema-level only (no inline index:true duplicates)
+moderationLogSchema.index({ organizationId: 1 }); // was inline index:true — moved here
 moderationLogSchema.index({ userId: 1 });
 moderationLogSchema.index({ channelId: 1 });
 moderationLogSchema.index({ videoId: 1 });

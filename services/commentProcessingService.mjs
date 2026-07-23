@@ -578,7 +578,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       const restoredComment = await Comment.findOneAndUpdate(
         { userId: channel.userId, youtubeId: commentDoc.youtubeId },
         { $set: commentData },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       logger.info(`[Pipeline] Successfully restored comment ${commentDoc.youtubeId} to DB (Status: ${status}).`);
@@ -861,7 +861,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       const updatedComment = await Comment.findOneAndUpdate(
         { userId: channel.userId, youtubeId: commentDoc.youtubeId },
         { $set: newCommentData },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       if (io && updatedComment) {
@@ -1011,7 +1011,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                     actionTaken: 'skip_bot',
                   }
                 },
-                { upsert: true, new: true }
+                { upsert: true, returnDocument: 'after' }
               );
             } catch (botSaveErr) {
               logger.error(`[Comment Automation] Failed to save bot reply: ${botSaveErr.message}`);
@@ -1139,7 +1139,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                   actionTaken: 'skip_bot',
                 }
               },
-              { upsert: true, new: true }
+              { upsert: true, returnDocument: 'after' }
             );
           } catch (botSaveErr) {
             logger.error(`[Comment Automation] Failed to save bot reply: ${botSaveErr.message}`);
@@ -1224,7 +1224,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
               status: likeStatus
             }
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       } catch (logErr) {
         logger.error(`[AUTO-LIKE] Failed to save AutoLikeLog: ${logErr.message}`);
@@ -1385,7 +1385,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       const updatedComment = await Comment.findOneAndUpdate(
         { userId: channel.userId, youtubeId: commentDoc.youtubeId },
         { $set: newCommentData },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       // Broadcast update using Socket.IO for Live Dashboard

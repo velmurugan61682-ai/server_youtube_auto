@@ -46,7 +46,7 @@ export const toggleMode = async (req, res) => {
           handledBy: mode === 'human' ? req.user.id : null
         }
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const io = req.app.get('io');

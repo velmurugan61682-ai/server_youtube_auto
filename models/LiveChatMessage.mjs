@@ -1,21 +1,19 @@
 import mongoose from 'mongoose';
 
 const liveChatMessageSchema = new mongoose.Schema({
+  // organizationId, channelId, liveChatId indexes defined in schema.index() below — NOT inline
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
   channelId: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   liveChatId: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   videoId: {
     type: String,
@@ -60,6 +58,7 @@ const liveChatMessageSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// All indexes at schema-level (no inline index:true duplicates)
 liveChatMessageSchema.index({ messageId: 1, organizationId: 1 }, { unique: true });
 liveChatMessageSchema.index({ organizationId: 1, channelId: 1, liveChatId: 1, publishedAt: -1 });
 

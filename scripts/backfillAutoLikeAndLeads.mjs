@@ -65,7 +65,7 @@ const run = async () => {
             status: 'success'
           }
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       // Mark comment as autoLiked in DB
       await Comment.updateOne(

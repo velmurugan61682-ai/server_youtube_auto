@@ -16,11 +16,11 @@ const commentAutomationRuleSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // organizationId index defined in schema.index() below — NOT inline to avoid duplicate
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
   channelId: {
     type: String,
@@ -140,7 +140,8 @@ const commentAutomationRuleSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for fast fetching
+// All indexes at schema-level (no inline index:true duplicates)
+commentAutomationRuleSchema.index({ organizationId: 1 }); // was inline index:true — moved here
 commentAutomationRuleSchema.index({ userId: 1 });
 commentAutomationRuleSchema.index({ channelId: 1 });
 commentAutomationRuleSchema.index({ status: 1 });

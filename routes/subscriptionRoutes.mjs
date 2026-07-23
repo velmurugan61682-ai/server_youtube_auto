@@ -156,7 +156,7 @@ router.post('/verify', authMiddleware, async (req, res) => {
         currentStart: new Date(),
         currentEnd: expiryDate
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     // Save Payment transaction log for auditing if payment ID present
@@ -400,7 +400,7 @@ router.post('/webhook', async (req, res) => {
           endedAt: targetStatus === 'expired' || targetStatus === 'cancelled' || targetStatus === 'completed' ? new Date() : undefined,
           cancelledAt: targetStatus === 'cancelled' ? new Date() : undefined
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       // If it's a charged event, log the payment, transaction, and billing history!
@@ -427,7 +427,7 @@ router.post('/webhook', async (req, res) => {
               invoiceId: payload.invoice?.entity?.id || `inv_${paymentId}`,
               method
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
           );
 
           // B: Transaction
@@ -457,7 +457,7 @@ router.post('/webhook', async (req, res) => {
               billingDate: new Date(),
               status: 'paid'
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
           );
         }
       }
@@ -480,7 +480,7 @@ router.post('/webhook', async (req, res) => {
             paymentDate: new Date(),
             errorDescription: paymentPayload.error_description || 'Payment processing failed'
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
       }
     }

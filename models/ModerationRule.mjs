@@ -1,16 +1,15 @@
 import mongoose from 'mongoose';
 
 const moderationRuleSchema = new mongoose.Schema({
+  // organizationId and channelId indexes defined in schema.index() below — NOT inline to avoid duplicates
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
   channelId: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   autoMod: {
     type: Boolean,
@@ -37,7 +36,7 @@ const moderationRuleSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Compound unique index per organization and channel
+// Compound unique index per organization and channel (covers both fields — no separate single-field indexes needed)
 moderationRuleSchema.index({ organizationId: 1, channelId: 1 }, { unique: true });
 
 export default mongoose.model('ModerationRule', moderationRuleSchema);

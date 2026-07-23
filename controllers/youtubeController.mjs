@@ -110,7 +110,7 @@ export const initiateAuth = async (req, res) => {
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
       { state, userId },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     console.log(`[OAuth State Gen] ✅ State stored in MongoDB`);
@@ -745,7 +745,7 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
       await Video.findOneAndUpdate(
         { userId, channelId: channel.channelId, videoId: post.videoId },
         { $set: post },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
       
       // Seed comments for these posts if they don't have comments already

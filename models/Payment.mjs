@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const paymentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
-  razorpayPaymentId: { type: String, required: true, unique: true },
+  razorpayPaymentId: { type: String, required: true },
   razorpayOrderId: { type: String },
   razorpaySubscriptionId: { type: String },
   subscriptionId: { type: String },
@@ -17,12 +17,11 @@ const paymentSchema = new mongoose.Schema({
   errorDescription: { type: String },
 }, { timestamps: true });
 
-// Add indexes for optimized queries
+// Schema-level indexes for optimized queries
+paymentSchema.index({ razorpayPaymentId: 1 }, { unique: true });
 paymentSchema.index({ userId: 1, createdAt: -1 });
 paymentSchema.index({ organizationId: 1, createdAt: -1 });
-paymentSchema.index({ razorpayPaymentId: 1 });
 paymentSchema.index({ razorpaySubscriptionId: 1 });
 paymentSchema.index({ subscriptionId: 1 });
 
 export default mongoose.model('Payment', paymentSchema);
-

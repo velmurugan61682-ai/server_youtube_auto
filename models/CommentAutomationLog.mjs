@@ -6,11 +6,11 @@ const commentAutomationLogSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  // organizationId index defined in schema.index() below — NOT inline to avoid duplicate
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Organization',
-    required: true,
-    index: true
+    required: true
   },
   ruleId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -81,7 +81,8 @@ const commentAutomationLogSchema = new mongoose.Schema({
 // Compound unique index to prevent duplicate processing of the same comment by the same rule
 commentAutomationLogSchema.index({ commentId: 1, ruleId: 1 }, { unique: true });
 
-// Regular indexes
+// All regular indexes at schema-level (no inline index:true duplicates)
+commentAutomationLogSchema.index({ organizationId: 1 }); // was inline index:true — moved here
 commentAutomationLogSchema.index({ userId: 1 });
 commentAutomationLogSchema.index({ channelId: 1 });
 commentAutomationLogSchema.index({ videoId: 1 });

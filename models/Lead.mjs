@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 
 const leadSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+  // organizationId index defined in schema.index() below — NOT inline to avoid duplicate
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
   idempotencyKey: { type: String, unique: true, sparse: true },
   channelId: { type: String, default: 'API' },
   videoId: { type: String, default: 'API' },
@@ -26,7 +27,8 @@ const leadSchema = new mongoose.Schema({
   detectedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
-// Index for duplicate protection and fast lookups
+// All indexes at schema-level (no inline index:true duplicates)
+leadSchema.index({ organizationId: 1 }); // was inline index:true — moved here
 leadSchema.index({ whatsappNumber: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, channelId: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, organizationId: 1, channelId: 1 });

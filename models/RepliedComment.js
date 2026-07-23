@@ -11,8 +11,7 @@ const repliedCommentSchema = new mongoose.Schema({
   },
   videoId: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   commentId: {
     type: String,
@@ -41,5 +40,7 @@ const repliedCommentSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+repliedCommentSchema.index({ videoId: 1 });
 
 export default mongoose.model('RepliedComment', repliedCommentSchema);

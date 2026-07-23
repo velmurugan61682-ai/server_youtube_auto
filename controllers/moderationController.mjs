@@ -92,7 +92,7 @@ export const updateModerationRules = async (req, res) => {
     const updatedRule = await ModerationRule.findOneAndUpdate(
       { organizationId, channelId },
       { $set: updateFields },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     res.json({ success: true, rule: updatedRule });

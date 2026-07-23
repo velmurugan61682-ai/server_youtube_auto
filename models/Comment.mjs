@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 
 const commentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+  // organizationId index is defined in schema.index() below — NOT inline to avoid duplicate
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
   youtubeId: { type: String, required: true },
   commentId: { type: String, unique: true, sparse: true }, // unique alias of youtubeId
   channelId: { type: String },
@@ -59,19 +60,22 @@ const commentSchema = new mongoose.Schema({
   aiStatus: String,
   actionTaken: String,
   moderationReason: String,
-  textHash: { type: String, index: true },
+  // textHash index is defined in schema.index() below — NOT inline to avoid duplicate
+  textHash: { type: String },
 }, { timestamps: true });
 
-// ✅ PERFORMANCE: Added indexes for fast queries
+// ✅ PERFORMANCE: All indexes defined here (schema-level only — no inline index:true duplicates)
 commentSchema.index({ userId: 1, youtubeId: 1 }, { unique: true });
-commentSchema.index({ userId: 1, status: 1 });              // For status filtering
-commentSchema.index({ userId: 1, sentiment: 1 });           // For sentiment analysis
-commentSchema.index({ userId: 1, language: 1 });            // For language breakdown
-commentSchema.index({ userId: 1, autoLiked: 1 });           // For liked comments
-commentSchema.index({ userId: 1, publishedAt: -1 });        // For sorting by date
-commentSchema.index({ channelId: 1 });                      // For channel filtering
-commentSchema.index({ userId: 1, channelId: 1, status: 1, publishedAt: -1 }); // Compound index for channel dashboard/moderation queries
-commentSchema.index({ userId: 1, videoId: 1, publishedAt: -1 });              // Compound index for video workspace queries
+commentSchema.index({ organizationId: 1 });                         // was inline index:true — moved here
+commentSchema.index({ textHash: 1 });                               // was inline index:true — moved here
+commentSchema.index({ userId: 1, status: 1 });
+commentSchema.index({ userId: 1, sentiment: 1 });
+commentSchema.index({ userId: 1, language: 1 });
+commentSchema.index({ userId: 1, autoLiked: 1 });
+commentSchema.index({ userId: 1, publishedAt: -1 });
+commentSchema.index({ channelId: 1 });
+commentSchema.index({ userId: 1, channelId: 1, status: 1, publishedAt: -1 });
+commentSchema.index({ userId: 1, videoId: 1, publishedAt: -1 });
 commentSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 commentSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 commentSchema.index({ userId: 1, organizationId: 1, channelId: 1, videoId: 1, textHash: 1, createdAt: -1 });
