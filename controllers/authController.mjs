@@ -18,12 +18,12 @@ export const register = async (req, res) => {
     if (exists) return res.status(400).json({ error: 'User already exists' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Auto-link new user to default organization: Channelmate / Tech Vaseegrah
-    const defaultOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } }).lean();
-    const user = new User({ 
-      name, 
-      email, 
+
+    // Auto-link new user to default organization: ChannelMate / Tech Vaseegrah
+    const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Tech Vaseegrah'] } }).lean();
+    const user = new User({
+      name,
+      email,
       password: hashedPassword,
       organizationId: defaultOrg ? defaultOrg._id : undefined
     });
@@ -43,7 +43,7 @@ export const login = async (req, res) => {
 
     // 1. Guaranteed Single Admin Login Handler
     if (cleanEmail === 'admin@channelbot.in' || cleanEmail === 'admin@youtubeai.test') {
-      let adminUser = await User.findOne({ 
+      let adminUser = await User.findOne({
         $or: [{ email: 'admin@channelbot.in' }, { role: 'admin' }]
       });
 
@@ -79,9 +79,9 @@ export const login = async (req, res) => {
         await adminUser.save();
       }
 
-      const token = jwt.sign({ 
-        id: adminUser._id, 
-        email: adminUser.email, 
+      const token = jwt.sign({
+        id: adminUser._id,
+        email: adminUser.email,
         role: 'admin',
         isAdmin: true,
         organizationId: adminUser.organizationId
@@ -142,9 +142,9 @@ export const login = async (req, res) => {
       isMatch = true;
     }
 
-    const token = jwt.sign({ 
-      id: user._id, 
-      email: user.email, 
+    const token = jwt.sign({
+      id: user._id,
+      email: user.email,
       role: user.role || 'client',
       isAdmin: user.role === 'admin',
       organizationId: user.organizationId
@@ -208,17 +208,17 @@ export const sso = async (req, res) => {
       return res.status(401).json({ error: 'SSO user not found' });
     }
 
-    const token = jwt.sign({ 
-      id: user._id, 
-      email: user.email, 
+    const token = jwt.sign({
+      id: user._id,
+      email: user.email,
       role: user.role || 'client',
       organizationId: user.organizationId
     }, JWT_SECRET, { expiresIn: '7d' });
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       token,
-      user: { id: user._id, name: user.name, email: user.email } 
+      user: { id: user._id, name: user.name, email: user.email }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -262,9 +262,9 @@ export const switchOrganization = async (req, res) => {
     await user.save();
 
     // Re-sign token with updated tenant context
-    const token = jwt.sign({ 
-      id: user._id, 
-      email: user.email, 
+    const token = jwt.sign({
+      id: user._id,
+      email: user.email,
       role: user.role || 'client',
       organizationId: user.organizationId
     }, JWT_SECRET, { expiresIn: '7d' });
@@ -301,7 +301,7 @@ export const updateProfile = async (req, res) => {
     }
 
     await user.save();
-    
+
     const updatedUser = user.toObject();
     delete updatedUser.password;
     delete updatedUser.passwordHash;

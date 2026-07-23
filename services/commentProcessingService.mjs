@@ -17,13 +17,13 @@ import OpenAI from 'openai';
 import logger from '../utils/logger.mjs';
 import moment from 'moment-timezone';
 import crypto from 'crypto';
-import { 
-  getYouTubeClient, 
-  getYouTubeClientWithApiKey, 
-  fetchLatestComments, 
-  likeComment, 
-  deleteCommentFromYouTube, 
-  hideComment, 
+import {
+  getYouTubeClient,
+  getYouTubeClientWithApiKey,
+  fetchLatestComments,
+  likeComment,
+  deleteCommentFromYouTube,
+  hideComment,
   replyToComment,
   fetchVideos,
   fetchAllVideos,
@@ -40,36 +40,36 @@ const activeCommentsProcessing = new Set();
 export const getNextSyncTime = (channelId) => {
   const backoff = channelBackoffs.get(channelId);
   if (!backoff) return null;
-  
+
   // Check if YouTube quota reset time (midnight Pacific Time) has passed since the failure
   const now = moment().tz('America/Los_Angeles');
   const lastFailure = moment(backoff.lastFailureTime).tz('America/Los_Angeles');
   const resetTime = moment().tz('America/Los_Angeles').startOf('day'); // Midnight today
-  
+
   // If last failure was before midnight PT, the quota has reset
   if (lastFailure.isBefore(resetTime)) {
     channelBackoffs.delete(channelId);
     return null;
   }
-  
+
   return backoff.nextSyncTime;
 };
 
 export const handleQuotaError = (channelId) => {
   const backoff = channelBackoffs.get(channelId) || { attemptCount: 0 };
-  
+
   if (backoff.attemptCount >= 8) {
     logger.error(`[SYNC] Maximum quota retry limit reached for channel ${channelId}. Skipping further retries until daily reset.`);
     return;
   }
-  
+
   backoff.attemptCount += 1;
   backoff.lastFailureTime = new Date();
-  
+
   // Exponential backoff starting at 1 hour (3600000 ms)
   const delay = Math.min(3600000 * Math.pow(2, backoff.attemptCount - 1), 24 * 3600000);
   backoff.nextSyncTime = new Date(Date.now() + delay);
-  
+
   channelBackoffs.set(channelId, backoff);
   logger.warn(`[SYNC] Quota exceeded for channel ${channelId}. Exponential backoff applied: next sync allowed after ${backoff.nextSyncTime.toISOString()}`);
 };
@@ -111,7 +111,7 @@ const runInTransaction = async (fn) => {
     return result;
   } catch (error) {
     const isUnsupported = error.message && (
-      error.message.includes('replica set') || 
+      error.message.includes('replica set') ||
       error.message.includes('sessions are not supported') ||
       error.code === 20
     );
@@ -423,8 +423,8 @@ export const checkLinkSpam = (text, userSettings, channel) => {
 
   const productDomain = userSettings.productLink ? new URL(userSettings.productLink).hostname : '';
   const channelDomain = channel.customUrl ? channel.customUrl : '';
-  
-  const whitelist = ['youtube.com', 'youtu.be', 'channelmate.com', 'gowhats.app', 'gowhats.com'];
+
+  const whitelist = ['youtube.com', 'youtu.be', 'ChannelMate.com', 'gowhats.app', 'gowhats.com'];
   if (productDomain) whitelist.push(productDomain);
 
   const isViolating = urls.some(urlStr => {
@@ -496,9 +496,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     });
 
     const isAlreadyProcessedInDb = existingComment && (
-      existingComment.isModerated || 
-      existingComment.hasReplied || 
-      existingComment.aiStatus === 'completed' || 
+      existingComment.isModerated ||
+      existingComment.hasReplied ||
+      existingComment.aiStatus === 'completed' ||
       existingComment.isBotReply
     );
 
@@ -533,7 +533,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       // Reconstruct fields based on log records
       const isModerated = !!mLog;
       const hasReplied = !!aLog || !!autoRepLog;
-      
+
       let moderationAction = 'none';
       if (mLog) {
         moderationAction = mLog.action || mLog.executedAction || 'delete';
@@ -698,7 +698,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
 
     // 8. Evaluate enabled moderation rules
     const matchedCategory = mapClassificationToRule(classification, rawAnalysis);
-    
+
     let isUnsafe = false;
     if (aiResult.isToxic === true && isConfident) {
       isUnsafe = true;
@@ -794,7 +794,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           category: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
           confidence: aiResult.confidence || 0.85,
           toxicityScore: aiResult.toxicityScore || 0,
-          reason: `Auto-detected: ${matchedCategory}`, 
+          reason: `Auto-detected: ${matchedCategory}`,
           action: loggedAction,
           executedAction: loggedAction,
           status: deleteFailed ? 'Failed' : 'Success',
@@ -967,16 +967,18 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           // Update Comment with reply details
           await Comment.findOneAndUpdate(
             { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-            { $set: {
-              sentiment: aiResult.sentiment || 'positive',
-              status: 'approved',
-              hasReplied: true,
-              repliedAt: new Date(),
-              replyText,
-              replyStatus: 'sent',
-              youtubeReplyId: repRes.newCommentId,
-              aiStatus: 'completed'
-            }},
+            {
+              $set: {
+                sentiment: aiResult.sentiment || 'positive',
+                status: 'approved',
+                hasReplied: true,
+                repliedAt: new Date(),
+                replyText,
+                replyStatus: 'sent',
+                youtubeReplyId: repRes.newCommentId,
+                aiStatus: 'completed'
+              }
+            },
             { upsert: true }
           );
 
@@ -1095,16 +1097,18 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         // Update Comment with reply details
         await Comment.findOneAndUpdate(
           { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-          { $set: {
-            sentiment: aiResult.sentiment || 'positive',
-            status: 'approved',
-            hasReplied: true,
-            repliedAt: new Date(),
-            replyText,
-            replyStatus: 'sent',
-            youtubeReplyId: repRes.newCommentId,
-            aiStatus: 'completed'
-          }},
+          {
+            $set: {
+              sentiment: aiResult.sentiment || 'positive',
+              status: 'approved',
+              hasReplied: true,
+              repliedAt: new Date(),
+              replyText,
+              replyStatus: 'sent',
+              youtubeReplyId: repRes.newCommentId,
+              aiStatus: 'completed'
+            }
+          },
           { upsert: true }
         );
 
@@ -1291,7 +1295,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                 wasHidden = true;
               }
             }
-            const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://channelmate.com';
+            const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://ChannelMate.com';
             const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will reach out to you shortly. Feel free to reply if you have any questions!`;
             const decryptedGoWhatsKey = user.gowhatsApiKey ? decrypt(user.gowhatsApiKey) : null;
             logger.info(`[LEADS] Sending WhatsApp alert to ${phoneToUse}`);
@@ -1455,7 +1459,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
 
     const hasTokens = tokens && (tokens.access_token || tokens.refresh_token);
     const hasChannelCreds = latestChannel.apiKey || latestChannel.accessToken;
-    
+
     if (!apiKey && !hasTokens && !hasChannelCreds) {
       logger.warn(`Channel ${latestChannel.channelId || latestChannel.title} has no credentials (accessToken or apiKey) saved. Sync skipped.`);
       return;
@@ -1515,7 +1519,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       logger.error(`[SYNC] User not found for channel ${channel.channelId}`);
       return;
     }
-    
+
     const userSettings = user.settings || { autoMod: true, autoLike: true, confidenceThreshold: 85 };
     const userKey = user.openaiApiKey ? decrypt(user.openaiApiKey) : null;
 
@@ -1550,7 +1554,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
     // 2. CHANNELS SYNC SEQUENCE
     // ──────────────────────────────────────────────────────────
     latestChannel = await Channel.findById(channel._id);
-    
+
     if (latestChannel.lastSyncedAt && latestChannel.lastSyncedAt.getTime() === 0) {
       logger.info(`Initial Full Sync currently in progress for channel: ${channel.title}. Sync call skipped.`);
       return;
@@ -1634,7 +1638,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         const comments = await fetchLatestComments(youtube, channel.channelId, 50, videoId);
         if (comments && comments.length > 0) {
           logger.info(`[SYNC] Fetched ${comments.length} comments from YouTube. Processing list...`);
-          
+
           const sortedComments = [...comments].sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
 
           for (const c of sortedComments) {

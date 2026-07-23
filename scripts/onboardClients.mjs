@@ -26,20 +26,20 @@ async function onboard() {
     const clients = [
       {
         name: 'Vaseegrah Veda',
-        email: 'vaseegrahveda@channelmate.com',
+        email: 'vaseegrahveda@ChannelMate.com',
         password: 'VaseegrahVedaSecurePass2026!'
       },
       {
-        name: 'Channelmate',
-        email: 'channelmate@channelmate.com',
-        password: 'ChannelmateSecurePass2026!'
+        name: 'ChannelMate',
+        email: 'ChannelMate@ChannelMate.com',
+        password: 'ChannelMateSecurePass2026!'
       }
     ];
 
     for (const client of clients) {
       let user = await User.findOne({ email: client.email });
       const hashedPassword = await bcrypt.hash(client.password, 10);
-      
+
       const subscriptionEndDate = new Date();
       subscriptionEndDate.setFullYear(subscriptionEndDate.getFullYear() + 1); // 1 year free trial for initial VIP onboard
 

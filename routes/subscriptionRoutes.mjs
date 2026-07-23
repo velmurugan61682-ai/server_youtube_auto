@@ -6,9 +6,9 @@ import Payment from '../models/Payment.mjs';
 import Subscription from '../models/Subscription.mjs';
 import Transaction from '../models/Transaction.mjs';
 import BillingHistory from '../models/BillingHistory.mjs';
-import { 
-  createRazorpaySubscription, 
-  cancelRazorpaySubscription, 
+import {
+  createRazorpaySubscription,
+  cancelRazorpaySubscription,
   verifyWebhookSignature,
   getSubscriptionInvoices
 } from '../services/razorpayService.mjs';
@@ -38,9 +38,9 @@ router.post('/create', authMiddleware, async (req, res) => {
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
-    
+
     if (!user.organizationId) {
-      const defaultOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } });
+      const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Tech Vaseegrah'] } });
       if (defaultOrg) {
         user.organizationId = defaultOrg._id;
         await user.save();
@@ -222,7 +222,7 @@ router.get('/status', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select('subscription role organizationId createdAt');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    let organizationName = 'Channelmate';
+    let organizationName = 'ChannelMate';
     let subStatus = 'active';
     let subPlanType = 'free';
     let subId = user.subscription?.id || 'sub_free';
@@ -269,7 +269,7 @@ router.get('/invoices', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const org = await Organization.findById(user.organizationId);
-    
+
     // Attempt to load from BillingHistory collection first (Optimized database query with indexes)
     const dbInvoices = await BillingHistory.find({
       $or: [

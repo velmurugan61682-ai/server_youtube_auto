@@ -33,15 +33,15 @@ async function migrate() {
     console.log("Connected successfully.");
 
     // Resolve default organization
-    let defaultOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } });
+    let defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Tech Vaseegrah'] } });
     if (!defaultOrg) {
       defaultOrg = await Organization.findOne({});
     }
     if (!defaultOrg) {
       // Create a default organization if none exists
-      defaultOrg = new Organization({ name: 'Channelmate' });
+      defaultOrg = new Organization({ name: 'ChannelMate' });
       await defaultOrg.save();
-      console.log("Created a default organization 'Channelmate'.");
+      console.log("Created a default organization 'ChannelMate'.");
     }
     console.log(`Default Organization to use: ${defaultOrg.name} (${defaultOrg._id})`);
 

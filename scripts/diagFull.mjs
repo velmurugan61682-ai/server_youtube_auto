@@ -6,16 +6,16 @@ const run = async () => {
   await mongoose.connect(process.env.MONGODB_URI);
   console.log('✅ MongoDB Connected\n');
 
-  const Comment       = (await import('../models/Comment.mjs')).default;
-  const AutoLikeLog  = (await import('../models/AutoLikeLog.mjs')).default;
-  const Lead         = (await import('../models/Lead.mjs')).default;
+  const Comment = (await import('../models/Comment.mjs')).default;
+  const AutoLikeLog = (await import('../models/AutoLikeLog.mjs')).default;
+  const Lead = (await import('../models/Lead.mjs')).default;
   const ModerationLog = (await import('../models/ModerationLog.mjs')).default;
   const AutoReplyLog = (await import('../models/AutoReplyLog.mjs')).default;
-  const User         = (await import('../models/User.mjs')).default;
-  const Channel      = (await import('../models/Channel.mjs')).default;
+  const User = (await import('../models/User.mjs')).default;
+  const Channel = (await import('../models/Channel.mjs')).default;
 
   // ── CHANNEL SETTINGS ──────────────────────────────────────────
-  const user = await User.findOne({ email: 'channelmate@gmail.com' }).lean();
+  const user = await User.findOne({ email: 'ChannelMate@gmail.com' }).lean();
   console.log('=== USER SETTINGS ===');
   console.log('autoLike:', user?.settings?.autoLike);
   console.log('autoMod:', user?.settings?.autoMod);
@@ -35,7 +35,7 @@ const run = async () => {
   const comments = await Comment.find({}).select('youtubeId text author sentiment status hasReplied replyStatus autoLiked publishedAt').lean();
   console.log(`=== COMMENTS (${comments.length} total) ===`);
   comments.forEach(c => {
-    console.log(`  [${c.status}] [${c.sentiment}] hasReplied=${c.hasReplied} autoLiked=${c.autoLiked} replyStatus=${c.replyStatus} | "${c.text?.substring(0,40)}" by ${c.author}`);
+    console.log(`  [${c.status}] [${c.sentiment}] hasReplied=${c.hasReplied} autoLiked=${c.autoLiked} replyStatus=${c.replyStatus} | "${c.text?.substring(0, 40)}" by ${c.author}`);
   });
   console.log();
 
@@ -48,7 +48,7 @@ const run = async () => {
   // ── LEAD COLLECTION ────────────────────────────────────────────
   const leads = await Lead.find({}).lean();
   console.log(`=== Leads (${leads.length} records) ===`);
-  leads.forEach(l => console.log(`  author=${l.authorName} comment="${l.originalComment?.substring(0,40)}" status=${l.status}`));
+  leads.forEach(l => console.log(`  author=${l.authorName} comment="${l.originalComment?.substring(0, 40)}" status=${l.status}`));
   console.log();
 
   // ── MODERATION LOGS ────────────────────────────────────────────
@@ -64,7 +64,7 @@ const run = async () => {
     const textLen = c.text?.trim().length || 0;
     const isMeaningful = textLen > 3;
     const isProcessed = c.status === 'approved' || c.status === 'deleted';
-    console.log(`  "${c.text?.substring(0,30)}" | autoLiked=${c.autoLiked} | status=${c.status} | hasReplied=${c.hasReplied} | textLen=${textLen} | meaningful=${isMeaningful} | already_processed=${isProcessed}`);
+    console.log(`  "${c.text?.substring(0, 30)}" | autoLiked=${c.autoLiked} | status=${c.status} | hasReplied=${c.hasReplied} | textLen=${textLen} | meaningful=${isMeaningful} | already_processed=${isProcessed}`);
   });
   console.log();
 
@@ -75,7 +75,7 @@ const run = async () => {
   comments.forEach(c => {
     const matches = leadKws.filter(kw => c.text?.toLowerCase().includes(kw));
     if (matches.length > 0) {
-      console.log(`  MATCH: "${c.text?.substring(0,40)}" → keywords: [${matches.join(', ')}] | status=${c.status}`);
+      console.log(`  MATCH: "${c.text?.substring(0, 40)}" → keywords: [${matches.join(', ')}] | status=${c.status}`);
     }
   });
   console.log();

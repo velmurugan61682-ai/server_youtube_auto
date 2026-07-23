@@ -28,16 +28,16 @@ export const seedOrganizations = async () => {
       logger.info('🌱 Created organization profile: Vaseegrah Veda');
     }
 
-    // 2. Seed Channelmate (previously Tech Vaseegrah)
-    let techOrg = await Organization.findOne({ name: { $in: ['Channelmate', 'Tech Vaseegrah'] } });
+    // 2. Seed ChannelMate (previously Tech Vaseegrah)
+    let techOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Tech Vaseegrah'] } });
     if (!techOrg) {
       techOrg = new Organization({
-        name: 'Channelmate',
+        name: 'ChannelMate',
         logo: '/logo.svg',
         contactDetails: {
-          email: 'contact@channelmate.test',
+          email: 'contact@ChannelMate.test',
           phone: '+918888822222',
-          address: 'Channelmate Hub, India'
+          address: 'ChannelMate Hub, India'
         },
         subscription: {
           status: 'active',
@@ -46,31 +46,31 @@ export const seedOrganizations = async () => {
         }
       });
       await techOrg.save();
-      logger.info('🌱 Created organization profile: Channelmate');
+      logger.info('🌱 Created organization profile: ChannelMate');
     } else if (techOrg.name === 'Tech Vaseegrah') {
-      techOrg.name = 'Channelmate';
-      techOrg.contactDetails.email = 'contact@channelmate.test';
-      techOrg.contactDetails.address = 'Channelmate Hub, India';
+      techOrg.name = 'ChannelMate';
+      techOrg.contactDetails.email = 'contact@ChannelMate.test';
+      techOrg.contactDetails.address = 'ChannelMate Hub, India';
       await techOrg.save();
-      logger.info('🌱 Renamed legacy organization Tech Vaseegrah to Channelmate');
+      logger.info('🌱 Renamed legacy organization Tech Vaseegrah to ChannelMate');
     }
 
-    // 3. Migrate any legacy Users (without organizationId) to Channelmate
+    // 3. Migrate any legacy Users (without organizationId) to ChannelMate
     const userUpdateRes = await User.updateMany(
       { organizationId: { $exists: false } },
       { $set: { organizationId: techOrg._id } }
     );
     if (userUpdateRes.modifiedCount > 0) {
-      logger.info(`🌱 Migrated ${userUpdateRes.modifiedCount} legacy users to Channelmate tenant`);
+      logger.info(`🌱 Migrated ${userUpdateRes.modifiedCount} legacy users to ChannelMate tenant`);
     }
 
-    // 4. Migrate any legacy Channels (without organizationId) to Channelmate
+    // 4. Migrate any legacy Channels (without organizationId) to ChannelMate
     const channelUpdateRes = await Channel.updateMany(
       { organizationId: { $exists: false } },
       { $set: { organizationId: techOrg._id } }
     );
     if (channelUpdateRes.modifiedCount > 0) {
-      logger.info(`🌱 Migrated ${channelUpdateRes.modifiedCount} legacy channels to Channelmate tenant`);
+      logger.info(`🌱 Migrated ${channelUpdateRes.modifiedCount} legacy channels to ChannelMate tenant`);
     }
 
     logger.info('🌱 [Tenant Seeder] Organization initialization completed successfully');

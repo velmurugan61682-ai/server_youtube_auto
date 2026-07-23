@@ -519,7 +519,7 @@
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription\": { \"status\": \"active\", \"planId\": \"quarterly\" },\n    \"role\": \"client\",\n    \"organizationName\": \"Channelmate\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription\": { \"status\": \"active\", \"planId\": \"quarterly\" },\n    \"role\": \"client\",\n    \"organizationName\": \"ChannelMate\"\n  }\n}"
             }
           ]
         },

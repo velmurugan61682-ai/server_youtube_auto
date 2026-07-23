@@ -125,7 +125,7 @@ const runTest = async () => {
       console.warn('⚠️ No user found in database to run stats test. Skipping Test 5.');
     } else {
       console.log(`Running stats test for user: ${firstUser.email} (ID: ${firstUser._id})`);
-      
+
       const req = {
         user: {
           id: firstUser._id.toString(),
@@ -147,11 +147,11 @@ const runTest = async () => {
       await getDashboardStats(req, res);
       console.log('Stats Result:', jsonSent);
 
-      if (jsonSent && 
-          'toxicComments' in jsonSent && 
-          'autoShield' in jsonSent && 
-          'autoReplies' in jsonSent && 
-          'positiveComments' in jsonSent) {
+      if (jsonSent &&
+        'toxicComments' in jsonSent &&
+        'autoShield' in jsonSent &&
+        'autoReplies' in jsonSent &&
+        'positiveComments' in jsonSent) {
         console.log('✅ PASS: Dashboard stats return schema matches expectations!');
       } else {
         console.error('❌ FAIL: Dashboard stats failed to return correct schema:', jsonSent);

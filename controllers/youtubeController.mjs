@@ -7,10 +7,10 @@ import logger from '../utils/logger.mjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import OAuthState from '../models/OAuthState.mjs';
-import { 
-  getYouTubeAuth, 
-  getYouTubeClient, 
-  getYouTubeClientWithApiKey, 
+import {
+  getYouTubeAuth,
+  getYouTubeClient,
+  getYouTubeClientWithApiKey,
   fetchVideos,
   fetchPlaylists,
   getAuthFromClient,
@@ -27,7 +27,7 @@ const activeRefreshes = new Set();
 // ✅ FIX: Intelligent FRONTEND_URL selection based on NODE_ENV
 const getFrontendUrl = () => {
   const isProduction = process.env.NODE_ENV === 'production';
-  
+
   if (isProduction) {
     const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://client-youtube-auto-4esx.vercel.app/';
     console.log(`[Frontend URL] Production mode - using: ${frontendUrl}`);
@@ -44,7 +44,7 @@ const FRONTEND_URL = getFrontendUrl();
 export const initiateAuth = async (req, res) => {
   try {
     const userId = req.user.id;
-    
+
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -59,10 +59,10 @@ export const initiateAuth = async (req, res) => {
 
     const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
     const isTrialExpired = new Date() > new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
-    
+
     let channelLimit = 1;
     let planName = 'Free Plan';
-    
+
     if (isAdmin) {
       channelLimit = 1000;
       planName = 'Admin';
@@ -133,7 +133,7 @@ export const initiateAuth = async (req, res) => {
 
     console.log(`[OAuth State Gen] ✅ Auth URL generated`);
     console.log(`[OAuth State Gen] Redirect will happen to Google OAuth`);
-    
+
     res.json({ redirectUrl: authUrl });
   } catch (err) {
     logger.error(`[OAuth State Gen] ❌ Failed to generate OAuth URL: ${err.message}`);
@@ -179,7 +179,7 @@ export const handleCallback = async (req, res) => {
       console.log(`  2. State expired (5-minute TTL)`);
       console.log(`  3. State was already used (single-use only)`);
       console.log(`  4. Database connection issue`);
-      
+
       logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
       return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
     }
@@ -236,10 +236,10 @@ export const handleCallback = async (req, res) => {
 
       const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
       const isTrialExpired = new Date() > new Date(((user && user.createdAt) || new Date()).getTime() + oneMonthMs);
-      
+
       let channelLimit = 1;
       let planName = 'Free Plan';
-      
+
       if (isAdmin) {
         channelLimit = 1000;
         planName = 'Admin';
@@ -342,7 +342,7 @@ export const handleCallback = async (req, res) => {
 
     // Trigger initial background process (processComments expects raw/decrypted tokens)
     const io = req.app.get('io');
-    processComments(channel, tokens, null, io).catch(err => 
+    processComments(channel, tokens, null, io).catch(err =>
       logger.error('Initial processComments error:', err)
     );
 
@@ -367,10 +367,10 @@ export const handleCallback = async (req, res) => {
       message: error.message,
       stack: error.stack,
       oauthCode: code ? `${code.substring(0, 10)}...` : null,
-      tokenExchange: tokens ? { 
-        hasAccessToken: !!tokens.access_token, 
-        hasRefreshToken: !!tokens.refresh_token, 
-        expiryDate: tokens.expiry_date 
+      tokenExchange: tokens ? {
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
+        expiryDate: tokens.expiry_date
       } : null,
       youtubeResponse: channelRes ? {
         hasData: !!channelRes.data,
@@ -382,7 +382,7 @@ export const handleCallback = async (req, res) => {
       } : null,
       googleResponseError: error.response?.data || null
     });
-    
+
     // Explicit production-grade error logging as requested
     console.error(error);
     if (error.stack) console.error(error.stack);
@@ -398,7 +398,7 @@ export const handleCallback = async (req, res) => {
 
 export const getChannels = async (req, res) => {
   try {
-    const filter = req.user.organizationId 
+    const filter = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
     const channels = await Channel.find(filter)
@@ -414,7 +414,7 @@ export const getChannels = async (req, res) => {
 export const deleteChannel = async (req, res) => {
   try {
     const { channelId } = req.params;
-    const filter = req.user.organizationId 
+    const filter = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
       : { userId: req.user.id, channelId };
     const deletedChannel = await Channel.findOneAndDelete(filter);
@@ -432,8 +432,8 @@ export const getVideos = async (req, res) => {
   try {
     const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
-    
-    const filter = req.user.organizationId 
+
+    const filter = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
       : { userId: req.user.id, channelId };
     const channel = await Channel.findOne(filter).lean();
@@ -447,7 +447,7 @@ export const getVideos = async (req, res) => {
     }
 
     // Resolve organization users
-    const filterUser = req.user.organizationId 
+    const filterUser = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
     const users = await User.find(filterUser).select('_id').lean();
@@ -538,7 +538,7 @@ export const getVideos = async (req, res) => {
             await Video.bulkWrite(bulkOps);
             logger.info(`[SYNC] Bulk write completed.`);
           }
-          
+
           // Re-fetch updated list
           videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
@@ -559,7 +559,7 @@ export const getVideos = async (req, res) => {
       }
     }
     videos = uniqueVideos;
-    
+
     res.json({ videos });
   } catch (error) {
     logger.error(`Error in getVideos: ${error.message}`);
@@ -570,16 +570,16 @@ export const getVideos = async (req, res) => {
 export const getVideoAnalytics = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Resolve organization users
-    const filterUser = req.user.organizationId 
+    const filterUser = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
     const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     // Resolve tenant channels to avoid cross-channel leakage
-    const filterChannel = req.user.organizationId 
+    const filterChannel = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
     const channels = await Channel.find(filterChannel).select('channelId').lean();
@@ -610,16 +610,16 @@ export const likeVideoDashboard = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    
+
     // Resolve organization users
-    const filterUser = req.user.organizationId 
+    const filterUser = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
     const users = await User.find(filterUser).select('_id').lean();
     const userIds = users.map(u => u._id);
 
     // Resolve tenant channels to avoid cross-channel leakage
-    const filterChannel = req.user.organizationId 
+    const filterChannel = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
     const channels = await Channel.find(filterChannel).select('channelId').lean();
@@ -627,27 +627,27 @@ export const likeVideoDashboard = async (req, res) => {
 
     const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id });
     if (!video) return res.status(404).json({ error: 'Video not found' });
-    
+
     // Check if duplicate
     const hasLiked = video.likedByUsers && video.likedByUsers.some(id => id.toString() === userId.toString());
     if (hasLiked) {
       return res.status(400).json({ error: 'You have already liked this video' });
     }
-    
+
     if (!video.likedByUsers) video.likedByUsers = [];
     video.likedByUsers.push(userId);
-    
+
     if (!video.statistics) {
       video.statistics = { viewCount: 0, likeCount: 0, commentCount: 0 };
     }
-    
+
     video.statistics.likeCount = (video.statistics.likeCount || 0) + 1;
-    
+
     const viewCount = video.statistics.viewCount || 0;
     const likeCount = video.statistics.likeCount;
     const commentCount = video.statistics.commentCount || 0;
     video.engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
-    
+
     const todayStr = new Date().toISOString().split('T')[0];
     let history = video.likesHistory || [];
     if (history.length > 0) {
@@ -668,9 +668,9 @@ export const likeVideoDashboard = async (req, res) => {
     }
     if (history.length > 30) history.shift();
     video.likesHistory = history;
-    
+
     await video.save();
-    
+
     res.json({
       success: true,
       statistics: video.statistics,
@@ -690,10 +690,10 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
     if (channel.customUrl || channel.channelId) {
       scraped = await scrapeCommunityPosts(channel.customUrl, channel.channelId);
     }
-    
+
     // Clear old posts first (to ensure real scraped posts are populated)
     await Video.deleteMany({ userId, channelId: channel.channelId, isPost: true });
-    
+
     let postsToSave = [];
     if (scraped && scraped.length > 0) {
       postsToSave = scraped.map((p, index) => ({
@@ -717,7 +717,7 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
           channelId: channel.channelId,
           videoId: `post_internship_${channel.channelId}`,
           title: `Join our Summer Internship Program 2026!`,
-          description: `🚀 Join Channelmate's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
+          description: `🚀 Join ChannelMate's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
           thumbnail: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500`,
           publishedAt: new Date('2026-07-01T08:00:00.000Z'),
           isPost: true,
@@ -740,14 +740,14 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
         }
       ];
     }
-    
+
     for (const post of postsToSave) {
       await Video.findOneAndUpdate(
         { userId, channelId: channel.channelId, videoId: post.videoId },
         { $set: post },
         { upsert: true, returnDocument: 'after' }
       );
-      
+
       // Seed comments for these posts if they don't have comments already
       const commentCount = await Comment.countDocuments({ videoId: post.videoId, channelId: channel.channelId });
       if (commentCount === 0) {

@@ -28,7 +28,7 @@ export const requireActiveSubscription = async (req, res, next) => {
       const org = await Organization.findById(user.organizationId);
       if (org && org.subscription) {
         const orgSub = org.subscription;
-        const isOrgActive = orgSub.status === 'active' || 
+        const isOrgActive = orgSub.status === 'active' ||
           (orgSub.status === 'cancelled' && orgSub.currentPeriodEnd && new Date(orgSub.currentPeriodEnd) > new Date());
         if (isOrgActive) {
           isSubscribed = true;
@@ -49,7 +49,7 @@ export const requireActiveSubscription = async (req, res, next) => {
       }).sort({ createdAt: -1 });
 
       if (subDoc) {
-        const isSubActive = subDoc.status === 'active' || 
+        const isSubActive = subDoc.status === 'active' ||
           (subDoc.status === 'cancelled' && subDoc.currentEnd && new Date(subDoc.currentEnd) > new Date());
         if (isSubActive) {
           isSubscribed = true;
@@ -80,7 +80,7 @@ export const requireActiveSubscription = async (req, res, next) => {
     if (new Date() > trialExpirationDate) {
       logger.warn(`Free trial expired for user: ${user.email}`);
       return res.status(402).json({
-        error: 'Your 30-day Free Trial has expired. Please subscribe to continue using Channelmate.',
+        error: 'Your 30-day Free Trial has expired. Please subscribe to continue using ChannelMate.',
         subscriptionRequired: true,
         subscriptionExpired: true
       });
