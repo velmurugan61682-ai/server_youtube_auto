@@ -16,7 +16,7 @@ import ApiKey from '../models/ApiKey.mjs';
 import Payment from '../models/Payment.mjs';
 import logger from '../utils/logger.mjs';
 
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'admin_sec_7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f';
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || (process.env.NODE_ENV === 'production' ? process.env.JWT_SECRET : 'admin_sec_7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f');
 
 // Helper function to log audit entries
 const logAudit = async (adminId, adminEmail, action, targetType, targetId, details = {}) => {
@@ -89,7 +89,7 @@ export const adminLogin = async (req, res) => {
     let adminRecord = await Admin.findOne({ email: { $regex: `^${adminEmail.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, $options: 'i' } });
 
     // Auto-bootstrap superadmin record if not present
-    if (!adminRecord && (adminEmail === defaultSuperadminEmail || adminEmail.includes('admin'))) {
+    if (!adminRecord && process.env.NODE_ENV !== 'production' && (adminEmail === defaultSuperadminEmail || adminEmail.includes('admin'))) {
       const hashed = await bcrypt.hash(password || defaultSuperadminPass, 10);
       adminRecord = await Admin.create({
         name: 'Channelmate Superadmin',
@@ -112,7 +112,7 @@ export const adminLogin = async (req, res) => {
     const allowedPassVariants = [defaultSuperadminPass.toLowerCase(), 'adminpass@123', 'admin', 'admin123', 'admin@123', '123456'];
     const isSuperadminAccount = adminRecord.role === 'superadmin' || adminEmail === defaultSuperadminEmail || adminEmail.includes('admin');
 
-    if (!isPasswordValid && isSuperadminAccount && allowedPassVariants.includes(password.toLowerCase().trim())) {
+    if (!isPasswordValid && process.env.NODE_ENV !== 'production' && isSuperadminAccount && allowedPassVariants.includes(password.toLowerCase().trim())) {
       adminRecord.passwordHash = await bcrypt.hash(password, 10);
       await adminRecord.save();
       isPasswordValid = true;

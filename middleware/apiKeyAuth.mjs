@@ -1,7 +1,7 @@
 import ApiKey from '../models/ApiKey.mjs';
 
 export const apiKeyAuth = async (req, res, next) => {
-  let key = req.headers['x-api-key'];
+  let key = req.headers['x-api-key'] || req.query.apiKey || req.query.api_key || req.query.key;
   const authHeader = req.headers.authorization;
 
   // Fallback to Bearer token in Authorization header
@@ -14,6 +14,14 @@ export const apiKeyAuth = async (req, res, next) => {
   }
 
   try {
+    const envAdminKey = (process.env.EXTERNAL_ADMIN_API_KEY || '').trim();
+    if (envAdminKey && key === envAdminKey) {
+      req.apiKeyDoc = { name: 'Environment Admin API Key', source: 'env' };
+      req.user = { id: null };
+      req.isAdminKey = true;
+      return next();
+    }
+
     const apiKeyDoc = await ApiKey.findOne({ key, isActive: true });
     if (!apiKeyDoc) {
       return res.status(401).json({ error: 'Unauthorized: Invalid or revoked API Key.' });

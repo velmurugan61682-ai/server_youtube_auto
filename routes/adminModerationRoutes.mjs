@@ -1,10 +1,10 @@
 import express from 'express';
-import { requireAdminRole } from '../middleware/requireAdminRole.mjs';
+import { adminAuth } from '../middleware/adminAuth.mjs';
 import { getAdminModerationStats } from '../controllers/adminModerationController.mjs';
 
 const router = express.Router();
 
 // Admin-only route: aggregate stats across ALL organizations
-router.get('/stats', requireAdminRole, getAdminModerationStats);
+router.get('/stats', adminAuth, getAdminModerationStats);
 
 export default router;

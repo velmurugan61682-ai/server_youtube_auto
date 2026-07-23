@@ -5,6 +5,7 @@ import Organization from '../models/Organization.mjs';
 import logger from '../utils/logger.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const allowDevAutoLogin = () => process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_AUTO_LOGIN === 'true';
 
 export const register = async (req, res) => {
   try {
@@ -46,6 +47,10 @@ export const login = async (req, res) => {
         $or: [{ email: 'admin@channelmate.ai' }, { role: 'admin' }]
       });
 
+      if (!adminUser && !allowDevAutoLogin()) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
       const hashedPassword = await bcrypt.hash(password || 'AdminPass@123', 10);
 
       if (!adminUser) {
@@ -58,9 +63,19 @@ export const login = async (req, res) => {
         });
         await adminUser.save();
       } else {
+        const isAdminPasswordValid = adminUser.password
+          ? await bcrypt.compare(password || '', adminUser.password)
+          : false;
+        const isAdminHashValid = !isAdminPasswordValid && adminUser.passwordHash
+          ? await bcrypt.compare(password || '', adminUser.passwordHash)
+          : false;
+
+        if (!isAdminPasswordValid && !isAdminHashValid) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
         adminUser.email = 'admin@channelmate.ai';
         adminUser.role = 'admin';
-        adminUser.password = hashedPassword;
         await adminUser.save();
       }
 
@@ -90,6 +105,10 @@ export const login = async (req, res) => {
     // 2. Standard Client User Login Handler
     let user = await User.findOne({ email: new RegExp(`^${cleanEmail}$`, 'i') });
     if (!user) {
+      if (!allowDevAutoLogin()) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
       const hashedPassword = await bcrypt.hash(password || 'pass1234', 10);
       user = new User({
         name: cleanEmail.split('@')[0],
@@ -110,8 +129,12 @@ export const login = async (req, res) => {
       isMatch = await bcrypt.compare(password, user.passwordHash);
     }
 
-    // Dev/Local auto-accept & sync: update stored password to whatever is entered so user is never blocked
+    // Optional local-only bypass for seed/demo development. Disabled in production.
     if (!isMatch) {
+      if (!allowDevAutoLogin()) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
       const newHash = await bcrypt.hash(password, 10);
       user.password = newHash;
       user.passwordHash = newHash;
@@ -150,7 +173,7 @@ export const login = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password').lean();
+    const user = await User.findById(req.user.id).select('-password -passwordHash').lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json(user);
@@ -281,6 +304,7 @@ export const updateProfile = async (req, res) => {
     
     const updatedUser = user.toObject();
     delete updatedUser.password;
+    delete updatedUser.passwordHash;
 
     res.json({ success: true, user: updatedUser });
   } catch (error) {

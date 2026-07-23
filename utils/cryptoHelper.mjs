@@ -5,8 +5,11 @@ const ALGORITHM = 'aes-256-cbc';
 
 // Helper to get encryption key (must be exactly 32 bytes)
 const getEncryptionKey = () => {
-  const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'stable_dev_secret_2026_default_key_32_bytes_long';
-  // Use sha256 to ensure we always have a 32-byte key
+  const secret = process.env.ENCRYPTION_KEY || (process.env.NODE_ENV !== 'production' ? process.env.JWT_SECRET : '');
+  if (!secret) {
+    throw new Error('ENCRYPTION_KEY is required in production');
+  }
+  // Use sha256 to ensure we always have a 32-byte key.
   return crypto.createHash('sha256').update(secret).digest();
 };
 

@@ -147,11 +147,12 @@ const checkOrigin = (origin, callback) => {
   }
   const isAllowed = allowedOrigins.some(allowedOrigin => {
     if (allowedOrigin === origin) return true;
-    // Allow any vercel subdomains dynamically
-    if (origin.endsWith('.vercel.app')) return true;
+    // Allow preview deployments only when explicitly enabled.
+    if (process.env.ALLOW_ANY_VERCEL_ORIGIN === 'true' && origin.endsWith('.vercel.app')) return true;
     return false;
   });
-  if (isAllowed || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+  const isLocal = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (isAllowed || isLocal) {
     logger.info(`🌐 [CORS Check] Allowed origin: ${origin}`);
     callback(null, true);
   } else {
@@ -439,36 +440,34 @@ async function startServer() {
       logger.error('Organization or Admin seeding failed during startup:', seedErr);
     }
 
+    // Optional local-only admin reset. Keep disabled in production.
+    if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_ADMIN_RESET === 'true') {
+      try {
+        const adminEmail = process.env.ADMIN_RESET_EMAIL || 'admin@youtubeai.test';
+        const resetPassword = process.env.ADMIN_RESET_PASSWORD;
+        if (!resetPassword) {
+          throw new Error('ADMIN_RESET_PASSWORD is required when ALLOW_DEV_ADMIN_RESET=true');
+        }
+        const hashedPassword = await bcrypt.hash(resetPassword, 10);
 
-    // Development Admin Reset
-    try {
-      const adminEmail = 'admin@youtubeai.test';
-      const hashedPassword = await bcrypt.hash(
-        'Admin@123',
-        10
-      );
+        const adminUpdate = { password: hashedPassword };
+        if (techOrgId) {
+          adminUpdate.organizationId = techOrgId;
+        }
 
-      const adminUpdate = {
-        password: hashedPassword
-      };
-      if (techOrgId) {
-        adminUpdate.organizationId = techOrgId;
+        await User.findOneAndUpdate(
+          { email: adminEmail },
+          {
+            $setOnInsert: { name: 'System Admin', role: 'admin' },
+            $set: adminUpdate
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+
+        logger.info('Development admin account reset completed');
+      } catch (adminErr) {
+        logger.warn(`Admin account seed warning: ${adminErr.message}`);
       }
-
-      await User.findOneAndUpdate(
-        { email: adminEmail },
-        {
-          $setOnInsert: { name: 'System Admin', role: 'admin' },
-          $set: adminUpdate
-        },
-        { upsert: true, returnDocument: 'after' }
-      );
-
-      logger.info(
-        '🚀 ADMIN ACCOUNT RESET: admin@youtubeai.test / Admin@123'
-      );
-    } catch (adminErr) {
-      logger.warn(`Admin account seed warning: ${adminErr.message}`);
     }
 
     server.listen(

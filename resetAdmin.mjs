@@ -8,8 +8,12 @@ dotenv.config();
 async function test() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-    const email = 'admin@youtubeai.test';
-    const hashedPassword = await bcrypt.hash('Admin@123', 10);
+    const email = process.env.ADMIN_RESET_EMAIL || 'admin@youtubeai.test';
+    const resetPassword = process.env.ADMIN_RESET_PASSWORD;
+    if (!resetPassword) {
+      throw new Error('ADMIN_RESET_PASSWORD is required to reset an admin password');
+    }
+    const hashedPassword = await bcrypt.hash(resetPassword, 10);
     
     await User.findOneAndUpdate(
       { email },
@@ -17,10 +21,10 @@ async function test() {
       { upsert: true, returnDocument: 'after' }
     );
     
-    console.log('✅ Admin password reset to: Admin@123');
+    console.log('Admin password reset successfully');
     process.exit(0);
   } catch (err) {
-    console.error('❌ Error:', err);
+    console.error('Error:', err.message);
     process.exit(1);
   }
 }
