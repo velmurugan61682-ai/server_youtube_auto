@@ -37,7 +37,7 @@ const channelBackoffs = new Map();
 // In-memory comment ID deduplication to prevent concurrent duplicate processing
 const activeCommentsProcessing = new Set();
 
-const getNextSyncTime = (channelId) => {
+export const getNextSyncTime = (channelId) => {
   const backoff = channelBackoffs.get(channelId);
   if (!backoff) return null;
   
@@ -55,7 +55,7 @@ const getNextSyncTime = (channelId) => {
   return backoff.nextSyncTime;
 };
 
-const handleQuotaError = (channelId) => {
+export const handleQuotaError = (channelId) => {
   const backoff = channelBackoffs.get(channelId) || { attemptCount: 0 };
   
   if (backoff.attemptCount >= 8) {
@@ -74,7 +74,7 @@ const handleQuotaError = (channelId) => {
   logger.warn(`[SYNC] Quota exceeded for channel ${channelId}. Exponential backoff applied: next sync allowed after ${backoff.nextSyncTime.toISOString()}`);
 };
 
-const clearQuotaBackoff = (channelId) => {
+export const clearQuotaBackoff = (channelId) => {
   channelBackoffs.delete(channelId);
 };
 import { classifyComment, analyzeVideo } from './aiService.mjs';
@@ -1415,13 +1415,14 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
  */
 export const processComments = async (channel, tokens = null, apiKey = null, io = null, videoId = null) => {
   let newestSyncDate = null;
+  let latestChannel = null;
   try {
     if (channel.channelId && channel.channelId.startsWith('PENDING_')) {
       logger.info(`[SYNC] Skipping pending channel: ${channel.channelId} (No YouTube API calls will be made)`);
       return;
     }
 
-    let latestChannel = await Channel.findById(channel._id);
+    latestChannel = await Channel.findById(channel._id);
     if (!latestChannel) {
       logger.error(`[SYNC] Channel not found in database: ${channel._id}`);
       return;

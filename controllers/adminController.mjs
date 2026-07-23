@@ -77,7 +77,7 @@ export const adminLogin = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email and password are required.' });
     }
 
-    const defaultSuperadminEmail = (process.env.SUPERADMIN_EMAIL || 'admin@channelmate.ai').toLowerCase().trim();
+    const defaultSuperadminEmail = (process.env.SUPERADMIN_EMAIL || 'admin@channelbot.in').toLowerCase().trim();
     const defaultSuperadminPass = process.env.SUPERADMIN_PASSWORD || 'AdminPass@123';
 
     // Alias 'admin' or 'superadmin' to default superadmin email
@@ -92,7 +92,7 @@ export const adminLogin = async (req, res) => {
     if (!adminRecord && process.env.NODE_ENV !== 'production' && (adminEmail === defaultSuperadminEmail || adminEmail.includes('admin'))) {
       const hashed = await bcrypt.hash(password || defaultSuperadminPass, 10);
       adminRecord = await Admin.create({
-        name: 'Channelmate Superadmin',
+        name: 'Channelbot Superadmin',
         email: defaultSuperadminEmail,
         passwordHash: hashed,
         role: 'superadmin'

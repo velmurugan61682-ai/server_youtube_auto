@@ -22,7 +22,7 @@ async function verifyStatsRoute() {
     // 2. Login as Superadmin to get valid admin token
     console.log('\n2. Logging in as Admin...');
     const loginRes = await axios.post(`${BASE_URL}/admin/login`, {
-      email: 'admin@channelmate.ai',
+      email: 'admin@channelbot.in',
       password: 'AdminPass@123'
     });
     const adminToken = loginRes.data.token;

@@ -7,9 +7,9 @@ dotenv.config();
 
 export const seedSuperadmin = async () => {
   try {
-    const adminEmail = process.env.SUPERADMIN_EMAIL || 'admin@channelmate.ai';
+    const adminEmail = process.env.SUPERADMIN_EMAIL || 'admin@channelbot.in';
     const adminPassword = process.env.SUPERADMIN_PASSWORD || 'AdminPass@123';
-    const adminName = process.env.SUPERADMIN_NAME || 'Channelmate Superadmin';
+    const adminName = process.env.SUPERADMIN_NAME || 'Channelbot Superadmin';
 
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 

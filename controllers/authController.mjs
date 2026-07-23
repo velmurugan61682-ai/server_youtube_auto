@@ -42,9 +42,9 @@ export const login = async (req, res) => {
     const cleanEmail = (email || '').toLowerCase().trim();
 
     // 1. Guaranteed Single Admin Login Handler
-    if (cleanEmail === 'admin@channelmate.ai' || cleanEmail === 'admin@youtubeai.test') {
+    if (cleanEmail === 'admin@channelbot.in' || cleanEmail === 'admin@youtubeai.test') {
       let adminUser = await User.findOne({ 
-        $or: [{ email: 'admin@channelmate.ai' }, { role: 'admin' }]
+        $or: [{ email: 'admin@channelbot.in' }, { role: 'admin' }]
       });
 
       if (!adminUser && !allowDevAutoLogin()) {
@@ -55,8 +55,8 @@ export const login = async (req, res) => {
 
       if (!adminUser) {
         adminUser = new User({
-          name: 'ChannelMate Admin',
-          email: 'admin@channelmate.ai',
+          name: 'Channelbot Admin',
+          email: 'admin@channelbot.in',
           password: hashedPassword,
           role: 'admin',
           createdAt: new Date()
@@ -74,7 +74,7 @@ export const login = async (req, res) => {
           return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        adminUser.email = 'admin@channelmate.ai';
+        adminUser.email = 'admin@channelbot.in';
         adminUser.role = 'admin';
         await adminUser.save();
       }

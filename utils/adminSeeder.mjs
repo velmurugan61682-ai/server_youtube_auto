@@ -2,12 +2,12 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User.mjs';
 import logger from './logger.mjs';
 
-const SINGLE_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@channelmate.ai';
+const SINGLE_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@channelbot.in';
 const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AdminPass@123';
 
 /**
  * Enforce Single Admin Account Policy
- * Ensures strictly ONE admin account exists in MongoDB (admin@channelmate.ai with password AdminPass@123).
+ * Ensures strictly ONE admin account exists in MongoDB (admin@channelbot.in with password AdminPass@123).
  * Automatically migrates legacy admin emails (e.g. admin@youtubeai.test) and deletes duplicate admins.
  */
 export const seedSingleAdmin = async () => {

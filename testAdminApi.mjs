@@ -20,7 +20,7 @@ async function testAdminFlow() {
     // 1. Login as Superadmin
     console.log('\n1. Testing Admin Login...');
     const loginRes = await axios.post(`${API}/login`, {
-      email: 'admin@channelmate.ai',
+      email: 'admin@channelbot.in',
       password: 'AdminPass@123'
     });
     console.log('✅ Login successful:', loginRes.data.success, 'Token received:', !!loginRes.data.token);

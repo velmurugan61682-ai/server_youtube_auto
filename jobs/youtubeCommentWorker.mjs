@@ -2,10 +2,10 @@ import cron from 'node-cron';
 import logger from '../utils/logger.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
-import { getYouTubeClient, getYouTubeClientWithApiKey, fetchLatestComments } from '../services/youtubeService.mjs';
+import { getYouTubeClient, getYouTubeClientWithApiKey, fetchLatestComments, isQuotaError } from '../services/youtubeService.mjs';
 import { decrypt, encrypt } from '../utils/cryptoHelper.mjs';
 import { acquireLock, releaseLock } from '../utils/lockHelper.mjs';
-import { processSingleComment } from '../services/commentProcessingService.mjs';
+import { processSingleComment, getNextSyncTime, handleQuotaError, clearQuotaBackoff } from '../services/commentProcessingService.mjs';
 
 // Main worker task execution
 export const runYouTubeCommentWorker = async (io) => {
@@ -34,6 +34,13 @@ export const runYouTubeCommentWorker = async (io) => {
       }
       if (channel.channelId && (channel.channelId.startsWith('PENDING_') || channel.channelId === 'pending')) {
         logger.info(`[YouTube Comment Worker] Skipping pending channel ${channel.title || channel.channelId}`);
+        continue;
+      }
+
+      // Quota backoff check
+      const nextSyncTime = getNextSyncTime(channel._id.toString());
+      if (nextSyncTime && new Date() < nextSyncTime) {
+        logger.info(`[YouTube Comment Worker] Skipping channel ${channel.title || channel.channelId} due to active quota backoff. Next sync allowed after ${nextSyncTime.toISOString()}`);
         continue;
       }
 
@@ -72,10 +79,14 @@ export const runYouTubeCommentWorker = async (io) => {
         comments = await fetchLatestComments(youtube, channel.channelId, 20);
       } catch (fetchError) {
         logger.error(`[YouTube Comment Worker] Failed to fetch comments for channel ${channel.channelId}: ${fetchError.message}`);
+        if (isQuotaError(fetchError)) {
+          handleQuotaError(channel._id.toString());
+        }
         continue;
       }
 
       if (comments.length > 0) {
+        clearQuotaBackoff(channel._id.toString());
         logger.info(`[YouTube Comment Worker] Processing ${comments.length} comments for channel ${channel.title || channel.channelId}`);
         
         const user = await User.findById(channel.userId);
