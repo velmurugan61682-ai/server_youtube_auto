@@ -40,7 +40,7 @@ export const seedSuperadmin = async () => {
 };
 
 if (process.argv[1] && process.argv[1].endsWith('seedSuperadmin.mjs')) {
-  const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/ChannelMate';
+  const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/Channelbot';
   mongoose.connect(MONGO_URI)
     .then(async () => {
       console.log('Connected to MongoDB. Running seedSuperadmin...');

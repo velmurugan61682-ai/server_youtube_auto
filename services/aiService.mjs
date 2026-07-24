@@ -201,7 +201,7 @@ export const classifyComment = async (text, userKey = null) => {
       messages: [
         {
           role: 'system',
-          content: `You are an expert multi-lingual ChannelMate & Human-like Safety Auditor.
+          content: `You are an expert multi-lingual Channelbot & Human-like Safety Auditor.
 Analyze the given YouTube comment across ALL languages (Tamil script, Tanglish/Latin Tamil, English, Hindi, Hinglish, Spanish, Malayalam, Telugu, etc.) with human-level intelligence.
 
 Detect bad words, profanity, slurs, toxic insults, harassment, hate speech, spam, scams, or abuse regardless of language or script.
@@ -230,7 +230,7 @@ Moderation Rules:
 
     const rawContent = response.choices[0].message.content.trim();
     logger.info(`[DEEPSEEK] Raw API Response: ${rawContent}`);
-    
+
     let jsonString = rawContent;
     if (jsonString.startsWith('```')) {
       jsonString = jsonString.replace(/^```json\s*/, '').replace(/```$/, '').trim();

@@ -40,7 +40,7 @@ router.post('/create', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (!user.organizationId) {
-      const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Tech Vaseegrah'] } });
+      const defaultOrg = await Organization.findOne({ name: { $in: ['Channelbot', 'Tech Vaseegrah'] } });
       if (defaultOrg) {
         user.organizationId = defaultOrg._id;
         await user.save();
@@ -222,7 +222,7 @@ router.get('/status', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select('subscription role organizationId createdAt');
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    let organizationName = 'ChannelMate';
+    let organizationName = 'Channelbot';
     let subStatus = 'active';
     let subPlanType = 'free';
     let subId = user.subscription?.id || 'sub_free';

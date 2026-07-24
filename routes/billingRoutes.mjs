@@ -14,7 +14,7 @@ router.get('/status', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id).select('subscription role organizationId createdAt').lean();
     if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
-    let organizationName = 'ChannelMate';
+    let organizationName = 'Channelbot';
     if (user.organizationId) {
       const org = await Organization.findById(user.organizationId).lean();
       if (org) organizationName = org.name;

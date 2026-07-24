@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "c1f2a3b4-5678-90ab-cdef-1234567890ab",
-    "name": "ChannelMate YouTube Automation SaaS API",
-    "description": "Production REST API collection for ChannelMate YouTube Creator SaaS platform.",
+    "name": "Channelbot YouTube Automation SaaS API",
+    "description": "Production REST API collection for Channelbot YouTube Creator SaaS platform.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -519,7 +519,7 @@
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription\": { \"status\": \"active\", \"planId\": \"quarterly\" },\n    \"role\": \"client\",\n    \"organizationName\": \"ChannelMate\"\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"subscription\": { \"status\": \"active\", \"planId\": \"quarterly\" },\n    \"role\": \"client\",\n    \"organizationName\": \"Channelbot\"\n  }\n}"
             }
           ]
         },

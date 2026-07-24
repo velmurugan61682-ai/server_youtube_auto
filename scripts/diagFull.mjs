@@ -15,7 +15,7 @@ const run = async () => {
   const Channel = (await import('../models/Channel.mjs')).default;
 
   // ── CHANNEL SETTINGS ──────────────────────────────────────────
-  const user = await User.findOne({ email: 'ChannelMate@gmail.com' }).lean();
+  const user = await User.findOne({ email: 'Channelbot@gmail.com' }).lean();
   console.log('=== USER SETTINGS ===');
   console.log('autoLike:', user?.settings?.autoLike);
   console.log('autoMod:', user?.settings?.autoMod);

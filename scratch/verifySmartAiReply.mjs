@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const runTest = async () => {
-  console.log('🧪 Starting ChannelMate AI Smart Comment Reply, Auto Moderation & Dashboard Test...');
+  console.log('🧪 Starting Channelbot AI Smart Comment Reply, Auto Moderation & Dashboard Test...');
 
   const mongoUri = process.env.MONGODB_URI;
   if (!mongoUri) {
@@ -158,7 +158,7 @@ const runTest = async () => {
       }
     }
 
-    console.log('\n🎉 ChannelMate Smart AI Reply Verification Test Suite Completed!');
+    console.log('\n🎉 Channelbot Smart AI Reply Verification Test Suite Completed!');
   } catch (err) {
     console.error('❌ Test execution encountered an error:', err);
   } finally {

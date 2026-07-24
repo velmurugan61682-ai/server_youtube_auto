@@ -424,7 +424,7 @@ export const checkLinkSpam = (text, userSettings, channel) => {
   const productDomain = userSettings.productLink ? new URL(userSettings.productLink).hostname : '';
   const channelDomain = channel.customUrl ? channel.customUrl : '';
 
-  const whitelist = ['youtube.com', 'youtu.be', 'ChannelMate.com', 'gowhats.app', 'gowhats.com'];
+  const whitelist = ['youtube.com', 'youtu.be', 'Channelbot.com', 'gowhats.app', 'gowhats.com'];
   if (productDomain) whitelist.push(productDomain);
 
   const isViolating = urls.some(urlStr => {
@@ -1295,7 +1295,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
                 wasHidden = true;
               }
             }
-            const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://ChannelMate.com';
+            const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://Channelbot.com';
             const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will reach out to you shortly. Feel free to reply if you have any questions!`;
             const decryptedGoWhatsKey = user.gowhatsApiKey ? decrypt(user.gowhatsApiKey) : null;
             logger.info(`[LEADS] Sending WhatsApp alert to ${phoneToUse}`);

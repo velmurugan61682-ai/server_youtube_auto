@@ -97,11 +97,11 @@ variablesToCheck.forEach(key => {
     console.log(`✓ ${key} Loaded`);
   } else {
     console.log(`✗ ${key} Missing`);
-    
+
     // Determine if the missing variable is critical and should stop the server
     const isCriticalAlways = (key === 'MONGODB_URI' || key === 'JWT_SECRET');
     const isCriticalInProd = (process.env.NODE_ENV === 'production' && (key === 'GOOGLE_CLIENT_ID' || key === 'GOOGLE_CLIENT_SECRET'));
-    
+
     if (isCriticalAlways || isCriticalInProd) {
       hasCriticalErrors = true;
       missingCriticalList.push(key);
@@ -236,20 +236,20 @@ io.on('connection', (socket) => {
 async function watchDatabaseChanges(io) {
   try {
     logger.info('⏳ Starting MongoDB Change Streams...');
-    
+
     const commentsChangeStream = mongoose.connection.collection('comments').watch([], {
       fullDocument: 'updateLookup'
     });
-    
+
     commentsChangeStream.on('change', async (change) => {
       try {
         if (!['insert', 'update', 'replace'].includes(change.operationType)) return;
         const doc = change.fullDocument;
         if (!doc) return;
-        
+
         const userIdStr = doc.userId ? doc.userId.toString() : '';
         if (!userIdStr) return;
-        
+
         io.to(userIdStr).emit('live_activity', {
           ...doc,
           id: doc._id,
@@ -271,28 +271,28 @@ async function watchDatabaseChanges(io) {
         if (!['insert', 'update', 'replace'].includes(change.operationType)) return;
         const doc = change.fullDocument;
         if (!doc) return;
-        
+
         const userIdStr = doc.userId ? doc.userId.toString() : '';
         if (!userIdStr) return;
-        
+
         io.to(userIdStr).emit('stats_updated');
       } catch (err) {
         logger.error('Change stream leads error:', err);
       }
     });
-    
+
     logger.info('✅ MongoDB Change Streams initialized successfully');
   } catch (err) {
     logger.warn('⚠️ MongoDB Change Streams could not start. Falling back to Mongoose hooks.');
-    
+
     const Comment = mongoose.model('Comment');
     const Lead = mongoose.model('Lead');
-    
+
     const triggerSocketBroadcast = (doc, type) => {
       try {
         const userIdStr = doc.userId ? doc.userId.toString() : '';
         if (!userIdStr) return;
-        
+
         io.to(userIdStr).emit('live_activity', {
           ...doc.toObject(),
           id: doc._id,
@@ -304,20 +304,20 @@ async function watchDatabaseChanges(io) {
         logger.error('Mongoose hook broadcast error:', e);
       }
     };
-    
-    Comment.schema.post('save', function(doc) {
+
+    Comment.schema.post('save', function (doc) {
       triggerSocketBroadcast(doc, 'comment');
     });
-    
-    Comment.schema.post('findOneAndUpdate', function(doc) {
+
+    Comment.schema.post('findOneAndUpdate', function (doc) {
       if (doc) triggerSocketBroadcast(doc, 'comment');
     });
-    
-    Lead.schema.post('save', function(doc) {
+
+    Lead.schema.post('save', function (doc) {
       try {
         const userIdStr = doc.userId ? doc.userId.toString() : '';
         if (userIdStr) io.to(userIdStr).emit('stats_updated');
-      } catch (e) {}
+      } catch (e) { }
     });
   }
 }
@@ -407,7 +407,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/', (_req, res) => {
-  res.send('ChannelMate API is running.');
+  res.send('Channelbot API is running.');
 });
 
 

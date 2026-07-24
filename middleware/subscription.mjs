@@ -80,7 +80,7 @@ export const requireActiveSubscription = async (req, res, next) => {
     if (new Date() > trialExpirationDate) {
       logger.warn(`Free trial expired for user: ${user.email}`);
       return res.status(402).json({
-        error: 'Your 30-day Free Trial has expired. Please subscribe to continue using ChannelMate.',
+        error: 'Your 30-day Free Trial has expired. Please subscribe to continue using Channelbot.',
         subscriptionRequired: true,
         subscriptionExpired: true
       });

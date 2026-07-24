@@ -717,7 +717,7 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
           channelId: channel.channelId,
           videoId: `post_internship_${channel.channelId}`,
           title: `Join our Summer Internship Program 2026!`,
-          description: `🚀 Join ChannelMate's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
+          description: `🚀 Join Channelbot's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
           thumbnail: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500`,
           publishedAt: new Date('2026-07-01T08:00:00.000Z'),
           isPost: true,
