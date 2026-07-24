@@ -35,48 +35,57 @@ export const getAnalytics = async (req, res) => {
     const end = endDate ? new Date(endDate) : now;
 
     const channelFilter = channelId && channelIds.includes(channelId) ? channelId : { $in: channelIds };
-
-    // 1. Engagement Card: Total comments in the date range
-    const totalComments = await Comment.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      publishedAt: { $gte: start, $lte: end }
-    });
-
-    // 2. Positive Card: Sentiment is positive
-    const totalPositive = await Comment.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      sentiment: 'positive',
-      publishedAt: { $gte: start, $lte: end }
-    });
-
-    // 3. Toxic Card: Comments classified as toxic by DeepSeek (from Comment collection)
-    const totalToxic = await Comment.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      sentiment: 'toxic',
-      publishedAt: { $gte: start, $lte: end }
-    });
-
-    // 4. Moderate Card: Comments needing review (held, flagged, or moderate status)
-    const totalModerate = await Comment.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
+    const commentDateWindow = {
       $or: [
-        { status: 'moderate' },
-        { status: 'flagged', deleteFailed: true }
-      ],
-      publishedAt: { $gte: start, $lte: end }
+        { publishedAt: { $gte: start, $lte: end } },
+        { createdAt: { $gte: start, $lte: end } }
+      ]
+    };
+    const commentBaseQuery = (...conditions) => ({
+      userId: { $in: userIds },
+      channelId: channelFilter,
+      isBotReply: { $ne: true },
+      $and: [commentDateWindow, ...conditions]
     });
+    const toxicClassificationValues = [/^toxic$/i, /^spam$/i, /^hate speech$/i, /^abuse$/i, /^threat$/i, /^scam$/i, /^sexual content$/i];
+
+    // 1. Engagement Card: total tracked user comments in the date range.
+    const totalComments = await Comment.countDocuments(commentBaseQuery());
+
+    // 2. Positive Card: sentiment/classification can come from old or new analyzer rows.
+    const totalPositive = await Comment.countDocuments(commentBaseQuery({
+      $or: [
+        { sentiment: /^positive$/i },
+        { classification: /^positive$/i }
+      ]
+    }));
+
+    // 3. Toxic Card: include unsafe sentiment, classification, and moderated comment states.
+    const totalToxic = await Comment.countDocuments(commentBaseQuery({
+      $or: [
+        { sentiment: /^toxic$/i },
+        { classification: { $in: toxicClassificationValues } },
+        { moderationStatus: { $in: ['deleted', 'heldForReview'] } },
+        { status: 'deleted' }
+      ]
+    }));
+
+    // 4. Moderate Card: AI moderate sentiment plus comments held for manual review.
+    const totalModerate = await Comment.countDocuments(commentBaseQuery({
+      $or: [
+        { sentiment: /^moderate$/i },
+        { status: { $in: ['moderate', 'flagged'] } },
+        { moderationStatus: { $in: ['needsReview', 'heldForReview'] } }
+      ]
+    }));
 
     // Sentiment 'neutral' count for charts
-    const totalNeutral = await Comment.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      sentiment: 'neutral',
-      publishedAt: { $gte: start, $lte: end }
-    });
+    const totalNeutral = await Comment.countDocuments(commentBaseQuery({
+      $or: [
+        { sentiment: /^neutral$/i },
+        { classification: /^neutral$/i }
+      ]
+    }));
 
     // 5. Auto Shield Card: Total automatic deletes/holds from ModerationLog
     const toxicDeleted = await ModerationLog.countDocuments({
@@ -241,8 +250,8 @@ export const getAnalytics = async (req, res) => {
         $match: {
           userId: { $in: userIds },
           channelId: typeof channelFilter === 'string' ? channelFilter : { $in: channelIds },
-          publishedAt: { $gte: start, $lte: end },
-          isBotReply: { $ne: true }
+          isBotReply: { $ne: true },
+          $and: [commentDateWindow]
         }
       },
       {
@@ -272,7 +281,7 @@ export const getAnalytics = async (req, res) => {
         $match: {
           userId: { $in: userIds },
           channelId: typeof channelFilter === 'string' ? channelFilter : { $in: channelIds },
-          publishedAt: { $gte: start, $lte: end },
+          $and: [commentDateWindow],
           classification: { $exists: true, $nin: [null, '', 'none', 'unknown', 'bot_reply'] }
         }
       },
@@ -289,7 +298,34 @@ export const getAnalytics = async (req, res) => {
       { _id: 'moderate',  count: totalModerate }
     ];
 
+    // 11. Fetch latest 10 activities for Live Feed
+    const latestComments = await Comment.find({
+      userId: { $in: userIds },
+      channelId: typeof channelFilter === 'string' ? channelFilter : { $in: channelIds },
+      isBotReply: { $ne: true }
+    })
+    .sort({ createdAt: -1 })
+    .limit(10)
+    .lean();
+
+    const activities = latestComments.map(c => {
+      let type = 'analyze';
+      if (c.status === 'deleted') type = 'delete';
+      else if (c.status === 'flagged') type = 'hold';
+      else if (c.autoLiked) type = 'like';
+      
+      return {
+        _id: c._id,
+        text: c.text,
+        author: c.author,
+        type,
+        confidence: c.confidence,
+        createdAt: c.createdAt
+      };
+    });
+
     res.json({
+      activities,
       totalComments,
       toxicDeleted,
       positiveLiked,
@@ -353,4 +389,3 @@ export const getDashboardAnalytics = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch dashboard analytics' });
   }
 };
-

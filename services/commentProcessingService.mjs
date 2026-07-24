@@ -565,7 +565,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         isReply: commentDoc.isReply || false,
 
         status,
-        sentiment: 'neutral',
+        sentiment: isModerated ? 'toxic' : (hasReplied ? 'positive' : 'neutral'),
+        classification: isModerated ? 'Toxic' : (hasReplied ? 'Positive' : 'Neutral'),
+        language: normalizeLanguage(null, commentDoc.text || ''),
         isModerated,
         moderationAction,
         hasReplied,

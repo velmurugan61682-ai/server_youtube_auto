@@ -75,18 +75,46 @@ const POSITIVE_KEYWORDS = [
 ];
 
 const TOXIC_KEYWORDS = [
-  'bad', 'useless', 'trash', 'shut up', 'idiot', 'stupid', 'fuck', 'shit',
+  'useless', 'trash', 'shut up', 'idiot', 'stupid', 'fuck', 'shit',
   'garbage', 'waste', 'fool', 'worst', 'poda', 'moodu', 'wasteu',
-  'kevalam', 'mokka', 'irritating', 'hate', 'die', 'fake', 'mental',
+  'kevalam', 'mokka', 'irritating', 'hate', 'die', 'mental',
   'lossu', 'pavalam', 'loosu', 'dummy', 'kena', 'komali', 'karumam',
-  'cheii', 'worst video', 'dislike', 'unsubscribed', 'unsub', 'scam',
-  'fraud', 'copy', 'dei', 'da', 'punda', 'omala', 'mayiru', 'gotha',
-  'go*tha', 'otha', 'thevidiya', 'baadu', 'sunni', 'poolu', 'koothi',
-  'ommala', 'sunniya', 'mande', 'vetti', 'fucker', 'asshole', 'bitch',
-  'scammer', 'clickbait'
+  'cheii', 'worst video', 'scam', 'fraud', 'punda', 'omala',
+  'mayiru', 'gotha', 'go*tha', 'otha', 'thevidiya', 'baadu', 'sunni',
+  'poolu', 'koothi', 'ommala', 'sunniya', 'mande', 'vetti', 'fucker',
+  'asshole', 'bitch', 'scammer', 'clickbait'
 ];
 
-const normalizeLanguage = (value, text = '') => {
+const PRODUCT_INQUIRY_KEYWORDS = [
+  'app', 'app link', 'application', 'product', 'product link', 'link', 'price',
+  'pricing', 'rate', 'cost', 'amount', 'fees', 'fee', 'details', 'detail',
+  'course', 'demo', 'join', 'contact', 'phone', 'call', 'whatsapp', 'number',
+  'mobile number', 'contact number', 'buy', 'order', 'purchase', 'available',
+  'interested', 'dm', 'message', 'pls', 'please', 'bro', 'suite ready',
+  'business', 'automate', 'automation', 'table', 'wood', 'wooden', 'marathula',
+  'vachrukka', 'vilai', 'evlo', 'evalo', 'eppadi join', 'contact pannunga',
+  'whatsapp pannunga', 'விலை', 'தொடர்பு', 'எண்', 'லிங்க்', 'ஆப்', 'விவரம்'
+];
+
+const escapeKeywordRegExp = (string) =>
+  string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export const isProductInquiryComment = (text = '') => {
+  const lower = String(text || '').toLowerCase();
+  if (!lower.trim()) return false;
+
+  return PRODUCT_INQUIRY_KEYWORDS.some(keyword => {
+    const normalizedKeyword = keyword.toLowerCase();
+    if (new RegExp('[\\u0B80-\\u0BFF]').test(normalizedKeyword)) {
+      return lower.includes(normalizedKeyword);
+    }
+
+    const escapedKeyword = escapeKeywordRegExp(normalizedKeyword);
+    return new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`, 'i').test(lower);
+  });
+};
+
+export const normalizeLanguage = (value, text = '') => {
   const language = String(value || '').trim();
   if (language && !['unknown', 'undefined', 'null'].includes(language.toLowerCase())) {
     return language;
@@ -109,6 +137,7 @@ const normalizeLanguage = (value, text = '') => {
 export const classifyComment = async (text, userKey = null) => {
   const lowerText = text.toLowerCase().trim();
   const fallbackLanguage = normalizeLanguage(null, text);
+  const productInquiryDetected = isProductInquiryComment(text);
 
   let client;
   if (userKey) {
@@ -168,6 +197,7 @@ export const classifyComment = async (text, userKey = null) => {
     }
 
     const isToxic = detectedSentiment === 'toxic';
+    const isProductInquiry = productInquiryDetected && !isToxic;
     const fallbackCategoryScores = {
       toxic: isToxic ? 0.8 : 0.0,
       spam: 0.0,
@@ -178,17 +208,29 @@ export const classifyComment = async (text, userKey = null) => {
     };
 
     return {
-      classification: isToxic ? 'Toxic' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral'),
-      sentiment: detectedSentiment || 'moderate',
+      classification: isToxic ? 'Toxic' : (isProductInquiry ? 'Question' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral')),
+      sentiment: isToxic ? 'toxic' : (detectedSentiment || 'moderate'),
+      isToxic: isToxic,
       toxicityScore: isToxic ? 0.8 : 0,
-      confidence: keywordDetected ? 0.9 : 0.5,
+      confidence: keywordDetected || isProductInquiry ? 0.9 : 0.5,
       language: fallbackLanguage,
       detectedWords,
-      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: fallbackLanguage },
+      lead: {
+        isLead: isProductInquiry,
+        email: null,
+        phone: null,
+        intent: isProductInquiry ? 'Product inquiry' : null,
+        notes: isProductInquiry ? 'Product/contact/link request detected locally' : null,
+        productInterest: isProductInquiry ? 'General' : null,
+        language: fallbackLanguage
+      },
       suggestedReply: null,
       categoryScores: fallbackCategoryScores,
       rawAnalysis: {
         toxic: isToxic,
+        productInquiry: isProductInquiry,
+        buyingIntent: isProductInquiry,
+        customer: isProductInquiry,
         categoryScores: fallbackCategoryScores
       }
     };
@@ -201,16 +243,18 @@ export const classifyComment = async (text, userKey = null) => {
       messages: [
         {
           role: 'system',
-          content: `You are an expert multi-lingual Channelbot & Human-like Safety Auditor.
+          content: `You are an expert multi-lingual ChannelMate YouTube comment safety and lead-intent auditor.
 Analyze the given YouTube comment across ALL languages (Tamil script, Tanglish/Latin Tamil, English, Hindi, Hinglish, Spanish, Malayalam, Telugu, etc.) with human-level intelligence.
 
-Detect bad words, profanity, slurs, toxic insults, harassment, hate speech, spam, scams, or abuse regardless of language or script.
+Detect only real safety issues: profanity, slurs, toxic insults, harassment, hate speech, threats, adult content, scams, phishing, repeated unrelated promotion, or malicious spam.
+
+Normal customer/product inquiries are SAFE and must be categorized as "question" or "neutral feedback", never "spam" or "toxic", unless they also contain actual abuse, scam, threats, slurs, or explicit adult content. Safe inquiries include asking for app link, product link, WhatsApp/contact/mobile number, price, fees, demo, course details, product details, order/buy/purchase info, business automation, or "SUITE ready" details.
 
 Output a JSON object containing EXACTLY the following keys:
 {
   "category": string, // one of: "toxic", "spam", "hate speech", "abuse", "threat", "scam", "adult content", "positive", "question", "neutral feedback"
   "confidence": number, // confidence score between 0.0 and 1.0
-  "isToxic": boolean, // true if category is "toxic", "spam", "hate speech", "abuse", "threat", "scam", or "adult content". Otherwise false.
+  "isToxic": boolean, // true only if category is "toxic", "spam", "hate speech", "abuse", "threat", "scam", or "adult content". Otherwise false.
   "detectedLanguage": string, // detected language (e.g. "Tanglish", "Tamil", "English", "Hindi", "Hinglish", "Spanish", etc.)
   "suggestedReply": string or null // null if isToxic is true. If false, a friendly 1-2 sentence reply in the EXACT SAME language and script as the comment.
 }
@@ -218,6 +262,7 @@ Output a JSON object containing EXACTLY the following keys:
 Moderation Rules:
 - Slang/bad words in Tanglish (e.g., Tamil insults written in English letters) MUST be flagged as toxic ("toxic" or "abuse" or "hate speech").
 - Abusive or offensive comments in Hindi, Hinglish, Spanish, or any regional language MUST be flagged as toxic.
+- Do not treat "app link bro", "contact number pls", "price details", "WhatsApp number", or similar buyer questions as spam.
 - Output ONLY the raw JSON object (no markdown formatting, no extra text).`
         },
         {
@@ -240,7 +285,16 @@ Moderation Rules:
 
     // Map classification to the most specific category detected
     let classification = 'Neutral';
-    const cat = (result.category || '').toLowerCase().trim();
+    let cat = (result.category || '').toLowerCase().trim();
+    const forceSafeProductInquiry = productInquiryDetected && toxicMatches.length === 0 && !['hate speech', 'abuse', 'threat', 'scam', 'adult content'].includes(cat);
+    if (forceSafeProductInquiry) {
+      cat = 'question';
+      result.category = 'question';
+      result.isToxic = false;
+      result.productInquiry = true;
+      result.buyingIntent = true;
+      result.customer = true;
+    }
     if (cat === 'toxic') classification = 'Toxic';
     else if (cat === 'spam') classification = 'Spam';
     else if (cat === 'hate speech') classification = 'Hate Speech';
@@ -268,15 +322,15 @@ Moderation Rules:
     const confidenceScore = Number.isFinite(Number(result.confidence)) ? Number(result.confidence) : 0.85;
 
     // Map lead details
-    const isLead = cat === 'question';
+    const isLead = cat === 'question' || productInquiryDetected;
     const lead = {
       isLead,
       email: null,
       phone: null,
-      intent: isLead ? 'Inquiry' : null,
-      productInterest: null,
+      intent: productInquiryDetected ? 'Product inquiry' : (isLead ? 'Inquiry' : null),
+      productInterest: productInquiryDetected ? 'General' : null,
       language: detectedLanguage,
-      notes: `Category: ${result.category} | Confidence: ${confidenceScore}`
+      notes: `${productInquiryDetected ? 'Product/contact/link request detected. ' : ''}Category: ${result.category} | Confidence: ${confidenceScore}`
     };
 
     let finalWords = [];
@@ -304,6 +358,9 @@ Moderation Rules:
       categoryScores,
       rawAnalysis: {
         ...result,
+        productInquiry: productInquiryDetected,
+        buyingIntent: productInquiryDetected || result.buyingIntent || false,
+        customer: productInquiryDetected || result.customer || false,
         categoryScores
       }
     };
@@ -321,6 +378,7 @@ Moderation Rules:
     }
 
     const isToxic = detectedSentiment === 'toxic';
+    const isProductInquiry = productInquiryDetected && !isToxic;
     const fallbackCategoryScores = {
       toxic: isToxic ? 0.8 : 0.0,
       spam: 0.0,
@@ -331,18 +389,29 @@ Moderation Rules:
     };
 
     return {
-      classification: isToxic ? 'Toxic' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral'),
-      sentiment: detectedSentiment || 'moderate',
+      classification: isToxic ? 'Toxic' : (isProductInquiry ? 'Question' : (detectedSentiment === 'positive' ? 'Positive' : 'Neutral')),
+      sentiment: isToxic ? 'toxic' : (detectedSentiment || 'moderate'),
       isToxic: isToxic,
       toxicityScore: isToxic ? 0.8 : 0,
-      confidence: keywordDetected ? 0.9 : 0.5,
+      confidence: keywordDetected || isProductInquiry ? 0.9 : 0.5,
       language: fallbackLanguage,
       detectedWords,
-      lead: { isLead: false, email: null, phone: null, intent: null, notes: null, productInterest: null, language: fallbackLanguage },
+      lead: {
+        isLead: isProductInquiry,
+        email: null,
+        phone: null,
+        intent: isProductInquiry ? 'Product inquiry' : null,
+        notes: isProductInquiry ? 'Product/contact/link request detected locally' : null,
+        productInterest: isProductInquiry ? 'General' : null,
+        language: fallbackLanguage
+      },
       suggestedReply: null,
       categoryScores: fallbackCategoryScores,
       rawAnalysis: {
         toxic: isToxic,
+        productInquiry: isProductInquiry,
+        buyingIntent: isProductInquiry,
+        customer: isProductInquiry,
         categoryScores: fallbackCategoryScores
       }
     };

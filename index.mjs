@@ -133,6 +133,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
   'https://client-youtube-auto-4esx.vercel.app/',
+  'https://ciphergate.in',
+  'https://*.ciphergate.in',
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ...(process.env.EXTRA_ORIGINS
@@ -324,7 +326,18 @@ async function watchDatabaseChanges(io) {
 
 // ── Middleware ───────────────────────────────────────────────
 app.use(compression());
-app.use(helmet());
+app.use(
+  helmet({
+    frameguard: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "frame-ancestors": ["'self'", "http://localhost:*", "https://*.ciphergate.in", "https://ciphergate.in"]
+      }
+    }
+  })
+);
 
 app.use(
   cors({
