@@ -44,7 +44,7 @@ const runTest = async () => {
     const recentUser = new User({
       name: 'Recent User',
       email: `recent_${Date.now()}@test.com`,
-      password: 'hashedpassword',
+      password: 'TEST_HASHED_PASSWORD',
       createdAt: new Date() // Just created
     });
     await recentUser.save();
@@ -66,7 +66,7 @@ const runTest = async () => {
     const expiredUser = new User({
       name: 'Expired User',
       email: `expired_${Date.now()}@test.com`,
-      password: 'hashedpassword',
+      password: 'TEST_HASHED_PASSWORD',
       createdAt: fortyDaysAgo
     });
     await expiredUser.save();

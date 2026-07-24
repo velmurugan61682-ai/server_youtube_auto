@@ -16,7 +16,11 @@ import ApiKey from '../models/ApiKey.mjs';
 import Payment from '../models/Payment.mjs';
 import logger from '../utils/logger.mjs';
 
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || (process.env.NODE_ENV === 'production' ? process.env.JWT_SECRET : 'admin_sec_7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f');
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
+
+if (!ADMIN_JWT_SECRET) {
+  throw new Error('ADMIN_JWT_SECRET or JWT_SECRET must be set in environment variables.');
+}
 
 // Helper function to log audit entries
 const logAudit = async (adminId, adminEmail, action, targetType, targetId, details = {}) => {
@@ -78,7 +82,7 @@ export const adminLogin = async (req, res) => {
     }
 
     const defaultSuperadminEmail = (process.env.SUPERADMIN_EMAIL || 'admin@channelbot.in').toLowerCase().trim();
-    const defaultSuperadminPass = process.env.SUPERADMIN_PASSWORD || 'AdminPass@123';
+    const defaultSuperadminPass = process.env.SUPERADMIN_PASSWORD;
 
     // Alias 'admin' or 'superadmin' to default superadmin email
     if (adminEmail === 'admin' || adminEmail === 'superadmin') {
@@ -90,7 +94,11 @@ export const adminLogin = async (req, res) => {
 
     // Auto-bootstrap superadmin record if not present
     if (!adminRecord && process.env.NODE_ENV !== 'production' && (adminEmail === defaultSuperadminEmail || adminEmail.includes('admin'))) {
-      const hashed = await bcrypt.hash(password || defaultSuperadminPass, 10);
+      const bootstrapPassword = password || defaultSuperadminPass;
+      if (!bootstrapPassword) {
+        return res.status(500).json({ success: false, error: 'SUPERADMIN_PASSWORD must be set before bootstrapping a superadmin account.' });
+      }
+      const hashed = await bcrypt.hash(bootstrapPassword, 10);
       adminRecord = await Admin.create({
         name: 'Channelbot Superadmin',
         email: defaultSuperadminEmail,

@@ -558,7 +558,7 @@
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "json",
-              "body": "{\n  \"success\": true,\n  \"subscriptionId\": \"sub_XYZ123\",\n  \"razorpayKeyId\": \"rzp_live_abc\"\n}"
+              "body": "{\n  \"success\": true,\n  \"subscriptionId\": \"sub_XYZ123\",\n  \"razorpayKeyId\": \"RAZORPAY_KEY_ID_PLACEHOLDER\"\n}"
             }
           ]
         },

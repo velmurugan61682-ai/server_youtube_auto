@@ -23,7 +23,7 @@ async function verifyStatsRoute() {
     console.log('\n2. Logging in as Admin...');
     const loginRes = await axios.post(`${BASE_URL}/admin/login`, {
       email: 'admin@channelbot.in',
-      password: 'AdminPass@123'
+      password: 'TEST_ADMIN_PASSWORD'
     });
     const adminToken = loginRes.data.token;
     console.log('✅ Login successful, token acquired.');

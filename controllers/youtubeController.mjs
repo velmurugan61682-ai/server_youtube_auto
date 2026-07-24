@@ -24,7 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 const activeRefreshes = new Set();
 
-// ✅ FIX: Intelligent FRONTEND_URL selection based on NODE_ENV
+// Select FRONTEND_URL based on NODE_ENV
 const getFrontendUrl = () => {
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -69,16 +69,16 @@ export const initiateAuth = async (req, res) => {
     } else if (isSubActive) {
       if (planType === 'one_rupee') {
         channelLimit = 1;
-        planName = '₹1 Plan';
+        planName = 'INR 1 Plan';
       } else if (planType === 'monthly_345') {
         channelLimit = 5;
-        planName = '₹345 Plan';
+        planName = 'INR 345 Plan';
       } else if (planType === 'two_months_600') {
         channelLimit = 10;
-        planName = '₹600 Plan';
+        planName = 'INR 600 Plan';
       } else if (planType === 'three_months_999') {
         channelLimit = 1000;
-        planName = '₹999 Plan';
+        planName = 'INR 999 Plan';
       } else {
         channelLimit = 1000;
         planName = 'Premium Pro';
@@ -102,8 +102,7 @@ export const initiateAuth = async (req, res) => {
 
     const state = crypto.randomUUID();
 
-    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId}`);
-    console.log(`[OAuth State Gen] State value: ${state}`);
+    console.log(`[OAuth State Gen] Ã¢Å“â€¦ Generated OAuth state for user ${userId}`);
     console.log(`[OAuth State Gen] TTL: 5 minutes`);
 
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
@@ -113,7 +112,7 @@ export const initiateAuth = async (req, res) => {
       { upsert: true, returnDocument: 'after' }
     );
 
-    console.log(`[OAuth State Gen] ✅ State stored in MongoDB`);
+    console.log(`[OAuth State Gen] Ã¢Å“â€¦ State stored in MongoDB`);
     console.log(`[OAuth State Gen] Document ID: ${stateDoc._id}`);
     console.log(`[OAuth State Gen] Will expire at: ${new Date(stateDoc.createdAt.getTime() + 5 * 60 * 1000).toISOString()}`);
 
@@ -131,12 +130,12 @@ export const initiateAuth = async (req, res) => {
       ],
     });
 
-    console.log(`[OAuth State Gen] ✅ Auth URL generated`);
+    console.log(`[OAuth State Gen] Ã¢Å“â€¦ Auth URL generated`);
     console.log(`[OAuth State Gen] Redirect will happen to Google OAuth`);
 
     res.json({ redirectUrl: authUrl });
   } catch (err) {
-    logger.error(`[OAuth State Gen] ❌ Failed to generate OAuth URL: ${err.message}`);
+    logger.error(`[OAuth State Gen] Ã¢ÂÅ’ Failed to generate OAuth URL: ${err.message}`);
     console.error(`[OAuth State Gen] Error Stack:`, err.stack);
     res.status(500).json({ error: 'OAuth Configuration Error', details: err.message });
   }
@@ -145,12 +144,10 @@ export const initiateAuth = async (req, res) => {
 export const handleCallback = async (req, res) => {
   const { code, state, error: oauthError } = req.query;
 
-  // ✅ FIX: Detailed logging for OAuth state debugging
+  // OAuth callback logging without credentials
   console.log(`[OAuth State Ver] Callback received:`);
   console.log(`  - State: ${state}`);
-  console.log(`  - Code: ${code ? code.substring(0, 10) + '...' : 'MISSING'}`);
   console.log(`  - OAuth Error: ${oauthError || 'none'}`);
-  console.log(`  - Full URL: ${req.originalUrl}`);
 
   if (oauthError) {
     logger.error(`[OAuth Error] Google OAuth error received: ${oauthError}`);
@@ -183,7 +180,7 @@ export const handleCallback = async (req, res) => {
       logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
       return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
     }
-    console.log(`[OAuth State Ver] ✅ State verified successfully for user: ${stateRecord.userId}`);
+    console.log(`[OAuth State Ver] Ã¢Å“â€¦ State verified successfully for user: ${stateRecord.userId}`);
   } catch (dbErr) {
     logger.error(`[OAuth Error] Database error during state verification: ${dbErr.message}`);
     return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Database error during verification')}`);
@@ -198,12 +195,11 @@ export const handleCallback = async (req, res) => {
   try {
     const user = await User.findById(userId).lean();
     const client = getYouTubeAuth();
-    logger.info(`Exchanging OAuth code: ${code ? code.substring(0, 10) + '...' : 'none'}`);
     const tokenResponse = await client.getToken(code);
     tokens = tokenResponse.tokens;
     client.setCredentials(tokens);
     logger.info('OAuth Token exchange successful');
-    logger.info('✓ Google token received');
+    logger.info('Google token received');
 
     const youtube = getYouTubeClient(tokens, null, null);
     channelRes = await youtube.channels.list({ part: 'snippet,contentDetails,statistics', mine: true });
@@ -246,16 +242,16 @@ export const handleCallback = async (req, res) => {
       } else if (isSubActive) {
         if (planType === 'one_rupee') {
           channelLimit = 1;
-          planName = '₹1 Plan';
+          planName = 'INR 1 Plan';
         } else if (planType === 'monthly_345') {
           channelLimit = 5;
-          planName = '₹345 Plan';
+          planName = 'INR 345 Plan';
         } else if (planType === 'two_months_600') {
           channelLimit = 10;
-          planName = '₹600 Plan';
+          planName = 'INR 600 Plan';
         } else if (planType === 'three_months_999') {
           channelLimit = 1000;
-          planName = '₹999 Plan';
+          planName = 'INR 999 Plan';
         } else {
           channelLimit = 1000;
           planName = 'Premium Pro';
@@ -338,7 +334,7 @@ export const handleCallback = async (req, res) => {
       { upsert: true, returnDocument: 'after' }
     );
     logger.info(`Channel saved to MongoDB: ${channel.title} (ID: ${channel.channelId}, Google User ID: ${channel.googleUserId})`);
-    logger.info('✓ Channel connected');
+    logger.info('Channel connected');
 
     // Trigger initial background process (processComments expects raw/decrypted tokens)
     const io = req.app.get('io');
@@ -717,7 +713,7 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
           channelId: channel.channelId,
           videoId: `post_internship_${channel.channelId}`,
           title: `Join our Summer Internship Program 2026!`,
-          description: `🚀 Join Channelbot's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
+          description: `Join ChannelMate's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
           thumbnail: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500`,
           publishedAt: new Date('2026-07-01T08:00:00.000Z'),
           isPost: true,
@@ -730,7 +726,7 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
           channelId: channel.channelId,
           videoId: `post_whatsapp_order_${channel.channelId}`,
           title: `Order products directly via WhatsApp`,
-          description: `📦 Order your products directly via WhatsApp! Send us a message at +919999999999 to place your order today. Fast delivery and premium support guaranteed.`,
+          description: `Order your products directly via WhatsApp! Send us a message at +919999999999 to place your order today. Fast delivery and premium support guaranteed.`,
           thumbnail: `https://images.unsplash.com/photo-1614741118887-7a4ee193a5fa?w=500`,
           publishedAt: new Date('2026-07-10T10:00:00.000Z'),
           isPost: true,

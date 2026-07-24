@@ -51,7 +51,10 @@ export const login = async (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
-      const hashedPassword = await bcrypt.hash(password || 'AdminPass@123', 10);
+      if (!password) {
+        return res.status(400).json({ error: 'Admin password is required' });
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
 
       if (!adminUser) {
         adminUser = new User({

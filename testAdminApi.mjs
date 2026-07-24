@@ -21,7 +21,7 @@ async function testAdminFlow() {
     console.log('\n1. Testing Admin Login...');
     const loginRes = await axios.post(`${API}/login`, {
       email: 'admin@channelbot.in',
-      password: 'AdminPass@123'
+      password: 'TEST_ADMIN_PASSWORD'
     });
     console.log('✅ Login successful:', loginRes.data.success, 'Token received:', !!loginRes.data.token);
     const token = loginRes.data.token;
@@ -34,7 +34,7 @@ async function testAdminFlow() {
     const onboardRes = await axios.post(`${API}/clients`, {
       name: 'Full Stack Creator',
       email: testEmail,
-      password: 'CreatorPass@123',
+      password: 'TEST_CREATOR_PASSWORD',
       organization: 'Vaseegrah Tech',
       plan: 'quarterly_pro'
     }, { headers });

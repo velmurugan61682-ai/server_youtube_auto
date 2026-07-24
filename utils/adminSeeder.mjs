@@ -3,7 +3,7 @@ import User from '../models/User.mjs';
 import logger from './logger.mjs';
 
 const SINGLE_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@channelbot.in').toLowerCase().trim();
-const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AdminPass@123';
+const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const LEGACY_ADMIN_EMAIL = 'admin@youtubeai.test';
 
 /**
@@ -36,6 +36,9 @@ export const seedSingleAdmin = async () => {
     }
 
     if (!primaryAdmin) {
+      if (!DEFAULT_ADMIN_PASSWORD) {
+        throw new Error('ADMIN_PASSWORD must be set before seeding the admin account.');
+      }
       const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
       primaryAdmin = await User.create({
         name: 'Channelbot Admin',

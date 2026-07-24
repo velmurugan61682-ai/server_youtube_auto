@@ -162,24 +162,24 @@ export const getYouTubeAuth = () => {
   }
 
   if (!clientId) {
-    const error = '✗ OAuth initialization failed: Missing GOOGLE_CLIENT_ID';
+    const error = 'OAuth initialization failed: Missing GOOGLE_CLIENT_ID';
     logger.error(error);
     throw new Error(error);
   }
   
   if (!clientSecret) {
-    const error = '✗ OAuth initialization failed: Missing GOOGLE_CLIENT_SECRET';
+    const error = 'OAuth initialization failed: Missing GOOGLE_CLIENT_SECRET';
     logger.error(error);
     throw new Error(error);
   }
 
   if (!redirectUri) {
-    const error = '✗ OAuth initialization failed: Missing GOOGLE_REDIRECT_URI';
+    const error = 'OAuth initialization failed: Missing GOOGLE_REDIRECT_URI';
     logger.error(error);
     throw new Error(error);
   }
 
-  logger.info(`✓ Redirect URI matched: ${redirectUri}`);
+  logger.info('OAuth redirect URI configured');
 
   const oauth2Client = new google.auth.OAuth2(
     clientId,
@@ -187,7 +187,7 @@ export const getYouTubeAuth = () => {
     redirectUri
   );
 
-  logger.info('✓ OAuth initialized');
+  logger.info('OAuth initialized');
   return oauth2Client;
 };
 
@@ -376,7 +376,7 @@ export const likeComment = async (youtube, commentId) => {
     });
     // Also send heart/like signal (separate API call for heart)
     try {
-      await youtube.videos.rate({ id: commentId, rating: 'none' }); // no-op — hearts via setModerationStatus only
+      await youtube.videos.rate({ id: commentId, rating: 'none' }); // no-op; hearts via setModerationStatus only
     } catch (_) { /* ignore */ }
     logger.info(`[YOUTUBE API] Response: comments.setModerationStatus(like) succeeded for comment ${commentId}`);
     return { success: true, status: 'success' };

@@ -1,7 +1,11 @@
 import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.mjs';
 
-const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || (process.env.NODE_ENV === 'production' ? process.env.JWT_SECRET : 'admin_sec_7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f');
+const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
+
+if (!ADMIN_JWT_SECRET) {
+  throw new Error('ADMIN_JWT_SECRET or JWT_SECRET must be set in environment variables.');
+}
 
 export const adminAuth = async (req, res, next) => {
   let token = null;

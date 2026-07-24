@@ -3,6 +3,10 @@ import logger from './logger.mjs';
 
 const ALGORITHM = 'aes-256-cbc';
 
+if (process.env.NODE_ENV === 'production' && !process.env.ENCRYPTION_KEY) {
+  throw new Error('ENCRYPTION_KEY is required in production for OAuth token encryption.');
+}
+
 // Helper to get encryption key (must be exactly 32 bytes)
 const getEncryptionKey = () => {
   const secret = process.env.ENCRYPTION_KEY || (process.env.NODE_ENV !== 'production' ? process.env.JWT_SECRET : '');

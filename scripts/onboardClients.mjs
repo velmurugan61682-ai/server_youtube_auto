@@ -25,16 +25,21 @@ async function onboard() {
 
     const clients = [
       {
-        name: 'Vaseegrah Veda',
-        email: 'vaseegrahveda@Channelbot.com',
-        password: 'VaseegrahVedaSecurePass2026!'
+        name: process.env.ONBOARD_CLIENT_ONE_NAME || 'Vaseegrah Veda',
+        email: process.env.ONBOARD_CLIENT_ONE_EMAIL,
+        password: process.env.ONBOARD_CLIENT_ONE_PASSWORD
       },
       {
-        name: 'Channelbot',
-        email: 'Channelbot@Channelbot.com',
-        password: 'ChannelbotSecurePass2026!'
+        name: process.env.ONBOARD_CLIENT_TWO_NAME || 'ChannelMate Client',
+        email: process.env.ONBOARD_CLIENT_TWO_EMAIL,
+        password: process.env.ONBOARD_CLIENT_TWO_PASSWORD
       }
     ];
+
+    const missingClientConfig = clients.some(client => !client.email || !client.password);
+    if (missingClientConfig) {
+      throw new Error('ONBOARD_CLIENT_*_EMAIL and ONBOARD_CLIENT_*_PASSWORD environment variables are required.');
+    }
 
     for (const client of clients) {
       let user = await User.findOne({ email: client.email });

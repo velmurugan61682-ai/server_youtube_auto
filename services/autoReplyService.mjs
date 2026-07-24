@@ -15,7 +15,6 @@ const getOAuth2Client = () => {
   const redirectUri = (process.env.GOOGLE_REDIRECT_URI || process.env.REDIRECT_URI || 'https://server-youtube-auto.onrender.com/api/youtube/callback').trim().replace(/^["']|["']$/g, '');
   const refreshToken = (process.env.YOUTUBE_OAUTH_REFRESH_TOKEN || '').trim().replace(/^["']|["']$/g, '');
 
-  console.log("GOOGLE_CLIENT_ID:", process.env.GOOGLE_CLIENT_ID);
 
   if (!clientId || !clientSecret) {
     throw new Error('OAuth2 credentials (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) must be set in environment variables.');

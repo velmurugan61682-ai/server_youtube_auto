@@ -16,6 +16,13 @@ import logger from '../utils/logger.mjs';
 
 const router = express.Router();
 
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+
+if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+  throw new Error('Missing Razorpay configuration: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in environment variables.');
+}
+
 // Define Plan IDs from env config matching the new tiers
 const planIds = {
   one_rupee: process.env.RAZORPAY_PLAN_ONE_RUPEE || 'plan_one_rupee_mock',
@@ -76,8 +83,8 @@ router.post('/create', authMiddleware, async (req, res) => {
     }
 
     // Paid Plan - Create Razorpay Order
-    const razorpayKeyId = process.env.RAZORPAY_KEY_ID || 'rzp_test_SnyBwTTmMiaZjY';
-    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || 'XBv2ZRTlwY6GloFLKcwiuXR3';
+    const razorpayKeyId = RAZORPAY_KEY_ID;
+    const razorpayKeySecret = RAZORPAY_KEY_SECRET;
 
     const Razorpay = (await import('razorpay')).default;
     const razorpay = new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret });

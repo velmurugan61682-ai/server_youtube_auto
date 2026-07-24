@@ -5,19 +5,15 @@ import logger from '../utils/logger.mjs';
 const key_id = process.env.RAZORPAY_KEY_ID;
 const key_secret = process.env.RAZORPAY_KEY_SECRET;
 
-let razorpay = null;
-
-// Initialize conditionally to prevent startup crashes if environment variables are not yet configured
-if (key_id && key_secret) {
-  razorpay = new Razorpay({
-    key_id,
-    key_secret
-  });
-  logger.info('💳 Razorpay SDK Initialized.');
-} else {
-  logger.warn('⚠️ Razorpay credentials missing from env. Subscriptions will run in mock mode.');
+if (!key_id || !key_secret) {
+  throw new Error('Missing Razorpay configuration: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in environment variables.');
 }
 
+const razorpay = new Razorpay({
+  key_id,
+  key_secret
+});
+logger.info('Razorpay SDK initialized.');
 /**
  * Creates a subscription in Razorpay
  */
@@ -186,18 +182,6 @@ export const verifySubscriptionSignature = (paymentId, subscriptionId, signature
  * Fetch invoices for a subscription
  */
 export const getSubscriptionInvoices = async (subscriptionId) => {
-  if (!razorpay) {
-    return [
-      {
-        id: 'inv_mock_001',
-        amount: 29900, // INR 299.00
-        currency: 'INR',
-        status: 'issued',
-        issued_at: Math.floor((Date.now() - 5 * 24 * 60 * 60 * 1000) / 1000),
-        invoice_number: 'INV-2026-001'
-      }
-    ];
-  }
   try {
     const invoices = await razorpay.invoices.all({ subscription_id: subscriptionId });
     return invoices.items || [];
