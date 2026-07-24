@@ -407,7 +407,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/', (_req, res) => {
-  res.send('AI YouTube Moderator API is running.');
+  res.send('ChannelMate API is running.');
 });
 
 
