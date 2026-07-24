@@ -513,7 +513,13 @@ export const getVideos = async (req, res) => {
           const apiStatsItems = videoIds.length > 0 ? await fetchVideoStatisticsBatch(youtube, videoIds) : [];
 
           const todayStr = new Date().toISOString().split('T')[0];
-          const videoById = new Map(videos.map(v => [v.videoId, v]));
+          const videosById = new Map();
+          for (const v of videos) {
+            if (!videosById.has(v.videoId)) {
+              videosById.set(v.videoId, []);
+            }
+            videosById.get(v.videoId).push(v);
+          }
           const bulkOps = [];
 
           for (const item of apiStatsItems) {
@@ -522,8 +528,8 @@ export const getVideos = async (req, res) => {
             const commentCount = parseInt(item.statistics?.commentCount || 0);
             const engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
 
-            const video = videoById.get(item.id);
-            if (video) {
+            const matchedVideos = videosById.get(item.id) || [];
+            for (const video of matchedVideos) {
               let history = video.likesHistory || [];
               if (history.length > 0) {
                 const lastEntry = history[history.length - 1];
