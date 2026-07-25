@@ -64,8 +64,8 @@ const runRecoveryAndSync = async (io) => {
       }
     }
     logger.info('Startup Recovery Complete');
-    logger.info('🚀 Startup Recovery: Triggering sync for all channels...');
-    const channels = await Channel.find();
+    logger.info('🚀 Startup Recovery: Triggering sync for connected channels...');
+    const channels = await Channel.find({ status: 'connected' });
     for (const channel of channels) {
       if (channel.reconnectRequired) {
         logger.info(`🚀 Startup Recovery: Skipping reconnect-required channel ${channel.title || channel.channelId}`);
@@ -113,6 +113,7 @@ export const initCommentJob = (io) => {
       logger.info('Running scheduled 30-second comment analysis (fetching channels due for sync)...');
       const thirtySecondsAgo = new Date(Date.now() - 30000);
       const channels = await Channel.find({
+        status: 'connected',
         $or: [
           { lastSyncedAt: { $exists: false } },
           { lastSyncedAt: null },

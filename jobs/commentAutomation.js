@@ -127,7 +127,7 @@ export const runCommentAutomation = async () => {
 
   try {
     // 1. Fetch connected channels from MongoDB
-    const channels = await Channel.find();
+    const channels = await Channel.find({ status: 'connected' });
     if (!channels.length) {
       logger.info("No connected channels. Skipping automation.");
       return { success: true, processed: 0 };
