@@ -8,6 +8,7 @@ import ModerationLog from '../models/ModerationLog.mjs';
 import AutoLikeLog from '../models/AutoLikeLog.mjs';
 import AutoReplyLog from '../models/AutoReplyLog.mjs';
 import Channel from '../models/Channel.mjs';
+import User from '../models/User.mjs';
 import { normalizeLanguage } from '../services/aiService.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,112 +20,112 @@ async function run() {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log('Connected to Database');
 
-    const targetUserId = new mongoose.Types.ObjectId('6a61ab6013a05a496c6ec738');
-    const targetOrgId = new mongoose.Types.ObjectId('6a58b3fca56b7151cdd2d250');
-    const channelId = 'UCdpaYm53cdH0SODoBXAKRmQ';
+    // Fetch all users
+    const users = await User.find({});
+    console.log(`Found ${users.length} users in database.`);
 
-    // 1. Ensure the Channel exists
-    const channelData = {
-      userId: targetUserId,
-      organizationId: targetOrgId,
-      channelId: channelId,
-      title: 'Tech Vaseegrah',
-      status: 'connected',
-      reconnectRequired: false,
-      lastSyncedAt: new Date()
-    };
-    await Channel.findOneAndUpdate(
-      { channelId, userId: targetUserId },
-      { $set: channelData },
-      { upsert: true }
-    );
-    console.log('✅ Re-created/Verified Channel "Tech Vaseegrah"');
+    for (const user of users) {
+      const targetUserId = user._id;
+      const targetOrgId = user.organizationId;
+      
+      // Find connected channels for this user
+      const channelDocs = await Channel.find({ userId: targetUserId });
+      if (channelDocs.length === 0) continue;
+      
+      console.log(`\nRestoring comments for user ${user.email} (Org: ${targetOrgId})...`);
 
-    // 2. Collect all comment IDs across logs for tech@gmail.com
-    const mLogs = await ModerationLog.find({ userId: targetUserId });
-    const rLogs = await AutoReplyLog.find({ userId: targetUserId });
-    const lLogs = await Lead.find({ userId: targetUserId });
-    const lkLogs = await AutoLikeLog.find({ userId: targetUserId });
+      for (const channel of channelDocs) {
+        const channelId = channel.channelId;
 
-    const commentIds = new Set();
-    mLogs.forEach(log => commentIds.add(log.commentId));
-    rLogs.forEach(log => commentIds.add(log.commentId));
-    lLogs.forEach(log => commentIds.add(log.commentId));
-    lkLogs.forEach(log => commentIds.add(log.commentId));
+        // Collect all comment IDs across logs for this user/channel
+        const mLogs = await ModerationLog.find({ userId: targetUserId, channelId });
+        const rLogs = await AutoReplyLog.find({ userId: targetUserId, channelId });
+        const lLogs = await Lead.find({ userId: targetUserId, channelId });
+        const lkLogs = await AutoLikeLog.find({ userId: targetUserId, channelId });
 
-    console.log(`Found ${commentIds.size} unique comment IDs in logs.`);
+        const commentIds = new Set();
+        mLogs.forEach(log => commentIds.add(log.commentId));
+        rLogs.forEach(log => commentIds.add(log.commentId));
+        lLogs.forEach(log => commentIds.add(log.commentId));
+        lkLogs.forEach(log => commentIds.add(log.commentId));
 
-    let inserted = 0;
-    for (const cid of commentIds) {
-      // Find logs matching this comment ID
-      const mLog = mLogs.find(log => log.commentId === cid);
-      const rLog = rLogs.find(log => log.commentId === cid);
-      const lLog = lLogs.find(log => log.commentId === cid);
-      const lkLog = lkLogs.find(log => log.commentId === cid);
+        if (commentIds.size === 0) continue;
+        console.log(`  Channel ${channel.title} (${channelId}): Found ${commentIds.size} unique comment IDs in logs.`);
 
-      // Extract text and author details
-      const text = mLog?.commentText || rLog?.commentText || lLog?.originalComment || 'Dummy comment text';
-      const author = mLog?.authorName || rLog?.username || lLog?.authorName || 'Anonymous';
-      const videoId = mLog?.videoId || rLog?.videoId || lLog?.videoId || lkLog?.videoId || 'unknown_video';
-      const date = mLog?.createdAt || rLog?.createdAt || lLog?.createdAt || lkLog?.createdAt || new Date();
+        let inserted = 0;
+        for (const cid of commentIds) {
+          // Find logs matching this comment ID
+          const mLog = mLogs.find(log => log.commentId === cid);
+          const rLog = rLogs.find(log => log.commentId === cid);
+          const lLog = lLogs.find(log => log.commentId === cid);
+          const lkLog = lkLogs.find(log => log.commentId === cid);
 
-      const isModerated = !!mLog;
-      const hasReplied = !!rLog;
-      const autoLiked = !!lkLog;
+          // Extract text and author details
+          const text = mLog?.commentText || rLog?.commentText || lLog?.originalComment || 'Dummy comment text';
+          const author = mLog?.authorName || rLog?.username || lLog?.authorName || 'Anonymous';
+          const videoId = mLog?.videoId || rLog?.videoId || lLog?.videoId || lkLog?.videoId || 'unknown_video';
+          const date = mLog?.createdAt || rLog?.createdAt || lLog?.createdAt || lkLog?.createdAt || new Date();
 
-      let status = 'approved';
-      let sentiment = 'neutral';
-      let classification = 'Neutral';
+          const isModerated = !!mLog;
+          const hasReplied = !!rLog;
+          const autoLiked = !!lkLog;
 
-      if (isModerated) {
-        classification = 'Toxic';
-        sentiment = 'toxic';
-        status = (mLog.action === 'deleted' || mLog.executedAction === 'deleted') ? 'deleted' : 'flagged';
-      } else if (hasReplied) {
-        classification = 'Positive';
-        sentiment = 'positive';
+          let status = 'approved';
+          let sentiment = 'neutral';
+          let classification = 'Neutral';
+
+          if (isModerated) {
+            classification = 'Toxic';
+            sentiment = 'toxic';
+            status = (mLog.action === 'deleted' || mLog.executedAction === 'deleted') ? 'deleted' : 'flagged';
+          } else if (hasReplied) {
+            classification = 'Positive';
+            sentiment = 'positive';
+          }
+
+          const commentLanguage = normalizeLanguage(null, text);
+
+          const commentDoc = {
+            userId: targetUserId,
+            organizationId: targetOrgId,
+            youtubeId: cid,
+            commentId: cid,
+            channelId: channelId,
+            videoId: videoId,
+            text: text,
+            commentText: text,
+            author: author,
+            username: author,
+            authorProfileImageUrl: '',
+            publishedAt: date,
+            sentiment,
+            classification,
+            language: commentLanguage,
+            status,
+            isModerated,
+            moderationAction: isModerated ? (mLog.action || 'delete') : null,
+            hasReplied,
+            replyText: rLog?.replyText || null,
+            replyStatus: hasReplied ? 'sent' : 'none',
+            autoLiked,
+            likeStatus: autoLiked ? 'success' : 'none',
+            aiStatus: 'completed',
+            createdAt: date,
+            updatedAt: date
+          };
+
+          await Comment.findOneAndUpdate(
+            { userId: targetUserId, youtubeId: cid },
+            { $set: commentDoc },
+            { upsert: true }
+          );
+          inserted++;
+        }
+        console.log(`  ✅ Successfully restored ${inserted} comments for channel ${channel.title}.`);
       }
-
-      const commentLanguage = normalizeLanguage(null, text);
-
-      const commentDoc = {
-        userId: targetUserId,
-        organizationId: targetOrgId,
-        youtubeId: cid,
-        commentId: cid,
-        channelId: channelId,
-        videoId: videoId,
-        text: text,
-        commentText: text,
-        author: author,
-        username: author,
-        authorProfileImageUrl: '',
-        publishedAt: date,
-        sentiment,
-        classification,
-        language: commentLanguage,
-        status,
-        isModerated,
-        moderationAction: isModerated ? (mLog.action || 'delete') : null,
-        hasReplied,
-        replyText: rLog?.replyText || null,
-        replyStatus: hasReplied ? 'sent' : 'none',
-        autoLiked,
-        likeStatus: autoLiked ? 'success' : 'none',
-        aiStatus: 'completed',
-        createdAt: date,
-        updatedAt: date
-      };
-
-      await Comment.findOneAndUpdate(
-        { userId: targetUserId, youtubeId: cid },
-        { $set: commentDoc },
-        { upsert: true }
-      );
-      inserted++;
     }
 
-    console.log(`✅ Successfully restored ${inserted} comments from automation logs.`);
+    console.log('\nAll user comments restored successfully.');
     process.exit(0);
   } catch (err) {
     console.error('Error recovering database:', err);

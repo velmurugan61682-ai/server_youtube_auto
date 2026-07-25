@@ -77,7 +77,7 @@ export const handleQuotaError = (channelId) => {
 export const clearQuotaBackoff = (channelId) => {
   channelBackoffs.delete(channelId);
 };
-import { classifyComment, analyzeVideo } from './aiService.mjs';
+import { classifyComment, analyzeVideo, normalizeLanguage } from './aiService.mjs';
 import { detectWhatsAppNumber, createLead } from './leadService.mjs';
 import { sendWhatsAppMessage } from './gowhatsService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
