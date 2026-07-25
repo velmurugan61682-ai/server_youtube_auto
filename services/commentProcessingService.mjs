@@ -1203,8 +1203,14 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
 
     const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident;
     const isMeaningful = commentDoc.text && commentDoc.text.trim().length > 3;
+    const shouldAutoLike = (
+      status !== 'deleted' &&
+      status !== 'flagged' &&
+      tenantSettings.autoLike &&
+      (isPositive || ruleMatchedAndExecuted)
+    );
 
-    if (status !== 'deleted' && status !== 'flagged' && isPositive && isMeaningful && tenantSettings.autoLike) {
+    if (shouldAutoLike) {
       if (channel.apiKey) {
         likeStatus = 'not_supported';
         likeError = 'Authentication via API Key does not permit write actions (OAuth required)';
