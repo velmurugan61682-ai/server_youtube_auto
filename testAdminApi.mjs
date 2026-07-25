@@ -35,7 +35,7 @@ async function testAdminFlow() {
       name: 'Full Stack Creator',
       email: testEmail,
       password: 'TEST_CREATOR_PASSWORD',
-      organization: 'Vaseegrah Tech',
+      organization: 'ChannelMate',
       plan: 'quarterly_pro'
     }, { headers });
     console.log('✅ Client onboarded in MongoDB! Client ID:', onboardRes.data.client.id, 'Plan:', onboardRes.data.client.plan);

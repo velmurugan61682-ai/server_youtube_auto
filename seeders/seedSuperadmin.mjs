@@ -12,7 +12,7 @@ export const seedSuperadmin = async () => {
     if (!adminPassword) {
       throw new Error('SUPERADMIN_PASSWORD must be set before seeding the superadmin account.');
     }
-    const adminName = process.env.SUPERADMIN_NAME || 'Channelbot Superadmin';
+    const adminName = process.env.SUPERADMIN_NAME || 'ChannelMate Superadmin';
 
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 

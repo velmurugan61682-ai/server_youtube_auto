@@ -20,7 +20,7 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Auto-link new user to default organization: Channelbot / Tech Vaseegrah
-    const defaultOrg = await Organization.findOne({ name: { $in: ['Channelbot', 'Tech Vaseegrah'] } }).lean();
+    const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah'] } }).lean();
     const user = new User({
       name,
       email,

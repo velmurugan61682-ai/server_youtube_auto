@@ -25,7 +25,7 @@ async function onboard() {
 
     const clients = [
       {
-        name: process.env.ONBOARD_CLIENT_ONE_NAME || 'Vaseegrah Veda',
+        name: process.env.ONBOARD_CLIENT_ONE_NAME || 'ChannelMate',
         email: process.env.ONBOARD_CLIENT_ONE_EMAIL,
         password: process.env.ONBOARD_CLIENT_ONE_PASSWORD
       },

@@ -101,7 +101,7 @@ export const adminLogin = async (req, res) => {
       }
       const hashed = await bcrypt.hash(bootstrapPassword, 10);
       adminRecord = await Admin.create({
-        name: 'Channelbot Superadmin',
+        name: 'ChannelMate Superadmin',
         email: defaultSuperadminEmail,
         passwordHash: hashed,
         role: 'superadmin'

@@ -419,7 +419,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/', (_req, res) => {
-  res.send('Channelbot API is running.');
+  res.send('ChannelMate API is running.');
 });
 
 

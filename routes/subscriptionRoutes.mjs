@@ -47,7 +47,7 @@ router.post('/create', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (!user.organizationId) {
-      const defaultOrg = await Organization.findOne({ name: { $in: ['Channelbot', 'Tech Vaseegrah'] } });
+      const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah'] } });
       if (defaultOrg) {
         user.organizationId = defaultOrg._id;
         await user.save();
