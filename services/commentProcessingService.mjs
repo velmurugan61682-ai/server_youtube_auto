@@ -1298,7 +1298,22 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
               }
             }
             const productLink = user.productLink || process.env.PRODUCT_LINK || 'https://Channelbot.com';
-            const messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will reach out to you shortly. Feel free to reply if you have any questions!`;
+            let messageTemplate = '';
+            const customDm = matchedRule?.dmContent || matchedRule?.automatedDmContent;
+            if (customDm) {
+              let videoTitle = 'our video';
+              if (commentDoc.videoId) {
+                const videoDoc = await Video.findOne({ videoId: commentDoc.videoId });
+                if (videoDoc && videoDoc.title) {
+                  videoTitle = videoDoc.title;
+                }
+              }
+              messageTemplate = customDm
+                .replace(/\{\{username\}\}/gi, commentDoc.author || 'there')
+                .replace(/\{\{videoTitle\}\}/gi, videoTitle);
+            } else {
+              messageTemplate = `Hi ${commentDoc.author},\n\nThank you for showing interest! 🚀\n\nHere is the link for more details: ${productLink}\n\nOur team will reach out to you shortly. Feel free to reply if you have any questions!`;
+            }
             const decryptedGoWhatsKey = user.gowhatsApiKey ? decrypt(user.gowhatsApiKey) : null;
             logger.info(`[LEADS] Sending WhatsApp alert to ${phoneToUse}`);
             const waRes = await sendWhatsAppMessage(phoneToUse, messageTemplate, 3, decryptedGoWhatsKey, user.gowhatsUrl);
