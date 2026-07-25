@@ -101,12 +101,13 @@ export const getExternalCustomerDetails = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const filter = req.isAdminKey ? { role: { $ne: 'superadmin' } } : { _id: req.user.id };
-    if (req.isAdminKey && search) {
+    const safeSearch = search ? search.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&').slice(0, 100) : '';
+    if (req.isAdminKey && safeSearch) {
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { organization: { $regex: search, $options: 'i' } },
-        { tenantId: { $regex: search, $options: 'i' } }
+        { name: { $regex: safeSearch, $options: 'i' } },
+        { email: { $regex: safeSearch, $options: 'i' } },
+        { organization: { $regex: safeSearch, $options: 'i' } },
+        { tenantId: { $regex: safeSearch, $options: 'i' } }
       ];
     }
     if (req.isAdminKey && status && status !== 'all') filter.status = status;

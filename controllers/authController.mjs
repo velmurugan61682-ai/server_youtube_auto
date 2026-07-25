@@ -17,7 +17,7 @@ export const register = async (req, res) => {
     const exists = await User.findOne({ email }).lean();
     if (exists) return res.status(400).json({ error: 'User already exists' });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Auto-link new user to default organization: Channelbot / Tech Vaseegrah
     const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah'] } }).lean();
@@ -54,7 +54,7 @@ export const login = async (req, res) => {
       if (!password) {
         return res.status(400).json({ error: 'Admin password is required' });
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(password, 12);
 
       if (!adminUser) {
         adminUser = new User({
@@ -108,21 +108,9 @@ export const login = async (req, res) => {
     // 2. Standard Client User Login Handler
     let user = await User.findOne({ email: new RegExp(`^${cleanEmail}$`, 'i') });
     if (!user) {
-      if (!allowDevAutoLogin()) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      const hashedPassword = await bcrypt.hash(password || 'pass1234', 10);
-      user = new User({
-        name: cleanEmail.split('@')[0],
-        email: cleanEmail,
-        password: hashedPassword,
-        passwordHash: hashedPassword,
-        role: 'client',
-        status: 'active'
-      });
-      await user.save();
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
+
 
     let isMatch = false;
     if (user.password) {
@@ -132,17 +120,8 @@ export const login = async (req, res) => {
       isMatch = await bcrypt.compare(password, user.passwordHash);
     }
 
-    // Optional local-only bypass for seed/demo development. Disabled in production.
     if (!isMatch) {
-      if (!allowDevAutoLogin()) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      const newHash = await bcrypt.hash(password, 10);
-      user.password = newHash;
-      user.passwordHash = newHash;
-      await user.save();
-      isMatch = true;
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = jwt.sign({
@@ -168,7 +147,7 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 };
 
@@ -182,7 +161,7 @@ export const getMe = async (req, res) => {
     res.json(user);
   } catch (error) {
     logger.error('getMe Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error.' });
   }
 };
 
@@ -191,9 +170,13 @@ export const sso = async (req, res) => {
     const { sso_username, sso_key } = req.body;
     const allowedKeys = [
       process.env.SSO_KEY,
-      process.env.DEV_SSO_KEY,
-      'ciphergate_gowhats_secure_sso_key_2024'
+      process.env.DEV_SSO_KEY
     ].filter(Boolean);
+
+    if (!allowedKeys.length) {
+      logger.error('[SSO] No SSO keys configured in environment');
+      return res.status(503).json({ error: 'SSO not configured' });
+    }
 
     if (!sso_key || !allowedKeys.includes(sso_key)) {
       logger.warn(`🔑 [SSO Attempt] Invalid SSO key from IP: ${req.ip}`);
@@ -223,7 +206,7 @@ export const sso = async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email, profilePicture: user.profilePicture }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'SSO authentication failed.' });
   }
 };
 
@@ -241,7 +224,7 @@ export const listOrganizations = async (req, res) => {
     const orgs = await Organization.find({}).select('name logo').lean();
     res.json(orgs);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error.' });
   }
 };
 
@@ -277,7 +260,7 @@ export const switchOrganization = async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email, organizationId }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error.' });
   }
 };
 
@@ -294,12 +277,18 @@ export const updateProfile = async (req, res) => {
     }
 
     if (name) user.name = name;
-    if (profilePicture !== undefined) user.profilePicture = profilePicture;
-    if (password) {
-      if (password.length < 6) {
-        return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    if (profilePicture !== undefined) {
+      // Limit profilePicture to 500KB base64 string to prevent DoS
+      if (typeof profilePicture === 'string' && profilePicture.length > 700000) {
+        return res.status(400).json({ error: 'Profile picture is too large. Maximum 500KB allowed.' });
       }
-      user.password = await bcrypt.hash(password, 10);
+      user.profilePicture = profilePicture;
+    }
+    if (password) {
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+      }
+      user.password = await bcrypt.hash(password, 12);
     }
 
     await user.save();
@@ -311,6 +300,6 @@ export const updateProfile = async (req, res) => {
     res.json({ success: true, user: updatedUser });
   } catch (error) {
     logger.error('Update Profile Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Profile update failed.' });
   }
 };

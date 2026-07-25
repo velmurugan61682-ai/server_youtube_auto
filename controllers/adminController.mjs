@@ -51,15 +51,18 @@ const toInt = (value, fallback, max = 100) => {
   return Math.min(parsed, max);
 };
 
+const escapeRegex = (str) => str.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+
 const buildUserFilter = ({ search, status, plan }) => {
   const filter = { role: { $ne: 'superadmin' } };
 
   if (search) {
+    const safeSearch = escapeRegex(String(search).slice(0, 100)); // Limit length too
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { organization: { $regex: search, $options: 'i' } },
-      { tenantId: { $regex: search, $options: 'i' } }
+      { name: { $regex: safeSearch, $options: 'i' } },
+      { email: { $regex: safeSearch, $options: 'i' } },
+      { organization: { $regex: safeSearch, $options: 'i' } },
+      { tenantId: { $regex: safeSearch, $options: 'i' } }
     ];
   }
   if (status && status !== 'all') filter.status = status;

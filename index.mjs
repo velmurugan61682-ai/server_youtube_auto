@@ -120,6 +120,10 @@ const PORT = process.env.PORT || 5000;
 const app = express();
 const server = http.createServer(app);
 
+// Trust the first proxy (required for correct req.ip behind Render/Nginx)
+app.set('trust proxy', 1);
+
+
 const normalizeOrigin = (urlStr) => {
   try {
     const url = new URL(urlStr.trim());
@@ -347,6 +351,7 @@ app.use(
 );
 
 app.use(express.json({
+  limit: '1mb',
   verify: (req, res, buf) => {
     req.rawBody = buf;
   }
@@ -356,27 +361,37 @@ app.use(cookieParser());
 // Rate Limiting Configurations
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Increased threshold for testing/production high loads
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  // Bypass rate limits for local developer/testing requests
-  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === 'localhost',
+  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true',
   message: { error: 'Too many requests, please try again after 15 minutes.' }
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, // Increased threshold for auth testing
+  max: 20, // Strict limit: 20 auth attempts per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
-  // Bypass rate limits for local developer/testing requests
-  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === 'localhost',
+  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true',
   message: { error: 'Too many authentication attempts, please try again after 15 minutes.' }
+});
+
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10, // Very strict: 10 admin login attempts per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env.DISABLE_RATE_LIMIT === 'true',
+  message: { error: 'Too many admin login attempts. Please try again later.' }
 });
 
 // Apply rate limiters
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/sso', authLimiter);
+app.use('/api/admin/login', adminLoginLimiter);
+app.use('/api/v1/admin/login', adminLoginLimiter);
 app.use('/api', apiLimiter);
 
 // ── Routes ───────────────────────────────────────────────────

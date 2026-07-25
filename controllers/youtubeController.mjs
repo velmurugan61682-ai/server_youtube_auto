@@ -430,10 +430,7 @@ export const getVideos = async (req, res) => {
     const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
 
-    let channel = await Channel.findOne({ userId: req.user.id, channelId }).lean();
-    if (!channel) {
-      channel = await Channel.findOne({ channelId }).lean();
-    }
+    const channel = await Channel.findOne({ userId: req.user.id, channelId }).lean();
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
     // Sync community posts
@@ -445,7 +442,7 @@ export const getVideos = async (req, res) => {
 
     const userIds = [req.user.id];
 
-    let videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
+    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
     const refreshCandidates = videos.filter(v => (

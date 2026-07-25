@@ -1,10 +1,10 @@
 import ApiKey from '../models/ApiKey.mjs';
 
 export const apiKeyAuth = async (req, res, next) => {
-  let key = req.headers['x-api-key'] || req.query.apiKey || req.query.api_key || req.query.key;
+  let key = req.headers['x-api-key'];
   const authHeader = req.headers.authorization;
 
-  // Fallback to Bearer token in Authorization header
+  // Fallback to Bearer token in Authorization header (but NOT query params — keys in URLs appear in logs)
   if (!key && authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
     key = authHeader.substring(7).trim();
   }
