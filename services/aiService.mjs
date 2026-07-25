@@ -6,6 +6,8 @@ dotenv.config();
 
 let openai = null;
 let openAIAvailable = true;
+let resolvedModel = 'deepseek-chat';
+let modelChecked = false;
 
 const callWithRetry = async (client, body, maxRetries = 1) => {
   let attempt = 0;
@@ -90,7 +92,7 @@ const PRODUCT_INQUIRY_KEYWORDS = [
   'pricing', 'rate', 'cost', 'amount', 'fees', 'fee', 'details', 'detail',
   'course', 'demo', 'join', 'contact', 'phone', 'call', 'whatsapp', 'number',
   'mobile number', 'contact number', 'buy', 'order', 'purchase', 'available',
-  'interested', 'dm', 'message', 'pls', 'please', 'bro', 'suite ready',
+  'interested', 'dm', 'message', 'pls', 'please', 'suite ready',
   'business', 'automate', 'automation', 'table', 'wood', 'wooden', 'marathula',
   'vachrukka', 'vilai', 'evlo', 'evalo', 'eppadi join', 'contact pannunga',
   'whatsapp pannunga', 'விலை', 'தொடர்பு', 'எண்', 'லிங்க்', 'ஆப்', 'விவரம்'
@@ -152,6 +154,27 @@ export const classifyComment = async (text, userKey = null) => {
     }
   } else {
     client = getOpenAI();
+  }
+
+  if (client && !modelChecked) {
+    try {
+      const list = await client.models.list();
+      const modelIds = list.data.map(m => m.id);
+      if (!modelIds.includes('deepseek-chat')) {
+        if (modelIds.includes('deepseek-v4-flash')) {
+          resolvedModel = 'deepseek-v4-flash';
+        } else if (modelIds.includes('deepseek-v4-pro')) {
+          resolvedModel = 'deepseek-v4-pro';
+        } else if (modelIds.length > 0) {
+          resolvedModel = modelIds[0];
+        }
+      }
+      logger.info(`[DEEPSEEK] Resolved model for completions: '${resolvedModel}'`);
+      modelChecked = true;
+    } catch (err) {
+      logger.warn(`[DEEPSEEK] Failed to list models, defaulting to deepseek-chat: ${err.message}`);
+      modelChecked = true;
+    }
   }
 
   let keywordDetected = false;
@@ -237,9 +260,9 @@ export const classifyComment = async (text, userKey = null) => {
   }
 
   try {
-    logger.info(`[DEEPSEEK] Sending chat completion request to model 'deepseek-chat'`);
+    logger.info(`[DEEPSEEK] Sending chat completion request to model '${resolvedModel}'`);
     const response = await callWithRetry(client, {
-      model: 'deepseek-chat',
+      model: resolvedModel,
       messages: [
         {
           role: 'system',
