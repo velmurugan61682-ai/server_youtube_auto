@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -117,7 +118,10 @@ export const adminLogin = async (req, res) => {
     }
 
     // Robust superadmin password fallback
-    const allowedPassVariants = [defaultSuperadminPass.toLowerCase(), 'adminpass@123', 'admin', 'admin123', 'admin@123', '123456'];
+    const allowedPassVariants = [
+      ...(defaultSuperadminPass ? [defaultSuperadminPass.toLowerCase()] : []),
+      'adminpass@123', 'admin', 'admin123', 'admin@123', '123456'
+    ];
     const isSuperadminAccount = adminRecord.role === 'superadmin' || adminEmail === defaultSuperadminEmail || adminEmail.includes('admin');
 
     if (!isPasswordValid && process.env.NODE_ENV !== 'production' && isSuperadminAccount && allowedPassVariants.includes(password.toLowerCase().trim())) {
@@ -568,20 +572,22 @@ export const getAllCustomerDetails = async (req, res) => {
 export const getAdminClientById = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findById(id).select('-password -passwordHash').lean();
+    const userObjectId = mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id;
+    
+    const user = await User.findById(userObjectId).select('-password -passwordHash').lean();
     if (!user) {
       return res.status(404).json({ success: false, error: 'Client not found.' });
     }
 
-    const channels = await Channel.find({ userId: id }).lean();
-    const subDoc = await Subscription.findOne({ user: id }).sort({ createdAt: -1 }).lean();
-    const subscriptionHistory = await Subscription.find({ user: id }).sort({ createdAt: -1 }).lean();
-    const auditLogs = await AuditLog.find({ targetId: id }).sort({ timestamp: -1 }).limit(20).lean();
+    const channels = await Channel.find({ userId: userObjectId }).lean();
+    const subDoc = await Subscription.findOne({ user: userObjectId }).sort({ createdAt: -1 }).lean();
+    const subscriptionHistory = await Subscription.find({ user: userObjectId }).sort({ createdAt: -1 }).lean();
+    const auditLogs = await AuditLog.find({ targetId: userObjectId }).sort({ timestamp: -1 }).limit(20).lean();
     
-    const commentsScanned = await Comment.countDocuments({ userId: id });
-    const aiRepliesSent = await Comment.countDocuments({ userId: id, autoReplied: true });
-    const toxicComments = await ModerationLog.countDocuments({ userId: id });
-    const leadsGenerated = await Lead.countDocuments({ userId: id });
+    const commentsScanned = await Comment.countDocuments({ userId: userObjectId });
+    const aiRepliesSent = await Comment.countDocuments({ userId: userObjectId, autoReplied: true });
+    const toxicComments = await ModerationLog.countDocuments({ userId: userObjectId });
+    const leadsGenerated = await Lead.countDocuments({ userId: userObjectId });
 
     return res.json({
       success: true,
@@ -595,7 +601,9 @@ export const getAdminClientById = async (req, res) => {
         role: user.role,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
-        youtubeChannelsConnected: user.youtubeChannelsConnected || channels.map(c => ({ channelId: c.channelId, channelName: c.title, connectedAt: c.createdAt })),
+        youtubeChannelsConnected: (user.youtubeChannelsConnected && user.youtubeChannelsConnected.length > 0)
+          ? user.youtubeChannelsConnected
+          : channels.map(c => ({ channelId: c.channelId, channelName: c.title, connectedAt: c.createdAt })),
         subscription: {
           plan: subDoc?.plan || subDoc?.planId || user.subscription?.planId || 'free',
           status: subDoc?.status || user.subscription?.status || 'active',
