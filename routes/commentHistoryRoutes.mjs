@@ -32,9 +32,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
     // ── 1. Resolve channels the user owns ──────────────────────────────────
-    const channelFilter = organizationId
-      ? { $or: [{ organizationId }, { userId }] }
-      : { userId };
+    const channelFilter = { userId };
 
     if (channelId) channelFilter.channelId = channelId;
 
@@ -65,7 +63,6 @@ router.get('/', authMiddleware, async (req, res) => {
 
     // ── 4. Fetch ModerationLog (type = deleted | hidden) ────────────────────
     let modQuery = { userId, channelId: { $in: allowedChannelIds } };
-    if (organizationId) modQuery.organizationId = organizationId;
     if (channelId) modQuery.channelId = channelId;
     if (searchRegex) {
       modQuery.$or = [

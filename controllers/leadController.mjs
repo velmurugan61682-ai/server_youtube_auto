@@ -9,10 +9,7 @@ const escapeRegex = (string) => {
 };
 
 const getUserChannelIds = async (user) => {
-  const filter = user.organizationId 
-    ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
-    : { userId: user.id };
-  const channels = await Channel.find(filter).select('channelId').lean();
+  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
   return channels.map(c => c.channelId);
 };
 
@@ -79,12 +76,7 @@ export const getLeads = async (req, res) => {
     const { status, channelId, search } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    // Resolve organization users
-    const filterUser = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
-      : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id').lean();
-    const userIds = users.map(u => u._id);
+    const userIds = [req.user.id];
 
     await backfillMissingLeads(userIds, allowedChannelIds);
 

@@ -14,19 +14,13 @@ export const getAnalytics = async (req, res) => {
   try {
     const { channelId, startDate, endDate } = req.query;
     
-    // Resolve organization channels
-    const filter = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
-      : { userId: req.user.id };
+    // Resolve user channels
+    const filter = { userId: req.user.id };
     const channels = await Channel.find(filter).select('channelId').lean();
     const channelIds = channels.map(c => c.channelId);
 
-    // Resolve organization users
-    const filterUser = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
-      : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id').lean();
-    const userIds = users.map(u => u._id);
+    // Resolve user scope
+    const userIds = [req.user.id];
 
     // Parse date filters
     const now = new Date();
@@ -49,8 +43,14 @@ export const getAnalytics = async (req, res) => {
     });
     const toxicClassificationValues = [/^toxic$/i, /^spam$/i, /^hate speech$/i, /^abuse$/i, /^threat$/i, /^scam$/i, /^sexual content$/i];
 
-    // 1. Engagement Card: total tracked user comments in the date range.
-    const totalComments = await Comment.countDocuments(commentBaseQuery());
+    // 1. Engagement Card: total tracked user comments + moderated logs in the date range.
+    const commentDocCount = await Comment.countDocuments(commentBaseQuery());
+    const modLogCount = await ModerationLog.countDocuments({
+      userId: { $in: userIds },
+      channelId: channelFilter,
+      createdAt: { $gte: start, $lte: end }
+    });
+    const totalComments = commentDocCount + modLogCount;
 
     // 2. Positive Card: sentiment/classification can come from old or new analyzer rows.
     const totalPositive = await Comment.countDocuments(commentBaseQuery({
@@ -60,8 +60,8 @@ export const getAnalytics = async (req, res) => {
       ]
     }));
 
-    // 3. Toxic Card: include unsafe sentiment, classification, and moderated comment states.
-    const totalToxic = await Comment.countDocuments(commentBaseQuery({
+    // 3. Toxic Card: include unsafe sentiment in Comment DB + ModerationLog toxic/deleted entries.
+    const commentToxicCount = await Comment.countDocuments(commentBaseQuery({
       $or: [
         { sentiment: /^toxic$/i },
         { classification: { $in: toxicClassificationValues } },
@@ -69,15 +69,37 @@ export const getAnalytics = async (req, res) => {
         { status: 'deleted' }
       ]
     }));
+    const modToxicCount = await ModerationLog.countDocuments({
+      userId: { $in: userIds },
+      channelId: channelFilter,
+      $or: [
+        { action: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
+        { executedAction: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
+        { category: { $in: [/toxic/i, /spam/i, /abuse/i, /hate/i] } }
+      ],
+      createdAt: { $gte: start, $lte: end }
+    });
+    const totalToxic = Math.max(commentToxicCount, modToxicCount);
 
-    // 4. Moderate Card: AI moderate sentiment plus comments held for manual review.
-    const totalModerate = await Comment.countDocuments(commentBaseQuery({
+    // 4. Moderate Card: AI moderate sentiment + held/flagged comments.
+    const commentModCount = await Comment.countDocuments(commentBaseQuery({
       $or: [
         { sentiment: /^moderate$/i },
         { status: { $in: ['moderate', 'flagged'] } },
         { moderationStatus: { $in: ['needsReview', 'heldForReview'] } }
       ]
     }));
+    const modReviewCount = await ModerationLog.countDocuments({
+      userId: { $in: userIds },
+      channelId: channelFilter,
+      $or: [
+        { action: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
+        { executedAction: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
+        { status: { $in: ['needsReview', 'heldForReview', 'flagged'] } }
+      ],
+      createdAt: { $gte: start, $lte: end }
+    });
+    const totalModerate = Math.max(commentModCount, modReviewCount);
 
     // Sentiment 'neutral' count for charts
     const totalNeutral = await Comment.countDocuments(commentBaseQuery({
@@ -359,9 +381,7 @@ export const getAnalytics = async (req, res) => {
  */
 export const getDashboardAnalytics = async (req, res) => {
   try {
-    const filter = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
-      : { userId: req.user.id };
+    const filter = { userId: req.user.id };
 
     const channels = await Channel.find(filter).lean();
     const channelIds = channels.map(c => c.channelId);

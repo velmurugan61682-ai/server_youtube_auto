@@ -9,9 +9,7 @@ import { initiateAuth as initiateOAuth } from './youtubeController.mjs';
  */
 export const getConnectedChannels = async (req, res) => {
   try {
-    const filter = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
-      : { userId: req.user.id };
+    const filter = { userId: req.user.id };
     
     const channels = await Channel.find(filter)
       .select('title channelId customUrl description thumbnailUrl statistics status apiKey reconnectRequired reconnectReason createdAt')
@@ -46,9 +44,7 @@ export const disconnectChannel = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Channel ID parameter is required' });
     }
 
-    const filter = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
-      : { userId: req.user.id, channelId };
+    const filter = { userId: req.user.id, channelId };
 
     const deletedChannel = await Channel.findOneAndDelete(filter);
     if (!deletedChannel) {

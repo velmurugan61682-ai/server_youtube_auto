@@ -15,12 +15,9 @@ import { processComments, processSingleComment } from '../services/commentProces
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 import { debouncedEmit } from '../utils/socketDebouncer.mjs';
 
-// Helper to get allowed channel IDs for a user based on their organization
+// Helper to get allowed channel IDs for a user
 const getUserChannelIds = async (user) => {
-  const filter = user.organizationId 
-    ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
-    : { userId: user.id };
-  const channels = await Channel.find(filter).select('channelId').lean();
+  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
   return channels.map(c => c.channelId);
 };
 
@@ -28,15 +25,10 @@ export const getComments = async (req, res) => {
   try {
     const { status, sentiment, autoLiked, videoId, channelId, page = 1, limit = 50 } = req.query;
     
-    // Resolve tenant channels
+    // Resolve user channels
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    // Resolve organization users
-    const filterUser = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
-      : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id').lean();
-    const userIds = users.map(u => u._id);
+    const userIds = [req.user.id];
     
     const query = { 
       channelId: { $in: allowedChannelIds },

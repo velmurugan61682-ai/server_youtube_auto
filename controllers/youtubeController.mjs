@@ -215,12 +215,16 @@ export const handleCallback = async (req, res) => {
     let existingChannel = await Channel.findOne({ channelId: channelData.id }).lean();
 
     if (existingChannel && existingChannel.userId.toString() !== userId.toString()) {
-      logger.warn(`Security: User ${userId} attempted to link YouTube channel ${channelData.id} which is already owned by User ${existingChannel.userId}`);
-      return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('This YouTube channel is already connected to another account.')}`);
+      logger.info(`Reassigning YouTube channel ${channelData.id} to newly authenticated user ${userId}`);
+      await Comment.updateMany({ channelId: channelData.id }, { $set: { userId } });
+      await Video.updateMany({ channelId: channelData.id }, { $set: { userId } });
+      await ModerationLog.updateMany({ channelId: channelData.id }, { $set: { userId } });
+      await AutoReplyLog.updateMany({ channelId: channelData.id }, { $set: { userId } });
+      await Lead.updateMany({ channelId: channelData.id }, { $set: { userId } });
     }
 
     // Post-flight check: prevent exceeding channel limits based on subscription plan
-    const isReconnectingOwnChannel = existingChannel && existingChannel.userId.toString() === userId.toString();
+    const isReconnectingOwnChannel = !!existingChannel;
     if (!isReconnectingOwnChannel) {
       let org = null;
       if (user && user.organizationId) {
@@ -395,9 +399,7 @@ export const handleCallback = async (req, res) => {
 
 export const getChannels = async (req, res) => {
   try {
-    const filter = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
-      : { userId: req.user.id };
+    const filter = { userId: req.user.id };
     const channels = await Channel.find(filter)
       .select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason statistics')
       .lean();
@@ -411,9 +413,7 @@ export const getChannels = async (req, res) => {
 export const deleteChannel = async (req, res) => {
   try {
     const { channelId } = req.params;
-    const filter = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
-      : { userId: req.user.id, channelId };
+    const filter = { userId: req.user.id, channelId };
     const deletedChannel = await Channel.findOneAndDelete(filter);
     if (!deletedChannel) {
       return res.status(404).json({ error: 'Channel not found' });
@@ -430,9 +430,7 @@ export const getVideos = async (req, res) => {
     const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
 
-    const filter = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
-      : { userId: req.user.id, channelId };
+    const filter = { userId: req.user.id, channelId };
     const channel = await Channel.findOne(filter).lean();
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
@@ -443,12 +441,7 @@ export const getVideos = async (req, res) => {
       logger.error(`Failed to sync community posts: ${postSyncErr.message}`);
     }
 
-    // Resolve organization users
-    const filterUser = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
-      : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id').lean();
-    const userIds = users.map(u => u._id);
+    const userIds = [req.user.id];
 
     let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
 
