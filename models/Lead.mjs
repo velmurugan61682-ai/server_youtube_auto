@@ -33,5 +33,7 @@ leadSchema.index({ whatsappNumber: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, channelId: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 leadSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
+leadSchema.index({ userId: 1, createdAt: -1 });
+leadSchema.index({ organizationId: 1, status: 1 });
 
 export default mongoose.model('Lead', leadSchema);

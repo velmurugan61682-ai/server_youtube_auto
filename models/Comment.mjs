@@ -79,6 +79,7 @@ commentSchema.index({ userId: 1, videoId: 1, publishedAt: -1 });
 commentSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 commentSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 commentSchema.index({ userId: 1, organizationId: 1, channelId: 1, videoId: 1, textHash: 1, createdAt: -1 });
+commentSchema.index({ userId: 1, isModerated: 1, createdAt: -1 });
 
 export default mongoose.model('Comment', commentSchema);
 // [FIX APPLIED] Bug #2 & #3 — Added authorChannelId, isBotReply, hasReplied, repliedAt fields to Comment model (models/Comment.mjs)
