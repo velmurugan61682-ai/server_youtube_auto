@@ -298,6 +298,27 @@ router.get('/invoices', authMiddleware, async (req, res) => {
       return res.json({ success: true, invoices: mapped });
     }
 
+    // Fallback: Check Payment collection if BillingHistory is empty
+    const dbPayments = await Payment.find({
+      $or: [
+        { userId: user._id },
+        org ? { organizationId: org._id } : {}
+      ].filter(Boolean)
+    }).sort({ createdAt: -1 }).lean();
+
+    if (dbPayments && dbPayments.length > 0) {
+      const mapped = dbPayments.map(pay => ({
+        id: pay.razorpayPaymentId || pay._id.toString(),
+        invoice_number: pay.razorpayPaymentId || 'N/A',
+        issued_at: Math.floor(new Date(pay.paymentDate || pay.createdAt).getTime() / 1000),
+        amount: pay.amount,
+        currency: pay.currency || 'INR',
+        status: pay.status === 'captured' ? 'paid' : pay.status,
+        invoiceUrl: pay.invoiceId || ''
+      }));
+      return res.json({ success: true, invoices: mapped });
+    }
+
     const subId = org?.subscription?.razorpaySubscriptionId || user.subscription?.id;
     if (!subId) {
       return res.json({ success: true, invoices: [] });

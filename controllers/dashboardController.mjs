@@ -52,11 +52,15 @@ export const getDashboardStats = async (req, res) => {
       sentiment: 'positive'
     });
 
-    // 5. moderateComments: count of Comments with status 'pending' or 'flagged'
+    // 5. moderateComments: count of Comments needing moderation (sentiment = moderate, or status in moderate/flagged/pending)
     const moderateComments = await Comment.countDocuments({
       userId: userFilter,
       channelId: channelFilter,
-      status: { $in: ['pending', 'flagged'] }
+      $or: [
+        { sentiment: 'moderate' },
+        { status: { $in: ['moderate', 'flagged', 'pending'] } },
+        { moderationStatus: { $in: ['needsReview', 'heldForReview'] } }
+      ]
     });
 
     logger.info(`[Dashboard Stats] Calculated for user ${req.user.id}: toxicComments=${toxicComments}, autoShield=${autoShield}, autoReplies=${autoReplies}, positiveComments=${positiveComments}, moderateComments=${moderateComments}`);

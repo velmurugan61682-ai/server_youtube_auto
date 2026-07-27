@@ -574,12 +574,15 @@ export const getVideos = async (req, res) => {
         }
       }
     }
-    // Deduplicate videos by videoId to guarantee uniqueness
+    // Deduplicate videos and posts to guarantee uniqueness
     const uniqueVideos = [];
-    const seenVideoIds = new Set();
+    const seenVideoKeys = new Set();
     for (const v of videos) {
-      if (!seenVideoIds.has(v.videoId)) {
-        seenVideoIds.add(v.videoId);
+      const key = (v.isPost || v.videoId?.startsWith('yt_post_'))
+        ? `${v.channelId}_post_${(v.title || '').trim().toLowerCase()}`
+        : v.videoId;
+      if (key && !seenVideoKeys.has(key)) {
+        seenVideoKeys.add(key);
         uniqueVideos.push(v);
       }
     }
@@ -719,7 +722,8 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
     if (scraped && scraped.length > 0) {
       for (let i = 0; i < scraped.length; i++) {
         const p = scraped[i];
-        const postId = p.postId || `yt_post_${channel.channelId}_${i}`;
+        const textHash = crypto.createHash('md5').update(p.text || '').digest('hex').substring(0, 12);
+        const postId = p.postId || `yt_post_${channel.channelId}_${textHash}`;
         await Video.findOneAndUpdate(
           { channelId: channel.channelId, videoId: postId },
           {
@@ -727,14 +731,16 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
               userId,
               channelId: channel.channelId,
               videoId: postId,
-              title: p.text.split('\n')[0] || 'Community Post',
+              title: (p.text || '').split('\n')[0] || 'Community Post',
               description: p.text,
               thumbnail: p.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150',
-              publishedAt: new Date(),
               isPost: true,
               analyzed: true,
               statistics: { viewCount: 0, likeCount: 0, commentCount: 0 },
               lastFetchedAt: new Date()
+            },
+            $setOnInsert: {
+              publishedAt: new Date()
             }
           },
           { upsert: true, returnDocument: 'after' }
