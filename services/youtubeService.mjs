@@ -734,8 +734,8 @@ export const scrapeCommunityPosts = async (customUrl, channelId) => {
   try {
     const handle = customUrl ? (customUrl.startsWith('@') ? customUrl : `@${customUrl}`) : null;
     const url = handle 
-      ? `https://www.youtube.com/${handle}/community` 
-      : `https://www.youtube.com/channel/${channelId}/community`;
+      ? `https://www.youtube.com/${handle}/posts` 
+      : `https://www.youtube.com/channel/${channelId}/posts`;
 
     logger.info(`[SCRAPER] Scraping community posts from: ${url}`);
     
@@ -755,10 +755,15 @@ export const scrapeCommunityPosts = async (customUrl, channelId) => {
 
     const json = JSON.parse(match[1]);
     const tabs = json.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
-    const communityTab = tabs.find(t => t.tabRenderer?.title === 'Community' || t.tabRenderer?.endpoint?.browseEndpoint?.params === 'Egljb21tdW5pdHk%3D' || t.tabRenderer?.selected);
+    const communityTab = tabs.find(t =>
+      t.tabRenderer?.title === 'Posts' ||
+      t.tabRenderer?.title === 'Community' ||
+      t.tabRenderer?.endpoint?.browseEndpoint?.params === 'Egljb21tdW5pdHk%3D' ||
+      t.tabRenderer?.selected
+    );
     
     if (!communityTab) {
-      logger.warn(`[SCRAPER] Community tab not found in ytInitialData for ${url}`);
+      logger.warn(`[SCRAPER] Community/Posts tab not found in ytInitialData for ${url}`);
       return [];
     }
 
