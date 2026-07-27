@@ -13,14 +13,29 @@ import logger from '../utils/logger.mjs';
 export const getAnalytics = async (req, res) => {
   try {
     const { channelId, startDate, endDate } = req.query;
-    
+
+    // Resolve user scope (including organization members)
+    let userIds = [req.user.id];
+    if (req.user.organizationId) {
+      const orgUsers = await User.find({ organizationId: req.user.organizationId }).select('_id').lean();
+      if (orgUsers.length > 0) {
+        userIds = [...new Set([...userIds, ...orgUsers.map(u => u._id.toString())])];
+      }
+    }
+
+    const userObjectIds = userIds.map(id => {
+      try {
+        return new mongoose.Types.ObjectId(id);
+      } catch (e) {
+        return id;
+      }
+    });
+    const userMatchFilter = { $in: [...userIds, ...userObjectIds] };
+
     // Resolve user channels
-    const filter = { userId: req.user.id };
+    const filter = { userId: { $in: userIds } };
     const channels = await Channel.find(filter).select('channelId').lean();
     const channelIds = channels.map(c => c.channelId);
-
-    // Resolve user scope
-    const userIds = [req.user.id];
 
     // Parse date filters
     const now = new Date();
@@ -36,7 +51,7 @@ export const getAnalytics = async (req, res) => {
       ]
     };
     const commentBaseQuery = (...conditions) => ({
-      userId: { $in: userIds },
+      userId: userMatchFilter,
       channelId: channelFilter,
       isBotReply: { $ne: true },
       $and: [commentDateWindow, ...conditions]
@@ -270,7 +285,7 @@ export const getAnalytics = async (req, res) => {
     const languageBreakdown = await Comment.aggregate([
       {
         $match: {
-          userId: { $in: userIds },
+          userId: userMatchFilter,
           channelId: typeof channelFilter === 'string' ? channelFilter : { $in: channelIds },
           isBotReply: { $ne: true },
           $and: [commentDateWindow]
@@ -301,7 +316,7 @@ export const getAnalytics = async (req, res) => {
     const topWordCategories = await Comment.aggregate([
       {
         $match: {
-          userId: { $in: userIds },
+          userId: userMatchFilter,
           channelId: typeof channelFilter === 'string' ? channelFilter : { $in: channelIds },
           $and: [commentDateWindow],
           classification: { $exists: true, $nin: [null, '', 'none', 'unknown', 'bot_reply'] }
@@ -322,7 +337,7 @@ export const getAnalytics = async (req, res) => {
 
     // 11. Fetch latest 10 activities for Live Feed
     const latestComments = await Comment.find({
-      userId: { $in: userIds },
+      userId: userMatchFilter,
       channelId: typeof channelFilter === 'string' ? channelFilter : { $in: channelIds },
       isBotReply: { $ne: true }
     })
@@ -381,7 +396,20 @@ export const getAnalytics = async (req, res) => {
  */
 export const getDashboardAnalytics = async (req, res) => {
   try {
-    const filter = { userId: req.user.id };
+    let userIds = [req.user.id];
+    let userOrgId = req.user.organizationId;
+    if (!userOrgId) {
+      const userDoc = await User.findById(req.user.id).select('organizationId').lean();
+      userOrgId = userDoc?.organizationId;
+    }
+    if (userOrgId) {
+      const orgUsers = await User.find({ organizationId: userOrgId }).select('_id').lean();
+      if (orgUsers.length > 0) {
+        userIds = [...new Set([...userIds, ...orgUsers.map(u => u._id.toString())])];
+      }
+    }
+
+    const filter = { userId: { $in: userIds } };
 
     const channels = await Channel.find(filter).lean();
     const channelIds = channels.map(c => c.channelId);

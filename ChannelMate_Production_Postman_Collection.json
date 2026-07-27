@@ -1,0 +1,4769 @@
+{
+  "info": {
+    "name": "ChannelMate Production API",
+    "_postman_id": "channelmate-prod-api-v1",
+    "description": "Production API documentation and test collection for ChannelMate YouTube SaaS Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://server-youtube-auto.onrender.com/api",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "YOUR_ADMIN_JWT_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "YOUR_EXTERNAL_API_KEY_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "POST /auth/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/sso",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/sso",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "sso"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auth/organizations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/organizations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "organizations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/switch-org",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/switch-org",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "switch-org"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /auth/profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "profile"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Google & YouTube OAuth",
+      "item": [
+        {
+          "name": "_ALL /auth/google",
+          "request": {
+            "method": "_ALL",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/google",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "google"
+              ]
+            }
+          }
+        },
+        {
+          "name": "_ALL /auth/google/login",
+          "request": {
+            "method": "_ALL",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/google/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "google",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auth/google/callback",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/google/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "google",
+                "callback"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /youtube/auth/initiate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/auth/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "auth",
+                "initiate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /youtube/auth/initiate",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/auth/initiate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "auth",
+                "initiate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /youtube/connect",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/connect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "connect"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /youtube/connect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/connect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "connect"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /youtube/callback",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "callback"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "YouTube Channels & Content",
+      "item": [
+        {
+          "name": "GET /channels/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/channels/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "channels",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /channels/connect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/channels/connect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "channels",
+                "connect"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /channels/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/channels/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "channels",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /youtube/channels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/channels",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "channels"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /youtube/channels/:channelId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/channels/:channelId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "channels",
+                "{{channelId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /youtube/videos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/videos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "videos"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /youtube/video/:id/analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/video/:id/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "video",
+                "{{id}}",
+                "analytics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /youtube/video/:id/like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/youtube/video/:id/like",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "youtube",
+                "video",
+                "{{id}}",
+                "like"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Comments & Intelligence",
+      "item": [
+        {
+          "name": "GET /comments/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comments/history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "history"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comments/reply",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/reply",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "reply"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /comments/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comments/:id/action",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/:id/action",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "{{id}}",
+                "action"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /comments/:id/edit",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/:id/edit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "{{id}}",
+                "edit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comments/reanalyze",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/reanalyze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "reanalyze"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comments/analyze/:videoId",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comments/analyze/:videoId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comments",
+                "analyze",
+                "{{videoId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comment-history/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-history/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-history",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Automation & Auto-Mod",
+      "item": [
+        {
+          "name": "GET /automation/settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/automation/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "automation",
+                "settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /automation/settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/automation/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "automation",
+                "settings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /legacy-automation/run-now",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/legacy-automation/run-now",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "legacy-automation",
+                "run-now"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comment-automation/rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rule",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rule"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comment-automation/rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comment-automation/rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /comment-automation/rule/:ruleId",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rule/:ruleId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rule",
+                "{{ruleId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /comment-automation/rules/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /comment-automation/rules/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /comment-automation/rule/:ruleId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rule/:ruleId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rule",
+                "{{ruleId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /comment-automation/rules/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comment-automation/rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comment-automation/rules/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /comment-automation/rules/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /comment-automation/rules/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /comment-automation/rules/:id/status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comment-automation/rules/:id/test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/rules/:id/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "rules",
+                "{{id}}",
+                "test"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comment-automation/history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "history"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comment-automation/history/:id/retry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/history/:id/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "history",
+                "{{id}}",
+                "retry"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comment-automation/moderation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/moderation",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "moderation"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /comment-automation/moderation/:id/action",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/moderation/:id/action",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "moderation",
+                "{{id}}",
+                "action"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /comment-automation/stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/comment-automation/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "comment-automation",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auto-mod/rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auto-mod/rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /auto-mod/rules/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /auto-mod/rules/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/rules/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "rules",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /auto-mod/rules/:id/status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/rules/:id/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "rules",
+                "{{id}}",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auto-mod/comments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "comments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /auto-mod/history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auto-mod/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auto-mod",
+                "history"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Other Operations",
+      "item": [
+        {
+          "name": "GET /moderation/rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/moderation/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /moderation/rules",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/moderation/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /moderation/rules",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/moderation/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /moderation/comments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/moderation/comments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "moderation",
+                "comments"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics & Dashboard",
+      "item": [
+        {
+          "name": "GET /analytics/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /analytics/dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "analytics",
+                "dashboard"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /dashboard/stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "dashboard",
+                "stats"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions & Billing",
+      "item": [
+        {
+          "name": "GET /billing/status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/billing/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "billing",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /billing/subscribe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/billing/subscribe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "billing",
+                "subscribe"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /billing/invoices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/billing/invoices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "billing",
+                "invoices"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /subscription/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscription/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /subscription/verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscription/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "verify"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /subscription/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscription/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /subscription/status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscription/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /subscription/invoices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscription/invoices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "invoices"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /subscription/webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/subscription/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "subscription",
+                "webhook"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Keys",
+      "item": [
+        {
+          "name": "GET /api-keys/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-keys/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api-keys/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-keys/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /api-keys/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api-keys/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api-keys",
+                "{{id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leads & Customer Contacts",
+      "item": [
+        {
+          "name": "GET /leads/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/leads/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leads",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /leads/export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/leads/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "leads",
+                "export"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings & Configuration",
+      "item": [
+        {
+          "name": "GET /settings/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/settings/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /settings/",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/settings/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /settings/credentials",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/settings/credentials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                "credentials"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /settings/youtube",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/settings/youtube",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settings",
+                "youtube"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Live Chat",
+      "item": [
+        {
+          "name": "POST /live-chat/toggle-mode",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/live-chat/toggle-mode",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "live-chat",
+                "toggle-mode"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /live-chat/messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/live-chat/messages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "live-chat",
+                "messages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /live-chat/send",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/live-chat/send",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "live-chat",
+                "send"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /live-chat/sync",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/live-chat/sync",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "live-chat",
+                "sync"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin & Console Management",
+      "item": [
+        {
+          "name": "GET /v1/admin/moderation/stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/moderation/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "moderation",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "analytics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/audit-logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/audit-logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "audit-logs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/clients",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/clients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/customers/details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/customers/details",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "customers",
+                "details"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/clients/details/all",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients/details/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients",
+                "details",
+                "all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/users/details/all",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users/details/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users",
+                "details",
+                "all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/clients/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /v1/admin/clients/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /v1/admin/clients/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /v1/admin/clients/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /v1/admin/users/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /v1/admin/users/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /v1/admin/users/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/subscriptions/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /v1/admin/subscriptions/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /v1/admin/subscriptions/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /v1/admin/subscriptions/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions/:userId/activate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:userId/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{userId}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions/:id/activate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions/:userId/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:userId/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{userId}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions/:id/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions/:userId/extend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:userId/extend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{userId}}",
+                "extend"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/subscriptions/:id/extend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/subscriptions/:id/extend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "subscriptions",
+                "{{id}}",
+                "extend"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "admins"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/admins",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "admins"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /v1/admin/admins/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/admins/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "admins",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /v1/admin/api-keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "api-keys"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /v1/admin/api-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "api-keys"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /v1/admin/api-keys/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/admin/api-keys/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "admin",
+                "api-keys",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/moderation/stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/moderation/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "moderation",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "analytics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/audit-logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/audit-logs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "audit-logs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/clients",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/clients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/customers/details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/customers/details",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "customers",
+                "details"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/clients/details/all",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients/details/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients",
+                "details",
+                "all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/users/details/all",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/details/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "details",
+                "all"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/clients/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /admin/clients/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /admin/clients/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /admin/clients/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "clients",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /admin/users/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /admin/users/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /admin/users/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/subscriptions/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /admin/subscriptions/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PUT /admin/subscriptions/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /admin/subscriptions/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions/:userId/activate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:userId/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{userId}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions/:id/activate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions/:userId/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:userId/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{userId}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions/:id/cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}",
+                "cancel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions/:userId/extend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:userId/extend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{userId}}",
+                "extend"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/subscriptions/:id/extend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/subscriptions/:id/extend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "subscriptions",
+                "{{id}}",
+                "extend"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/admins",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /admin/admins/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/admins/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "admins",
+                "{{id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "payments"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/api-keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "api-keys"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/api-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "api-keys"
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /admin/api-keys/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/api-keys/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "api-keys",
+                "{{id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "External & Integration APIs",
+      "item": [
+        {
+          "name": "GET /external/leads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/external/leads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "external",
+                "leads"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /external/leads",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/external/leads",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "external",
+                "leads"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /external/users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/external/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "external",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /external/customers/details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/external/customers/details",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "external",
+                "customers",
+                "details"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

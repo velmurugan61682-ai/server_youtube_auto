@@ -1,4 +1,13 @@
 import './config/env.mjs';
+import dns from 'dns';
+
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (e) {}
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
+
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
@@ -75,7 +84,7 @@ if (process.env.MONGO_URI && !process.env.MONGODB_URI) {
 if (!process.env.GOOGLE_REDIRECT_URI) {
   const isProduction = process.env.NODE_ENV === 'production';
   process.env.GOOGLE_REDIRECT_URI = isProduction
-    ? (process.env.GOOGLE_REDIRECT_URI_PROD || '')
+    ? (process.env.GOOGLE_REDIRECT_URI_PROD || 'https://server-youtube-auto.onrender.com/api/youtube/callback')
     : (process.env.GOOGLE_REDIRECT_URI_DEV || 'http://localhost:5000/api/youtube/callback');
 }
 
@@ -134,9 +143,11 @@ const normalizeOrigin = (urlStr) => {
 };
 
 const allowedOrigins = [
+  'https://channelbot.in',
   'http://localhost:5173',
+  'http://127.0.0.1:5173',
   'http://localhost:5174',
-  'https://client-youtube-auto-4esx.vercel.app/',
+  'https://client-youtube-auto-4esx.vercel.app',
   'https://ciphergate.techvaseegrah.com',
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
@@ -441,18 +452,33 @@ app.get('/', (_req, res) => {
 // ── Startup Sequence ─────────────────────────────────────────
 async function startServer() {
   try {
-    logger.info('⏳ Connecting to MongoDB...');
+    const maxRetries = 5;
+    let attempt = 0;
+    let connected = false;
 
-    await mongoose.connect(
-      process.env.MONGODB_URI,
-      {
-        serverSelectionTimeoutMS: 10000
+    while (attempt < maxRetries && !connected) {
+      attempt++;
+      try {
+        logger.info(`⏳ Connecting to MongoDB (Attempt ${attempt}/${maxRetries})...`);
+        await mongoose.connect(
+          process.env.MONGODB_URI,
+          {
+            serverSelectionTimeoutMS: 10000,
+            family: 4
+          }
+        );
+        connected = true;
+        logger.info('✅ MongoDB Connected Successfully');
+      } catch (connErr) {
+        logger.error(`❌ MongoDB connection attempt ${attempt} failed: ${connErr.message}`);
+        if (attempt < maxRetries) {
+          logger.info('⏳ Retrying MongoDB connection in 3 seconds...');
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        } else {
+          throw connErr;
+        }
       }
-    );
-
-    logger.info(
-      '✅ MongoDB Connected Successfully'
-    );
+    }
 
     // Start MongoDB Change Streams (with hooks fallback)
     watchDatabaseChanges(io);

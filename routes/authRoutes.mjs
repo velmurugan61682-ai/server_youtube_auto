@@ -30,6 +30,8 @@ const validateLogin = [
   }
 ];
 
+import { initiateAuth, handleCallback } from '../controllers/youtubeController.mjs';
+
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
 router.get('/me', authMiddleware, getMe);
@@ -38,5 +40,18 @@ router.post('/sso', sso);
 router.get('/organizations', authMiddleware, listOrganizations);
 router.post('/switch-org', authMiddleware, switchOrganization);
 router.put('/profile', authMiddleware, updateProfile);
+
+// Google & YouTube OAuth Integration Routes
+const googleAuthHandler = (req, res, next) => {
+  // Support Bearer token passed in Header, Cookie, or Query param
+  if (!req.headers.authorization && req.query.token) {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  return authMiddleware(req, res, () => initiateAuth(req, res, next));
+};
+
+router.all('/google', googleAuthHandler);
+router.all('/google/login', googleAuthHandler);
+router.get('/google/callback', handleCallback);
 
 export default router;

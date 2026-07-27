@@ -1,6 +1,17 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dns from 'dns';
+
+// Set reliable public DNS servers to resolve MongoDB SRV records reliably
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (e) {
+  // Ignore if custom DNS fallback fails
+}
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,3 +40,4 @@ if (!process.env.GOOGLE_REDIRECT_URI) {
 }
 
 console.log('✅ Environment loaded and mapped from env.mjs');
+

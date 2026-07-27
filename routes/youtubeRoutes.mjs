@@ -14,6 +14,9 @@ import { requireActiveSubscription, checkChannelLimit } from '../middleware/subs
 const router = express.Router();
 
 router.post('/auth/initiate', authMiddleware, requireActiveSubscription, checkChannelLimit, initiateAuth);
+router.get('/auth/initiate', authMiddleware, requireActiveSubscription, checkChannelLimit, initiateAuth);
+router.get('/connect', authMiddleware, requireActiveSubscription, checkChannelLimit, initiateAuth);
+router.post('/connect', authMiddleware, requireActiveSubscription, checkChannelLimit, initiateAuth);
 router.get('/callback', handleCallback);
 router.get('/channels', authMiddleware, getChannels);
 router.delete('/channels/:channelId', authMiddleware, deleteChannel);

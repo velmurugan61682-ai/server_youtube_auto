@@ -1,0 +1,1752 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/auth/register",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/register",
+    "authType": "Public",
+    "statusCode": 400,
+    "responseTime": 8,
+    "pass": false,
+    "bodySnippet": "{\"error\":\"Name is required\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/login",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/login",
+    "authType": "Public",
+    "statusCode": 400,
+    "responseTime": 3,
+    "pass": false,
+    "bodySnippet": "{\"error\":\"Please provide a valid email\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/me",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/me",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/logout",
+    "authType": "Protected (JWT)",
+    "statusCode": 200,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"success\":true}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/sso",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/sso",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Invalid SSO credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/organizations",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/organizations",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/switch-org",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/switch-org",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/auth/profile",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/profile",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 4,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "_ALL",
+    "path": "/api/auth/google",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/google",
+    "authType": "Protected (JWT)",
+    "statusCode": 400,
+    "responseTime": 7,
+    "pass": false,
+    "bodySnippet": ""
+  },
+  {
+    "method": "_ALL",
+    "path": "/api/auth/google/login",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/google/login",
+    "authType": "Protected (JWT)",
+    "statusCode": 400,
+    "responseTime": 5,
+    "pass": false,
+    "bodySnippet": ""
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/google/callback",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auth/google/callback",
+    "authType": "Protected (JWT)",
+    "statusCode": 302,
+    "responseTime": 7,
+    "pass": false,
+    "bodySnippet": "Found. Redirecting to http://localhost:5173/?status=error&error=Missing%20state%20parameter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/channels/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/channels/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/channels/connect",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/channels/connect",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/channels/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/channels/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comments/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comments/history",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/history",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comments/reply",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/reply",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/comments/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comments/:id/action",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/:id/action",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/comments/:id/edit",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/:id/edit",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comments/reanalyze",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/reanalyze",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comments/analyze/:videoId",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comments/analyze/:videoId",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/automation/settings",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/automation/settings",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/automation/settings",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/automation/settings",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/moderation/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/moderation/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 4,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/moderation/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/moderation/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/moderation/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/moderation/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/moderation/comments",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/moderation/comments",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/analytics/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/analytics/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/analytics/dashboard",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/analytics/dashboard",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/billing/status",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/billing/status",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/billing/subscribe",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/billing/subscribe",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/billing/invoices",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/billing/invoices",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/api-keys/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/api-keys/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/api-keys/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/api-keys/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/api-keys/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/api-keys/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subscription/create",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/subscription/create",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subscription/verify",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/subscription/verify",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subscription/cancel",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/subscription/cancel",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/subscription/status",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/subscription/status",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/subscription/invoices",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/subscription/invoices",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subscription/webhook",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/subscription/webhook",
+    "authType": "Protected (JWT)",
+    "statusCode": 400,
+    "responseTime": 3,
+    "pass": false,
+    "bodySnippet": "Missing signature"
+  },
+  {
+    "method": "GET",
+    "path": "/api/dashboard/stats",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/dashboard/stats",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comment-history/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-history/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/youtube/auth/initiate",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/auth/initiate",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/youtube/auth/initiate",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/auth/initiate",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/youtube/connect",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/connect",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/youtube/connect",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/connect",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/youtube/callback",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/callback",
+    "authType": "Protected (JWT)",
+    "statusCode": 302,
+    "responseTime": 2,
+    "pass": false,
+    "bodySnippet": "Found. Redirecting to http://localhost:5173/?status=error&error=Missing%20state%20parameter"
+  },
+  {
+    "method": "GET",
+    "path": "/api/youtube/channels",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/channels",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/youtube/channels/:channelId",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/channels/:channelId",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/youtube/videos",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/videos",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/youtube/video/:id/analytics",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/video/:id/analytics",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/youtube/video/:id/like",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/youtube/video/:id/like",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/leads/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/leads/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/leads/export",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/leads/export",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/settings/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/settings/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/settings/",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/settings/",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/settings/credentials",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/settings/credentials",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/settings/youtube",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/settings/youtube",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/legacy-automation/run-now",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/legacy-automation/run-now",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comment-automation/rule",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rule",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comment-automation/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comment-automation/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/comment-automation/rule/:ruleId",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rule/:ruleId",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/comment-automation/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/comment-automation/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/comment-automation/rule/:ruleId",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rule/:ruleId",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/comment-automation/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comment-automation/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comment-automation/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/comment-automation/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/comment-automation/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/comment-automation/rules/:id/status",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id/status",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comment-automation/rules/:id/test",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/rules/:id/test",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comment-automation/history",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/history",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comment-automation/history/:id/retry",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/history/:id/retry",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comment-automation/moderation",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/moderation",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/comment-automation/moderation/:id/action",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/moderation/:id/action",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/comment-automation/stats",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/comment-automation/stats",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auto-mod/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/auto-mod/rules",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/rules",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/auto-mod/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/auto-mod/rules/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/rules/:id",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/auto-mod/rules/:id/status",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/rules/:id/status",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/auto-mod/comments",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/comments",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/auto-mod/history",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/auto-mod/history",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/live-chat/toggle-mode",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/live-chat/toggle-mode",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/live-chat/messages",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/live-chat/messages",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/live-chat/send",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/live-chat/send",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/live-chat/sync",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/live-chat/sync",
+    "authType": "Protected (JWT)",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/moderation/stats",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/moderation/stats",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/login",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/login",
+    "authType": "Admin Only",
+    "statusCode": 400,
+    "responseTime": 3,
+    "pass": false,
+    "bodySnippet": "{\"success\":false,\"error\":\"Email and password are required.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/logout",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/logout",
+    "authType": "Admin Only",
+    "statusCode": 200,
+    "responseTime": 3,
+    "pass": false,
+    "bodySnippet": "{\"success\":true,\"message\":\"Logged out successfully.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/me",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/me",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/profile",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/profile",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/analytics",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/analytics",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/audit-logs",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/audit-logs",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/clients",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/clients",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/customers/details",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/customers/details",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/clients/details/all",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients/details/all",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/users/details/all",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/users/details/all",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/users",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/users",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/subscriptions",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions/:userId/activate",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:userId/activate",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions/:id/activate",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id/activate",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions/:userId/cancel",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:userId/cancel",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions/:id/cancel",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id/cancel",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions/:userId/extend",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:userId/extend",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/subscriptions/:id/extend",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/subscriptions/:id/extend",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/admins",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/admins",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/admins",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/admins",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/admin/admins/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/admins/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/payments",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/payments",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/admin/api-keys",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/api-keys",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/admin/api-keys",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/api-keys",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/admin/api-keys/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/v1/admin/api-keys/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/moderation/stats",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/moderation/stats",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/login",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/login",
+    "authType": "Public",
+    "statusCode": 400,
+    "responseTime": 1,
+    "pass": false,
+    "bodySnippet": "{\"success\":false,\"error\":\"Email and password are required.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/logout",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/logout",
+    "authType": "Admin Only",
+    "statusCode": 200,
+    "responseTime": 2,
+    "pass": false,
+    "bodySnippet": "{\"success\":true,\"message\":\"Logged out successfully.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/me",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/me",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/profile",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/profile",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/analytics",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/analytics",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/audit-logs",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/audit-logs",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/clients",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/clients",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/customers/details",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/customers/details",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/clients/details/all",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients/details/all",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/users/details/all",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/users/details/all",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/admin/clients/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/clients/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/users",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/users",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/admin/users/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/users/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/subscriptions",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/admin/subscriptions/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions/:userId/activate",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:userId/activate",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions/:id/activate",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id/activate",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions/:userId/cancel",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:userId/cancel",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions/:id/cancel",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id/cancel",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions/:userId/extend",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:userId/extend",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/subscriptions/:id/extend",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/subscriptions/:id/extend",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/admins",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/admins",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/admins",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/admins",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/admin/admins/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/admins/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/payments",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/payments",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/api-keys",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/api-keys",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 3,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/api-keys",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/api-keys",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/admin/api-keys/:id",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/admin/api-keys/:id",
+    "authType": "Admin Only",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"success\":false,\"error\":\"Unauthorized: Admin token is missing.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/external/leads",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/external/leads",
+    "authType": "External API Key",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized: API Key is missing. Provide x-api-key header or Bearer token.\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/external/leads",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/external/leads",
+    "authType": "External API Key",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized: API Key is missing. Provide x-api-key header or Bearer token.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/external/users",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/external/users",
+    "authType": "External API Key",
+    "statusCode": 401,
+    "responseTime": 1,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized: API Key is missing. Provide x-api-key header or Bearer token.\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/external/customers/details",
+    "fullUrl": "https://server-youtube-auto.onrender.com/api/external/customers/details",
+    "authType": "External API Key",
+    "statusCode": 401,
+    "responseTime": 2,
+    "pass": true,
+    "bodySnippet": "{\"error\":\"Unauthorized: API Key is missing. Provide x-api-key header or Bearer token.\"}"
+  }
+]

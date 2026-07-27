@@ -30,7 +30,7 @@ const getFrontendUrl = () => {
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (isProduction) {
-    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://client-youtube-auto-4esx.vercel.app/';
+    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://channelbot.in';
     console.log(`[Frontend URL] Production mode - using: ${frontendUrl}`);
     return frontendUrl;
   } else {
