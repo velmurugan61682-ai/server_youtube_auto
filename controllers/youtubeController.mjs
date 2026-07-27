@@ -716,143 +716,29 @@ const syncCommunityPostsForChannel = async (channel, userId) => {
       scraped = await scrapeCommunityPosts(channel.customUrl, channel.channelId);
     }
 
-    // Clear old posts first (to ensure real scraped posts are populated)
-    await Video.deleteMany({ userId, channelId: channel.channelId, isPost: true });
-
-    let postsToSave = [];
     if (scraped && scraped.length > 0) {
-      postsToSave = scraped.map((p, index) => ({
-        userId,
-        channelId: channel.channelId,
-        videoId: p.postId || `scraped_post_${channel.channelId}_${index}`,
-        title: p.text.split('\n')[0] || 'Community Post',
-        description: p.text,
-        thumbnail: p.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150',
-        publishedAt: new Date(),
-        isPost: true,
-        analyzed: true,
-        statistics: { viewCount: 0, likeCount: 0, commentCount: 0 },
-        lastFetchedAt: new Date()
-      }));
-    } else {
-      // Fallback to seeding simulated posts
-      postsToSave = [
-        {
-          userId,
-          channelId: channel.channelId,
-          videoId: `post_internship_${channel.channelId}`,
-          title: `Join our Summer Internship Program 2026!`,
-          description: `Join ChannelMate's Summer Internship Program 2026! We are looking for passionate web developer interns to build next-gen AI applications. Gain hands-on experience, collaborate with seniors, and work on real products. Apply now!`,
-          thumbnail: `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500`,
-          publishedAt: new Date('2026-07-01T08:00:00.000Z'),
-          isPost: true,
-          analyzed: true,
-          statistics: { viewCount: 1500, likeCount: 85, commentCount: 3 },
-          lastFetchedAt: new Date()
-        },
-        {
-          userId,
-          channelId: channel.channelId,
-          videoId: `post_whatsapp_order_${channel.channelId}`,
-          title: `Order products directly via WhatsApp`,
-          description: `Order your products directly via WhatsApp! Send us a message at +919999999999 to place your order today. Fast delivery and premium support guaranteed.`,
-          thumbnail: `https://images.unsplash.com/photo-1614741118887-7a4ee193a5fa?w=500`,
-          publishedAt: new Date('2026-07-10T10:00:00.000Z'),
-          isPost: true,
-          analyzed: true,
-          statistics: { viewCount: 2200, likeCount: 110, commentCount: 2 },
-          lastFetchedAt: new Date()
-        }
-      ];
-    }
-
-    for (const post of postsToSave) {
-      await Video.findOneAndUpdate(
-        { userId, channelId: channel.channelId, videoId: post.videoId },
-        { $set: post },
-        { upsert: true, returnDocument: 'after' }
-      );
-
-      // Seed comments for these posts if they don't have comments already
-      const commentCount = await Comment.countDocuments({ videoId: post.videoId, channelId: channel.channelId });
-      if (commentCount === 0) {
-        if (post.videoId.includes('internship')) {
-          await Comment.insertMany([
-            {
+      for (let i = 0; i < scraped.length; i++) {
+        const p = scraped[i];
+        const postId = p.postId || `yt_post_${channel.channelId}_${i}`;
+        await Video.findOneAndUpdate(
+          { channelId: channel.channelId, videoId: postId },
+          {
+            $set: {
               userId,
-              youtubeId: `seed_comment_1_${post.videoId}`,
               channelId: channel.channelId,
-              videoId: post.videoId,
-              text: "This internship sounds amazing! I have sent my application.",
-              author: "Aravind Kumar",
-              authorProfileImageUrl: "https://ui-avatars.com/api/?name=Aravind+Kumar&background=random",
-              publishedAt: new Date('2026-07-01T09:00:00.000Z'),
-              sentiment: "positive",
-              confidence: 0.98,
-              status: "approved",
-              aiActionTaken: true
-            },
-            {
-              userId,
-              youtubeId: `seed_comment_2_${post.videoId}`,
-              channelId: channel.channelId,
-              videoId: post.videoId,
-              text: "Interested in the web developer internship! Please contact me on WhatsApp: +919876543210",
-              author: "Vikram Singh",
-              authorProfileImageUrl: "https://ui-avatars.com/api/?name=Vikram+Singh&background=random",
-              publishedAt: new Date('2026-07-02T10:00:00.000Z'),
-              sentiment: "positive",
-              confidence: 0.95,
-              status: "approved",
-              aiActionTaken: true
-            },
-            {
-              userId,
-              youtubeId: `seed_comment_3_${post.videoId}`,
-              channelId: channel.channelId,
-              videoId: post.videoId,
-              text: "Make $500/day doing nothing! Visit our site: scam-money-fast.com",
-              author: "ScamBot",
-              authorProfileImageUrl: "https://ui-avatars.com/api/?name=ScamBot&background=random",
-              publishedAt: new Date('2026-07-03T11:00:00.000Z'),
-              sentiment: "toxic",
-              confidence: 0.99,
-              status: "deleted",
-              aiActionTaken: true
+              videoId: postId,
+              title: p.text.split('\n')[0] || 'Community Post',
+              description: p.text,
+              thumbnail: p.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150',
+              publishedAt: new Date(),
+              isPost: true,
+              analyzed: true,
+              statistics: { viewCount: 0, likeCount: 0, commentCount: 0 },
+              lastFetchedAt: new Date()
             }
-          ]);
-        } else if (post.videoId.includes('whatsapp_order')) {
-          await Comment.insertMany([
-            {
-              userId,
-              youtubeId: `seed_comment_4_${post.videoId}`,
-              channelId: channel.channelId,
-              videoId: post.videoId,
-              text: "Love the WhatsApp ordering system, it's so quick!",
-              author: "Sneha Reddy",
-              authorProfileImageUrl: "https://ui-avatars.com/api/?name=Sneha+Reddy&background=random",
-              publishedAt: new Date('2026-07-10T11:00:00.000Z'),
-              sentiment: "positive",
-              confidence: 0.96,
-              status: "approved",
-              aiActionTaken: true
-            },
-            {
-              userId,
-              youtubeId: `seed_comment_5_${post.videoId}`,
-              channelId: channel.channelId,
-              videoId: post.videoId,
-              text: "I want to order the premium course. WhatsApp me at +918887776665",
-              author: "Rahul Nair",
-              authorProfileImageUrl: "https://ui-avatars.com/api/?name=Rahul+Nair&background=random",
-              publishedAt: new Date('2026-07-11T12:00:00.000Z'),
-              sentiment: "positive",
-              confidence: 0.94,
-              status: "approved",
-              aiActionTaken: true
-            }
-          ]);
-        }
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
       }
     }
   } catch (err) {
