@@ -19,13 +19,19 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Auto-link new user to default organization: Channelbot / Tech Vaseegrah
-    const defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah'] } }).lean();
+    // Create dedicated organization workspace for tenant isolation
+    const newOrg = new Organization({
+      name: `${name}'s Workspace`,
+      status: 'active',
+      planType: 'free'
+    });
+    await newOrg.save();
+
     const user = new User({
       name,
       email,
       password: hashedPassword,
-      organizationId: defaultOrg ? defaultOrg._id : undefined
+      organizationId: newOrg._id
     });
     await user.save();
 

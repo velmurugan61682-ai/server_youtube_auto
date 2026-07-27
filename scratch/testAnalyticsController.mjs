@@ -15,7 +15,7 @@ async function testController() {
   await mongoose.connect(process.env.MONGODB_URI);
   console.log('Connected to DB');
 
-  const user = await User.findOne({ email: 'velmurugan61682@gmail.com' }).lean();
+  const user = await User.findOne({ email: 'tech@gmail.com' }).lean();
 
   const req = {
     user: { id: user._id.toString(), organizationId: user.organizationId ? user.organizationId.toString() : null },

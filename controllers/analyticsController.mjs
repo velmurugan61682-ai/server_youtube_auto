@@ -14,14 +14,8 @@ export const getAnalytics = async (req, res) => {
   try {
     const { channelId, startDate, endDate } = req.query;
 
-    // Resolve user scope (including organization members)
-    let userIds = [req.user.id];
-    if (req.user.organizationId) {
-      const orgUsers = await User.find({ organizationId: req.user.organizationId }).select('_id').lean();
-      if (orgUsers.length > 0) {
-        userIds = [...new Set([...userIds, ...orgUsers.map(u => u._id.toString())])];
-      }
-    }
+    // Strict Per-User Data Isolation
+    const userIds = [req.user.id];
 
     const userObjectIds = userIds.map(id => {
       try {
@@ -396,18 +390,7 @@ export const getAnalytics = async (req, res) => {
  */
 export const getDashboardAnalytics = async (req, res) => {
   try {
-    let userIds = [req.user.id];
-    let userOrgId = req.user.organizationId;
-    if (!userOrgId) {
-      const userDoc = await User.findById(req.user.id).select('organizationId').lean();
-      userOrgId = userDoc?.organizationId;
-    }
-    if (userOrgId) {
-      const orgUsers = await User.find({ organizationId: userOrgId }).select('_id').lean();
-      if (orgUsers.length > 0) {
-        userIds = [...new Set([...userIds, ...orgUsers.map(u => u._id.toString())])];
-      }
-    }
+    const userIds = [req.user.id];
 
     const filter = { userId: { $in: userIds } };
 
