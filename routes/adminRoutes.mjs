@@ -37,6 +37,7 @@ router.post('/logout', adminLogout);
 router.get('/me', adminAuth, getAdminProfile);
 router.get('/profile', adminAuth, getAdminProfile);
 router.get('/analytics', adminAuth, getAdminAnalytics);
+router.get('/stats', adminAuth, getAdminAnalytics);
 router.get('/audit-logs', adminAuth, getAdminAuditLogs);
 
 // ── Client & User Management ─────────────────────────────────────
