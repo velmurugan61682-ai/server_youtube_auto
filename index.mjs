@@ -377,6 +377,16 @@ app.use(express.json({
     req.rawBody = buf;
   }
 }));
+
+// Catch JSON parsing/syntax errors gracefully (e.g. GET requests sending Content-Type: application/json with empty body)
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    req.body = {};
+    return next();
+  }
+  next(err);
+});
+
 app.use(cookieParser());
 
 // Rate Limiting Configurations
