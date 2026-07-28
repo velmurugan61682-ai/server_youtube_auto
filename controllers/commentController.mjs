@@ -284,9 +284,156 @@ export const manualSync = async (req, res) => {
       }, null, io, videoId);
     }
 
-    res.json({ success: true });
+/**
+ * POST /api/comments/:commentId/reply
+ * Reply to a comment with IDOR verification and OAuth token handling
+ */
+export const replyToCommentApi = async (req, res) => {
+  try {
+    const commentId = req.params.commentId || req.body.commentId || req.body.id;
+    const text = req.body.text || req.body.replyText;
+
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required'
+      });
+    }
+
+    if (!commentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment ID is required'
+      });
+    }
+
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const filter = mongoose.Types.ObjectId.isValid(commentId)
+      ? { _id: commentId, channelId: { $in: allowedChannelIds } }
+      : { $or: [{ youtubeId: commentId }, { commentId }], channelId: { $in: allowedChannelIds } };
+
+    const comment = await Comment.findOne(filter);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found or access denied'
+      });
+    }
+
+    // Resolve channel to post reply via YouTube OAuth
+    const channel = await Channel.findOne({ userId: req.user.id, channelId: comment.channelId });
+    if (channel && !channel.apiKey && channel.accessToken) {
+      try {
+        const decryptedTokens = {
+          access_token: decrypt(channel.accessToken),
+          refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+          expiry_date: channel.expiryDate
+        };
+        const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+        await replyToComment(youtube, comment.youtubeId || comment.commentId, text.trim());
+      } catch (ytErr) {
+        logger.error('[replyToCommentApi] YouTube API call error:', ytErr.message);
+      }
+    }
+
+    comment.replyText = text.trim();
+    comment.autoReplied = true;
+    comment.hasReplied = true;
+    comment.replyStatus = 'sent';
+    await comment.save();
+
+    return res.json({
+      success: true,
+      message: 'Reply posted successfully',
+      data: comment
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    logger.error('Error in replyToCommentApi:', error);
+    return res.status(500).json({ success: false, message: 'Failed to post reply' });
+  }
+};
+
+/**
+ * POST /api/comments/:commentId/like
+ * Like/heart a comment with IDOR verification
+ */
+export const likeCommentApi = async (req, res) => {
+  try {
+    const commentId = req.params.commentId || req.body.commentId || req.body.id;
+
+    if (!commentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Comment ID is required'
+      });
+    }
+
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const filter = mongoose.Types.ObjectId.isValid(commentId)
+      ? { _id: commentId, channelId: { $in: allowedChannelIds } }
+      : { $or: [{ youtubeId: commentId }, { commentId }], channelId: { $in: allowedChannelIds } };
+
+    const comment = await Comment.findOne(filter);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Comment not found or access denied'
+      });
+    }
+
+    const channel = await Channel.findOne({ userId: req.user.id, channelId: comment.channelId });
+    if (channel && !channel.apiKey && channel.accessToken) {
+      try {
+        const decryptedTokens = {
+          access_token: decrypt(channel.accessToken),
+          refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+          expiry_date: channel.expiryDate
+        };
+        const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+        await likeComment(youtube, comment.youtubeId || comment.commentId);
+      } catch (ytErr) {
+        logger.error('[likeCommentApi] YouTube API like error:', ytErr.message);
+      }
+    }
+
+    comment.autoLiked = true;
+    comment.likeStatus = 'success';
+    await comment.save();
+
+    return res.json({
+      success: true,
+      message: 'Comment liked successfully',
+      data: comment
+    });
+  } catch (error) {
+    logger.error('Error in likeCommentApi:', error);
+    return res.status(500).json({ success: false, message: 'Failed to like comment' });
+  }
+};
+
+/**
+ * DELETE /api/comments/:id
+ */
+export const deleteCommentApi = async (req, res) => {
+  try {
+    const id = req.params.id || req.params.commentId;
+    const allowedChannelIds = await getUserChannelIds(req.user);
+    const filter = mongoose.Types.ObjectId.isValid(id)
+      ? { _id: id, channelId: { $in: allowedChannelIds } }
+      : { $or: [{ youtubeId: id }, { commentId: id }], channelId: { $in: allowedChannelIds } };
+
+    const comment = await Comment.findOne(filter);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: 'Comment not found' });
+    }
+
+    comment.status = 'deleted';
+    await comment.save();
+
+    return res.json({ success: true, message: 'Comment deleted successfully' });
+  } catch (error) {
+    logger.error('Error in deleteCommentApi:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete comment' });
   }
 };
 

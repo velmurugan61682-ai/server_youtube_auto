@@ -458,6 +458,14 @@ app.get('/', (_req, res) => {
   res.send('ChannelMate API is running.');
 });
 
+// Global JSON 404 Fallback Handler (after all routes)
+app.use((req, res) => {
+  return res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
 
 // ── Startup Sequence ─────────────────────────────────────────
 async function startServer() {

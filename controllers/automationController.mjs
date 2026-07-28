@@ -79,3 +79,35 @@ export const updateAutomationSettings = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to update automation settings' });
   }
 };
+
+/**
+ * POST /api/automation/trigger-sync
+ * Trigger real-time comment synchronization for user's connected channel
+ */
+export const triggerSync = async (req, res) => {
+  try {
+    const Channel = (await import('../models/Channel.mjs')).default;
+    const channel = await Channel.findOne({ userId: req.user.id, status: 'connected' }).lean();
+
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: 'No connected YouTube channel found'
+      });
+    }
+
+    // Trigger sync asynchronously in background
+    import('../jobs/youtubeCommentWorker.mjs')
+      .then(worker => worker.runYouTubeCommentWorker(req.app.get('io')))
+      .catch(err => logger.error('[Trigger Sync] Async worker error:', err));
+
+    return res.status(202).json({
+      success: true,
+      message: 'Comment synchronization triggered successfully',
+      channelId: channel.channelId
+    });
+  } catch (error) {
+    logger.error('Error in triggerSync:', error);
+    return res.status(500).json({ success: false, message: 'Failed to trigger synchronization' });
+  }
+};

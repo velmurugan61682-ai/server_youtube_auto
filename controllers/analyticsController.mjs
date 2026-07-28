@@ -420,3 +420,139 @@ export const getDashboardAnalytics = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch dashboard analytics' });
   }
 };
+
+/**
+ * GET /api/analytics/overview
+ * Returns overview statistics (totalComments, positive, negative, toxic, autoReplies, moderated, leads)
+ */
+export const getAnalyticsOverview = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const channels = await Channel.find({ userId }).select('channelId').lean();
+    const channelIds = channels.map(c => c.channelId);
+
+    const filter = { userId, channelId: { $in: channelIds } };
+
+    const totalComments = await Comment.countDocuments(filter);
+    const positiveComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^positive$/i }, { classification: /^positive$/i }] });
+    const negativeComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^negative$/i }, { classification: /^negative$/i }] });
+    const toxicComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^toxic$/i }, { classification: /^toxic$/i }] });
+    const autoReplies = await AutoReplyLog.countDocuments({ userId, channelId: { $in: channelIds } });
+    const moderatedComments = await ModerationLog.countDocuments({ userId, channelId: { $in: channelIds } });
+    const leads = await Lead.countDocuments({ userId, channelId: { $in: channelIds } });
+
+    return res.json({
+      success: true,
+      data: {
+        totalComments,
+        positiveComments,
+        negativeComments,
+        toxicComments,
+        autoReplies,
+        moderatedComments,
+        leads
+      }
+    });
+  } catch (error) {
+    logger.error('Error in getAnalyticsOverview:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch analytics overview' });
+  }
+};
+
+/**
+ * GET /api/analytics/sentiment-breakdown
+ * Returns breakdown of comment sentiments (positive, neutral, negative, toxic)
+ */
+export const getSentimentBreakdown = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const channels = await Channel.find({ userId }).select('channelId').lean();
+    const channelIds = channels.map(c => c.channelId);
+
+    const filter = { userId, channelId: { $in: channelIds } };
+
+    const positive = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^positive$/i }, { classification: /^positive$/i }] });
+    const neutral = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^neutral$/i }, { classification: /^neutral$/i }] });
+    const negative = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^negative$/i }, { classification: /^negative$/i }] });
+    const toxic = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^toxic$/i }, { classification: /^toxic$/i }] });
+
+    return res.json({
+      success: true,
+      data: {
+        positive,
+        neutral,
+        negative,
+        toxic
+      }
+    });
+  } catch (error) {
+    logger.error('Error in getSentimentBreakdown:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch sentiment breakdown' });
+  }
+};
+
+/**
+ * GET /api/analytics/top-videos
+ * Returns top-performing YouTube videos for the authenticated user (max 10)
+ */
+export const getTopVideos = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const channels = await Channel.find({ userId }).lean();
+    if (!channels || channels.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        message: 'No video analytics found'
+      });
+    }
+
+    const channelIds = channels.map(c => c.channelId);
+
+    // Aggregate comment counts grouped by videoId
+    const videoStats = await Comment.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId), channelId: { $in: channelIds } } },
+      { $group: { _id: '$videoId', commentCount: { $sum: 1 } } },
+      { $sort: { commentCount: -1 } },
+      { $limit: 10 }
+    ]);
+
+    if (!videoStats || videoStats.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        message: 'No video analytics found'
+      });
+    }
+
+    const videoIds = videoStats.map(v => v._id);
+    const videoDocs = await Video.find({ videoId: { $in: videoIds }, userId }).lean();
+    const videoMap = new Map(videoDocs.map(v => [v.videoId, v]));
+
+    const result = videoStats.map(stat => {
+      const doc = videoMap.get(stat._id) || {};
+      const views = doc.viewCount || doc.views || 0;
+      const likes = doc.likeCount || doc.likes || 0;
+      const comments = stat.commentCount || 0;
+      const engagement = views > 0 ? Number(((likes + comments) / views * 100).toFixed(1)) : 0;
+
+      return {
+        videoId: stat._id,
+        title: doc.title || `Video ${stat._id}`,
+        thumbnail: doc.thumbnailUrl || doc.thumbnail || '',
+        views,
+        likes,
+        comments,
+        engagement
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Error in getTopVideos:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch top videos' });
+  }
+};

@@ -1,7 +1,8 @@
 import express from 'express';
 import { 
   getAutomationSettings, 
-  updateAutomationSettings 
+  updateAutomationSettings,
+  triggerSync
 } from '../controllers/automationController.mjs';
 import { authMiddleware } from '../middleware/auth.mjs';
 
@@ -12,5 +13,11 @@ router.get('/settings', authMiddleware, getAutomationSettings);
 
 // PUT /api/automation/settings
 router.put('/settings', authMiddleware, updateAutomationSettings);
+
+// POST /api/automation/settings (backward compatibility)
+router.post('/settings', authMiddleware, updateAutomationSettings);
+
+// POST /api/automation/trigger-sync
+router.post('/trigger-sync', authMiddleware, triggerSync);
 
 export default router;

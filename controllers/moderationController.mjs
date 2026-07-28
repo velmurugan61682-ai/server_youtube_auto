@@ -24,31 +24,57 @@ export const getModerationRules = async (req, res) => {
     const { channelId } = req.query;
     const organizationId = req.user.organizationId || req.user.id;
     
-    let query = { organizationId };
-    if (channelId) {
-      query.channelId = channelId;
+    let targetChannelId = channelId;
+    if (!targetChannelId) {
+      const activeChannel = await Channel.findOne({ userId: req.user.id }).lean();
+      if (activeChannel) {
+        targetChannelId = activeChannel.channelId;
+      }
     }
 
+    // Default safe rules object if no channel exists or no rule created
+    const defaultRulesObj = {
+      toxicDetection: true,
+      spamDetection: true,
+      hateSpeech: true,
+      abuse: true,
+      scam: true,
+      sexualContent: true,
+      duplicateComments: true,
+      linkSpam: true
+    };
 
-    let rule = await ModerationRule.findOne({ organizationId, channelId }).lean();
+    if (!targetChannelId) {
+      return res.json({
+        success: true,
+        rule: {
+          organizationId,
+          channelId: null,
+          autoMod: true,
+          confidenceThreshold: 85,
+          rules: defaultRulesObj,
+          action: 'delete'
+        },
+        message: 'No connected channel found. Returning default rules.'
+      });
+    }
+
+    let rule = await ModerationRule.findOne({ 
+      $or: [
+        { organizationId, channelId: targetChannelId },
+        { userId: req.user.id, channelId: targetChannelId }
+      ]
+    }).lean();
     
     // Seed default rule document if none exists yet
     if (!rule) {
       const defaultRule = new ModerationRule({
         organizationId,
-        channelId,
+        userId: req.user.id,
+        channelId: targetChannelId,
         autoMod: true,
         confidenceThreshold: 85,
-        rules: {
-          toxicDetection: true,
-          spamDetection: true,
-          hateSpeech: true,
-          abuse: true,
-          scam: true,
-          sexualContent: true,
-          duplicateComments: true,
-          linkSpam: true
-        },
+        rules: defaultRulesObj,
         action: 'delete'
       });
       await defaultRule.save();
@@ -58,7 +84,7 @@ export const getModerationRules = async (req, res) => {
     res.json({ success: true, rule });
   } catch (error) {
     logger.error('Error in getModerationRules:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ success: false, message: 'Failed to fetch moderation rules' });
   }
 };
 
@@ -166,5 +192,46 @@ export const getModeratedComments = async (req, res) => {
   } catch (error) {
     logger.error('Error in getModeratedComments:', error);
     res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * GET /api/moderation/logs
+ * Fetch audit logs of automated or manual moderation actions
+ */
+export const getModerationLogs = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const organizationId = req.user.organizationId || userId;
+    const { page = 1, limit = 20 } = req.query;
+
+    const query = {
+      $or: [{ organizationId }, { userId }]
+    };
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.max(1, parseInt(limit));
+
+    const logs = await ModerationLog.find(query)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean();
+
+    const total = await ModerationLog.countDocuments(query);
+
+    return res.json({
+      success: true,
+      logs,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
+  } catch (error) {
+    logger.error('Error in getModerationLogs:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch moderation logs' });
   }
 };
