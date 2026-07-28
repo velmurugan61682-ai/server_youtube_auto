@@ -19,7 +19,7 @@ export const authMiddleware = (req, res, next) => {
   logger.debug(`[Auth] ${req.method} ${req.path}`);
 
   if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Authentication required' });
   }
 
   try {
@@ -30,9 +30,9 @@ export const authMiddleware = (req, res, next) => {
   } catch (err) {
     logger.warn(`Invalid token attempt: ${err.message}`);
     if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: 'Token expired', expired: true });
+      return res.status(401).json({ success: false, message: 'Authentication required', expired: true });
     }
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Authentication required' });
   }
 };
 

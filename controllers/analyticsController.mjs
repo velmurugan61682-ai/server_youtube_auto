@@ -3,6 +3,7 @@ import Comment from '../models/Comment.mjs';
 import Lead from '../models/Lead.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
+import Video from '../models/Video.mjs';
 import AutoLikeLog from '../models/AutoLikeLog.mjs';
 import AutoReplyLog from '../models/AutoReplyLog.mjs';
 import ModerationLog from '../models/ModerationLog.mjs';
@@ -498,7 +499,7 @@ export const getSentimentBreakdown = async (req, res) => {
 export const getTopVideos = async (req, res) => {
   try {
     const userId = req.user.id;
-    const channels = await Channel.find({ userId }).lean();
+    const channels = await Channel.find({ userId }).select('channelId').lean();
     if (!channels || channels.length === 0) {
       return res.json({
         success: true,
@@ -509,15 +510,22 @@ export const getTopVideos = async (req, res) => {
 
     const channelIds = channels.map(c => c.channelId);
 
-    // Aggregate comment counts grouped by videoId
-    const videoStats = await Comment.aggregate([
-      { $match: { userId: new mongoose.Types.ObjectId(userId), channelId: { $in: channelIds } } },
-      { $group: { _id: '$videoId', commentCount: { $sum: 1 } } },
-      { $sort: { commentCount: -1 } },
-      { $limit: 10 }
-    ]);
+    const topVideos = await Video.find({
+      userId,
+      channelId: { $in: channelIds }
+    })
+      .select('videoId title thumbnail statistics engagementRate')
+      .sort({
+        'statistics.viewCount': -1,
+        'statistics.likeCount': -1,
+        'statistics.commentCount': -1,
+        engagementRate: -1,
+        updatedAt: -1
+      })
+      .limit(10)
+      .lean();
 
-    if (!videoStats || videoStats.length === 0) {
+    if (!topVideos || topVideos.length === 0) {
       return res.json({
         success: true,
         data: [],
@@ -525,21 +533,18 @@ export const getTopVideos = async (req, res) => {
       });
     }
 
-    const videoIds = videoStats.map(v => v._id);
-    const videoDocs = await Video.find({ videoId: { $in: videoIds }, userId }).lean();
-    const videoMap = new Map(videoDocs.map(v => [v.videoId, v]));
-
-    const result = videoStats.map(stat => {
-      const doc = videoMap.get(stat._id) || {};
-      const views = doc.viewCount || doc.views || 0;
-      const likes = doc.likeCount || doc.likes || 0;
-      const comments = stat.commentCount || 0;
-      const engagement = views > 0 ? Number(((likes + comments) / views * 100).toFixed(1)) : 0;
+    const result = topVideos.map(video => {
+      const views = Number(video.statistics?.viewCount || 0);
+      const likes = Number(video.statistics?.likeCount || 0);
+      const comments = Number(video.statistics?.commentCount || 0);
+      const engagement = typeof video.engagementRate === 'number'
+        ? video.engagementRate
+        : (views > 0 ? Number((((likes + comments) / views) * 100).toFixed(2)) : 0);
 
       return {
-        videoId: stat._id,
-        title: doc.title || `Video ${stat._id}`,
-        thumbnail: doc.thumbnailUrl || doc.thumbnail || '',
+        videoId: video.videoId,
+        title: video.title,
+        thumbnail: video.thumbnail || '',
         views,
         likes,
         comments,
