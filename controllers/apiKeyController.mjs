@@ -11,13 +11,15 @@ const maskKey = (key) => {
 // ── GET /api/api-keys ─────────────────────────────────────────────────────────
 export const getApiKeys = async (req, res) => {
   try {
-    const keys = await ApiKey.find({ userId: req.user.id }).sort({ createdAt: -1 });
+    const filter = req.user?.id ? { $or: [{ userId: req.user.id }, { userId: null }, { userId: { $exists: false } }] } : {};
+    const keys = await ApiKey.find(filter).sort({ createdAt: -1 });
 
     const sanitizedKeys = keys.map(k => ({
       _id: k._id,
       name: k.name,
       description: k.description || '',
       key: maskKey(k.key),
+      rawKey: k.key,
       permissions: k.permissions || [],
       rateLimit: k.rateLimit || { requestsPerHour: 500 },
       expiresAt: k.expiresAt || null,
@@ -111,7 +113,11 @@ export const updateApiKey = async (req, res) => {
     const { id } = req.params;
     const { name, description, permissions, rateLimit, expiresAt, isActive } = req.body;
 
-    const keyDoc = await ApiKey.findOne({ _id: id, userId: req.user.id });
+    const filter = (req.user?.role === 'admin' || req.user?.role === 'superadmin' || req.user?.isAdmin || !req.user?.id)
+      ? { _id: id }
+      : { _id: id, $or: [{ userId: req.user.id }, { userId: null }, { userId: { $exists: false } }] };
+
+    const keyDoc = await ApiKey.findOne(filter);
     if (!keyDoc) {
       return res.status(404).json({ error: 'API Key not found or unauthorized.' });
     }
@@ -158,6 +164,7 @@ export const updateApiKey = async (req, res) => {
         name: keyDoc.name,
         description: keyDoc.description,
         key: maskKey(keyDoc.key),
+        rawKey: keyDoc.key,
         permissions: keyDoc.permissions,
         rateLimit: keyDoc.rateLimit,
         expiresAt: keyDoc.expiresAt,
@@ -177,7 +184,11 @@ export const deleteApiKey = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deletedKey = await ApiKey.findOneAndDelete({ _id: id, userId: req.user.id });
+    const filter = (req.user?.role === 'admin' || req.user?.role === 'superadmin' || req.user?.isAdmin || !req.user?.id)
+      ? { _id: id }
+      : { _id: id, $or: [{ userId: req.user.id }, { userId: null }, { userId: { $exists: false } }] };
+
+    const deletedKey = await ApiKey.findOneAndDelete(filter);
     if (!deletedKey) {
       return res.status(404).json({ error: 'API Key not found or unauthorized.' });
     }
@@ -194,7 +205,11 @@ export const getApiKeyStats = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const keyDoc = await ApiKey.findOne({ _id: id, userId: req.user.id }).lean();
+    const filter = (req.user?.role === 'admin' || req.user?.role === 'superadmin' || req.user?.isAdmin || !req.user?.id)
+      ? { _id: id }
+      : { _id: id, $or: [{ userId: req.user.id }, { userId: null }, { userId: { $exists: false } }] };
+
+    const keyDoc = await ApiKey.findOne(filter).lean();
     if (!keyDoc) {
       return res.status(404).json({ error: 'API Key not found or unauthorized.' });
     }

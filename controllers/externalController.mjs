@@ -9,11 +9,11 @@ import AutoReplyLog from '../models/AutoReplyLog.mjs';
 import AutoLikeLog from '../models/AutoLikeLog.mjs';
 
 // GET /api/external/users
-// Fetch all registered users (Admin API Key required)
+// Fetch all registered users (users:read permission or Admin API Key required)
 export const getExternalUsers = async (req, res) => {
   try {
-    if (!req.isAdminKey) {
-      return res.status(403).json({ error: 'Forbidden: Admin API key required to view users list.' });
+    if (!req.isAdminKey && (!req.hasPermission || !req.hasPermission('users:read'))) {
+      return res.status(403).json({ error: 'Forbidden: Admin API key or users:read permission required to view users list.' });
     }
 
     const users = await User.find({}).select('-password -passwordHash -youtubeApiKey -openaiApiKey -gowhatsApiKey').sort({ createdAt: -1 });
