@@ -17,7 +17,7 @@ const token = jwt.sign(
 async function getMe() {
   try {
     const res = await axios.get(
-      'https://server-youtube-auto.onrender.com/api/auth/me',
+      'http://localhost:5000/api/auth/me',
       {
         headers: {
           Authorization: `Bearer ${token}`

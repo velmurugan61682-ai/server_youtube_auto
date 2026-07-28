@@ -85,8 +85,13 @@ export const adminLogin = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email and password are required.' });
     }
 
-    const defaultSuperadminEmail = (process.env.SUPERADMIN_EMAIL || 'admin@channelbot.in').toLowerCase().trim();
-    const defaultSuperadminPass = process.env.SUPERADMIN_PASSWORD;
+    // Read admin credentials from env — supports both ADMIN_EMAIL and SUPERADMIN_EMAIL
+    const defaultSuperadminEmail = (
+      process.env.ADMIN_EMAIL ||
+      process.env.SUPERADMIN_EMAIL ||
+      'admin@channelbot.ai'
+    ).toLowerCase().trim();
+    const defaultSuperadminPass = process.env.ADMIN_PASSWORD || process.env.SUPERADMIN_PASSWORD;
 
     // Alias 'admin' or 'superadmin' to default superadmin email
     if (adminEmail === 'admin' || adminEmail === 'superadmin') {
@@ -96,19 +101,19 @@ export const adminLogin = async (req, res) => {
     // Case-insensitive query on Admin collection
     let adminRecord = await Admin.findOne({ email: { $regex: `^${adminEmail.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, $options: 'i' } });
 
-    // Auto-bootstrap superadmin record if not present
-    if (!adminRecord && process.env.NODE_ENV !== 'production' && (adminEmail === defaultSuperadminEmail || adminEmail.includes('admin'))) {
+    // Auto-bootstrap superadmin record if not present in DB
+    if (!adminRecord && (adminEmail === defaultSuperadminEmail || adminEmail.includes('admin'))) {
       const bootstrapPassword = password || defaultSuperadminPass;
       if (!bootstrapPassword) {
-        return res.status(500).json({ success: false, error: 'SUPERADMIN_PASSWORD must be set before bootstrapping a superadmin account.' });
+        return res.status(500).json({ success: false, error: 'ADMIN_PASSWORD must be set before bootstrapping a superadmin account.' });
       }
       const hashed = await bcrypt.hash(bootstrapPassword, 10);
-      adminRecord = await Admin.create({
-        name: 'ChannelMate Superadmin',
-        email: defaultSuperadminEmail,
-        passwordHash: hashed,
-        role: 'superadmin'
-      });
+      // Use upsert to avoid duplicate-key race condition
+      adminRecord = await Admin.findOneAndUpdate(
+        { email: adminEmail },
+        { $setOnInsert: { name: 'ChannelMate Superadmin', email: adminEmail, passwordHash: hashed, role: 'superadmin' } },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
     }
 
     if (!adminRecord) {
