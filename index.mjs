@@ -149,6 +149,8 @@ const allowedOrigins = [
   'http://localhost:5174',
   'https://client-youtube-auto-4esx.vercel.app',
   'https://ciphergate.techvaseegrah.com',
+  'https://ciphergate.in',
+  'https://bot.gowhats.in',
   ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ...(process.env.EXTRA_ORIGINS
@@ -347,7 +349,7 @@ app.use(
       useDefaults: true,
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        "frame-ancestors": ["'self'", "http://localhost:*", "https://ciphergate.techvaseegrah.com"]
+        "frame-ancestors": ["'self'", "http://localhost:*", "https://ciphergate.techvaseegrah.com", "https://ciphergate.in", "https://*.ciphergate.in", "https://*.techvaseegrah.com"]
       }
     }
   })

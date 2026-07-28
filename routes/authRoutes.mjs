@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import { register, login, getMe, logout, sso, listOrganizations, switchOrganization, updateProfile } from '../controllers/authController.mjs';
+import { register, login, getMe, logout, listOrganizations, switchOrganization, updateProfile } from '../controllers/authController.mjs';
+import { handleSsoLogin } from '../controllers/ssoController.mjs';
 import { authMiddleware } from '../middleware/auth.mjs';
 
 const router = express.Router();
@@ -36,7 +37,10 @@ router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
 router.get('/me', authMiddleware, getMe);
 router.post('/logout', logout);
-router.post('/sso', sso);
+router.get('/sso', handleSsoLogin);
+router.post('/sso', handleSsoLogin);
+router.get('/sso-login', handleSsoLogin);
+router.post('/sso-login', handleSsoLogin);
 router.get('/organizations', authMiddleware, listOrganizations);
 router.post('/switch-org', authMiddleware, switchOrganization);
 router.put('/profile', authMiddleware, updateProfile);

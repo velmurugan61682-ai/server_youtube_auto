@@ -50,6 +50,7 @@ router.use('/v1/admin/moderation', adminModerationRoutes);
 router.use('/v1/admin', adminRoutes);
 router.use('/admin/moderation', adminModerationRoutes);
 router.use('/admin', adminRoutes);
+router.use('/v1/external', externalRoutes);
 router.use('/external', externalRoutes);
 
 export default router;
