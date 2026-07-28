@@ -342,6 +342,14 @@ async function watchDatabaseChanges(io) {
 
 // ── Middleware ───────────────────────────────────────────────
 app.use(compression());
+
+// Auto-sanitize requested URLs: strip trailing newlines (%0A, \n, \r) or whitespace to prevent 404s from copy-pasting
+app.use((req, res, next) => {
+  if (req.url) {
+    req.url = req.url.replace(/(?:%0[aA]|\r|\n|\s)+$/g, '');
+  }
+  next();
+});
 app.use(
   helmet({
     frameguard: false,
