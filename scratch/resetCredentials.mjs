@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.mjs';
 import Admin from '../models/Admin.mjs';
+import ApiKey from '../models/ApiKey.mjs';
 
 async function resetCredentials() {
   try {
@@ -67,9 +68,18 @@ async function resetCredentials() {
       await sampleDoc.save();
     }
 
-    console.log('✅ PASSWORDS UPDATED SUCCESSFULLY!');
+    // 4. External API Key
+    const externalKey = 'cm_ext_e7456b75cc7ab05ce7d99c72a8c218f49741a11fa465d414d8507d9f858ff9b8';
+    await ApiKey.findOneAndUpdate(
+      { key: externalKey },
+      { name: 'External Production API Key', key: externalKey, isActive: true },
+      { upsert: true, new: true }
+    );
+
+    console.log('✅ PASSWORDS & API KEYS UPDATED SUCCESSFULLY!');
     console.log(`🔑 Admin Login -> Email: ${adminEmail} | Password: ${defaultPassword}`);
     console.log(`🔑 Client Login -> Email: user@example.com (or john@gmail.com) | Password: ${defaultPassword}`);
+    console.log(`🔑 External API Key -> ${externalKey}`);
 
     await mongoose.disconnect();
     process.exit(0);
