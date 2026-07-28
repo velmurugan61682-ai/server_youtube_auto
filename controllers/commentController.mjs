@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Comment from '../models/Comment.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
@@ -14,6 +15,7 @@ import { classifyComment } from '../services/aiService.mjs';
 import { processComments, processSingleComment } from '../services/commentProcessingService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 import { debouncedEmit } from '../utils/socketDebouncer.mjs';
+import logger from '../utils/logger.mjs';
 
 // Helper to get allowed channel IDs for a user
 const getUserChannelIds = async (user) => {
@@ -283,6 +285,11 @@ export const manualSync = async (req, res) => {
         expiry_date: channel.expiryDate,
       }, null, io, videoId);
     }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
 /**
  * POST /api/comments/:commentId/reply
@@ -688,100 +695,3 @@ export const getCommentHistory = async (req, res) => {
     return res.status(500).json({ success: false, error: error.message });
   }
 };
-
-/**
- * POST /api/comments/reply
- * Send manual/AI reply to a YouTube comment
- */
-export const replyToCommentApi = async (req, res) => {
-  try {
-    const { commentId, replyText } = req.body;
-    if (!commentId || !replyText) {
-      return res.status(400).json({ success: false, error: 'commentId and replyText are required' });
-    }
-
-    const allowedChannelIds = await getUserChannelIds(req.user);
-    const comment = await Comment.findOne({
-      $or: [{ _id: commentId }, { youtubeId: commentId }, { commentId }],
-      channelId: { $in: allowedChannelIds }
-    });
-
-    if (!comment) {
-      return res.status(404).json({ success: false, error: 'Comment not found or unauthorized' });
-    }
-
-    const channel = await Channel.findOne({ channelId: comment.channelId }).lean();
-    if (!channel) {
-      return res.status(404).json({ success: false, error: 'Associated YouTube channel not found' });
-    }
-
-    if (!channel.apiKey) {
-      const decryptedTokens = {
-        access_token: decrypt(channel.accessToken),
-        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
-        expiry_date: channel.expiryDate
-      };
-      const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
-      await replyToComment(youtube, comment.youtubeId, replyText);
-    }
-
-    comment.autoReplied = true;
-    comment.hasReplied = true;
-    comment.replyText = replyText;
-    comment.replyStatus = 'sent';
-    comment.repliedAt = new Date();
-    await comment.save();
-
-    return res.json({
-      success: true,
-      message: 'Reply sent successfully',
-      data: comment
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-/**
- * DELETE /api/comments/:id
- * Moderate/delete comment from YouTube and update DB status
- */
-export const deleteCommentApi = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const allowedChannelIds = await getUserChannelIds(req.user);
-
-    const comment = await Comment.findOne({
-      $or: [{ _id: id }, { youtubeId: id }, { commentId: id }],
-      channelId: { $in: allowedChannelIds }
-    });
-
-    if (!comment) {
-      return res.status(404).json({ success: false, error: 'Comment not found or unauthorized' });
-    }
-
-    const channel = await Channel.findOne({ channelId: comment.channelId }).lean();
-    if (channel && !channel.apiKey) {
-      const decryptedTokens = {
-        access_token: decrypt(channel.accessToken),
-        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
-        expiry_date: channel.expiryDate
-      };
-      const youtube = getYouTubeClient(decryptedTokens, null, channel._id);
-      await deleteCommentFromYouTube(youtube, comment.youtubeId);
-    }
-
-    comment.status = 'deleted';
-    comment.deletedAt = new Date();
-    await comment.save();
-
-    return res.json({
-      success: true,
-      message: 'Comment deleted successfully',
-      data: { id: comment._id, youtubeId: comment.youtubeId }
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
-
