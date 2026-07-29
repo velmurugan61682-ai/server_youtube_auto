@@ -51,7 +51,25 @@ const googleAuthHandler = (req, res, next) => {
   if (!req.headers.authorization && req.query.token) {
     req.headers.authorization = `Bearer ${req.query.token}`;
   }
-  return authMiddleware(req, res, () => initiateAuth(req, res, next));
+
+  // Try optional authentication: if valid token, attach req.user, otherwise req.user = null
+  const authHeader = req.headers.authorization;
+  let token = authHeader && authHeader.split(' ')[1];
+  if (!token && req.cookies) token = req.cookies.token;
+  if (token === 'null' || token === 'undefined') token = null;
+
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded;
+    } catch (err) {
+      req.user = null;
+    }
+  } else {
+    req.user = null;
+  }
+
+  return initiateAuth(req, res, next);
 };
 
 router.all('/google', googleAuthHandler);

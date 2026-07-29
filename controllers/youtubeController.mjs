@@ -1,3 +1,5 @@
+import bcrypt from 'bcryptjs';
+import axios from 'axios';
 import Channel from '../models/Channel.mjs';
 import Comment from '../models/Comment.mjs';
 import Video from '../models/Video.mjs';
@@ -44,76 +46,78 @@ const FRONTEND_URL = getFrontendUrl();
 
 export const initiateAuth = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user ? req.user.id : null;
 
-    const user = await User.findById(userId).lean();
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (userId) {
+      const user = await User.findById(userId).lean();
+      if (!user) return res.status(404).json({ error: 'User not found' });
 
-    let org = null;
-    if (user.organizationId) {
-      org = await Organization.findById(user.organizationId).lean();
-    }
-
-    const isAdmin = user.role === 'admin';
-    const isSubActive = true;
-    let planType = 'professional';
-
-    const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
-    const isTrialExpired = new Date() > new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
-
-    let channelLimit = 1;
-    let planName = 'Free Plan';
-
-    if (isAdmin) {
-      channelLimit = 1000;
-      planName = 'Admin';
-    } else if (isSubActive) {
-      if (planType === 'one_rupee') {
-        channelLimit = 1;
-        planName = 'INR 1 Plan';
-      } else if (planType === 'monthly_345') {
-        channelLimit = 5;
-        planName = 'INR 345 Plan';
-      } else if (planType === 'two_months_600') {
-        channelLimit = 10;
-        planName = 'INR 600 Plan';
-      } else if (planType === 'three_months_999') {
-        channelLimit = 1000;
-        planName = 'INR 999 Plan';
-      } else {
-        channelLimit = 1000;
-        planName = 'Premium Pro';
+      let org = null;
+      if (user.organizationId) {
+        org = await Organization.findById(user.organizationId).lean();
       }
-    } else {
-      if (isTrialExpired) {
-        channelLimit = 0;
-        planName = 'Expired Free Trial';
-      } else {
-        channelLimit = 1;
-        planName = 'Free Plan';
-      }
-    }
 
-    const connectedChannelsCount = await Channel.countDocuments({ userId });
-    if (connectedChannelsCount >= channelLimit) {
-      logger.warn(`Billing: User ${user.email} blocked from initiating channel link. Count: ${connectedChannelsCount}, Limit for ${planName}: ${channelLimit}`);
-      let errorMsg = `Your ${planName} is limited to ${channelLimit} YouTube channel(s). Please upgrade your plan to connect more accounts.`;
-      return res.status(403).json({ error: errorMsg });
+      const isAdmin = user.role === 'admin';
+      const isSubActive = true;
+      let planType = 'professional';
+
+      const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+      const isTrialExpired = new Date() > new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
+
+      let channelLimit = 1;
+      let planName = 'Free Plan';
+
+      if (isAdmin) {
+        channelLimit = 1000;
+        planName = 'Admin';
+      } else if (isSubActive) {
+        if (planType === 'one_rupee') {
+          channelLimit = 1;
+          planName = 'INR 1 Plan';
+        } else if (planType === 'monthly_345') {
+          channelLimit = 5;
+          planName = 'INR 345 Plan';
+        } else if (planType === 'two_months_600') {
+          channelLimit = 10;
+          planName = 'INR 600 Plan';
+        } else if (planType === 'three_months_999') {
+          channelLimit = 1000;
+          planName = 'INR 999 Plan';
+        } else {
+          channelLimit = 1000;
+          planName = 'Premium Pro';
+        }
+      } else {
+        if (isTrialExpired) {
+          channelLimit = 0;
+          planName = 'Expired Free Trial';
+        } else {
+          channelLimit = 1;
+          planName = 'Free Plan';
+        }
+      }
+
+      const connectedChannelsCount = await Channel.countDocuments({ userId });
+      if (connectedChannelsCount >= channelLimit) {
+        logger.warn(`Billing: User ${user.email} blocked from initiating channel link. Count: ${connectedChannelsCount}, Limit for ${planName}: ${channelLimit}`);
+        let errorMsg = `Your ${planName} is limited to ${channelLimit} YouTube channel(s). Please upgrade your plan to connect more accounts.`;
+        return res.status(403).json({ error: errorMsg });
+      }
     }
 
     const state = crypto.randomUUID();
 
-    console.log(`[OAuth State Gen] Ã¢Å“â€¦ Generated OAuth state for user ${userId}`);
+    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId || 'guest'}`);
     console.log(`[OAuth State Gen] TTL: 5 minutes`);
 
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
-      { state, userId },
+      { state, userId: userId || null, isLoginFlow: !userId },
       { upsert: true, returnDocument: 'after' }
     );
 
-    console.log(`[OAuth State Gen] Ã¢Å“â€¦ State stored in MongoDB`);
+    console.log(`[OAuth State Gen] ✅ State stored in MongoDB`);
     console.log(`[OAuth State Gen] Document ID: ${stateDoc._id}`);
     console.log(`[OAuth State Gen] Will expire at: ${new Date(stateDoc.createdAt.getTime() + 5 * 60 * 1000).toISOString()}`);
 
@@ -131,12 +135,12 @@ export const initiateAuth = async (req, res) => {
       ],
     });
 
-    console.log(`[OAuth State Gen] Ã¢Å“â€¦ Auth URL generated`);
+    console.log(`[OAuth State Gen] ✅ Auth URL generated`);
     console.log(`[OAuth State Gen] Redirect will happen to Google OAuth`);
 
     res.json({ redirectUrl: authUrl });
   } catch (err) {
-    logger.error(`[OAuth State Gen] Ã¢ÂÅ’ Failed to generate OAuth URL: ${err.message}`);
+    logger.error(`[OAuth State Gen] ❌ Failed to generate OAuth URL: ${err.message}`);
     console.error(`[OAuth State Gen] Error Stack:`, err.stack);
     res.status(500).json({ error: 'OAuth Configuration Error', details: err.message });
   }
@@ -152,18 +156,18 @@ export const handleCallback = async (req, res) => {
 
   if (oauthError) {
     logger.error(`[OAuth Error] Google OAuth error received: ${oauthError}`);
-    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent(oauthError)}`);
+    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent(oauthError)}`);
   }
 
   if (!state) {
     logger.error('[OAuth Error] Missing state parameter from Google redirect');
     console.error('[OAuth Error] Missing state parameter - this is a critical OAuth security violation');
-    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Missing state parameter')}`);
+    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Missing state parameter')}`);
   }
 
   if (!code) {
     logger.error('[OAuth Error] Missing authorization code from Google');
-    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Missing authorization code')}`);
+    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Missing authorization code')}`);
   }
 
   // Look up and delete single-use state mapping
@@ -172,34 +176,109 @@ export const handleCallback = async (req, res) => {
     stateRecord = await OAuthState.findOneAndDelete({ state });
     if (!stateRecord) {
       console.log(`[OAuth State Ver] State record NOT found for state: ${state}`);
-      console.log(`[OAuth State Ver] This could mean:`);
-      console.log(`  1. State parameter was incorrect/tampered`);
-      console.log(`  2. State expired (5-minute TTL)`);
-      console.log(`  3. State was already used (single-use only)`);
-      console.log(`  4. Database connection issue`);
-
       logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
-      return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
+      return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
     }
-    console.log(`[OAuth State Ver] Ã¢Å“â€¦ State verified successfully for user: ${stateRecord.userId}`);
+    console.log(`[OAuth State Ver] ✅ State verified successfully for user: ${stateRecord.userId || 'guest'}`);
   } catch (dbErr) {
     logger.error(`[OAuth Error] Database error during state verification: ${dbErr.message}`);
-    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent('Database error during verification')}`);
+    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Database error during verification')}`);
   }
 
   const userId = stateRecord.userId;
+  const isLoginFlow = stateRecord.isLoginFlow || !userId;
 
   let tokens = null;
   let channelRes = null;
   let channel = null;
 
   try {
-    const user = await User.findById(userId).lean();
     const client = getYouTubeAuth();
     const tokenResponse = await client.getToken(code);
     tokens = tokenResponse.tokens;
     client.setCredentials(tokens);
     logger.info('OAuth Token exchange successful');
+
+    // Handle guest Google OAuth login/signup
+    if (isLoginFlow || !userId) {
+      let googleUserId = null;
+      let googleEmail = null;
+      let googleName = null;
+      let picture = '';
+
+      if (tokens.id_token) {
+        try {
+          const decoded = jwt.decode(tokens.id_token);
+          if (decoded) {
+            googleUserId = decoded.sub;
+            googleEmail = decoded.email;
+            googleName = decoded.name || decoded.email?.split('@')[0];
+            picture = decoded.picture || '';
+          }
+        } catch (e) {
+          logger.error('Failed to decode id_token:', e);
+        }
+      }
+
+      if (!googleEmail && tokens.access_token) {
+        try {
+          const userInfoRes = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${tokens.access_token}` }
+          });
+          googleEmail = userInfoRes.data.email;
+          googleName = userInfoRes.data.name || googleEmail.split('@')[0];
+          picture = userInfoRes.data.picture || '';
+          googleUserId = userInfoRes.data.sub;
+        } catch (e) {
+          logger.error('Failed to fetch userinfo from Google:', e.message);
+        }
+      }
+
+      if (!googleEmail) {
+        return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Unable to connect to Google. Please try again.')}`);
+      }
+
+      let guestUser = await User.findOne({ email: new RegExp(`^${googleEmail.trim()}$`, 'i') });
+      if (!guestUser) {
+        const hashedPassword = await bcrypt.hash(`google_oauth_${Date.now()}_${Math.random()}`, 12);
+        const newOrg = new Organization({
+          name: `${googleName}'s Workspace`,
+          status: 'active',
+          planType: 'free'
+        });
+        await newOrg.save();
+
+        guestUser = new User({
+          name: googleName,
+          email: googleEmail.toLowerCase().trim(),
+          password: hashedPassword,
+          role: 'client',
+          organizationId: newOrg._id,
+          profilePicture: picture
+        });
+        await guestUser.save();
+        logger.info(`[Google OAuth] Auto-created user: ${guestUser.email}`);
+      }
+
+      const token = jwt.sign({
+        id: guestUser._id,
+        email: guestUser.email,
+        role: guestUser.role || 'client',
+        organizationId: guestUser.organizationId
+      }, JWT_SECRET, { expiresIn: '7d' });
+
+      const isProd = process.env.NODE_ENV === 'production';
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+
+      return res.redirect(`${FRONTEND_URL}/dashboard?token=${token}&status=success`);
+    }
+
+    const user = await User.findById(userId).lean();
     logger.info('Google token received');
 
     const youtube = getYouTubeClient(tokens, null, null);

@@ -9,7 +9,12 @@ const oauthStateSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false,
+    default: null
+  },
+  isLoginFlow: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,
