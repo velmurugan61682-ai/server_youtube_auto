@@ -20,8 +20,9 @@ const callWithRetry = async (client, body, maxRetries = 1) => {
       const isTemporary = !status || (status >= 500 && status <= 599) || error.message?.includes('timeout') || error.code === 'ETIMEDOUT';
 
       if (is402) {
-        logger.error(`[DEEPSEEK] Insufficient balance error detected (402). Disabling AI status.`);
+        logger.error(`[DEEPSEEK] Insufficient balance error detected (402). Disabling AI status for keyword fallback.`);
         global.isAiAvailable = false;
+        openAIAvailable = false;
         throw error;
       }
 
@@ -38,8 +39,8 @@ const callWithRetry = async (client, body, maxRetries = 1) => {
 };
 
 const getOpenAI = () => {
+  if (global.isAiAvailable === false || openAIAvailable === false) return null;
   if (openai) return openai;
-  if (!openAIAvailable) return null;
 
   const rawKey = process.env.DEEPSEEK_API_KEY || '';
   const key = rawKey.trim().replace(/^["']|["']$/g, '');
@@ -48,6 +49,7 @@ const getOpenAI = () => {
     logger.error('CRITICAL: DeepSeek API key is missing or invalid in .env file!');
     logger.error('AI Classification will be disabled. System will fallback to keyword matching.');
     openAIAvailable = false;
+    global.isAiAvailable = false;
     return null;
   }
 

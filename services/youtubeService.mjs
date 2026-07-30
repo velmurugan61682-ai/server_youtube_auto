@@ -210,8 +210,32 @@ export const getYouTubeClient = (tokens, onTokensRefreshed, channelDbId = null) 
   return google.youtube({ version: 'v3', auth });
 };
 
+let currentKeyIndex = 0;
+
+export const rotateYouTubeApiKey = () => {
+  const envKeys = (process.env.YOUTUBE_API_KEYS || process.env.YOUTUBE_API_KEY || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(Boolean);
+  if (envKeys.length > 1) {
+    currentKeyIndex = (currentKeyIndex + 1) % envKeys.length;
+    logger.warn(`[YOUTUBE API] Quota fallback triggered: Rotating to YouTube API Key index ${currentKeyIndex + 1}/${envKeys.length}`);
+    return envKeys[currentKeyIndex];
+  }
+  return null;
+};
+
 export const getYouTubeClientWithApiKey = (apiKey) => {
-  return google.youtube({ version: 'v3', auth: apiKey });
+  const envKeys = (process.env.YOUTUBE_API_KEYS || process.env.YOUTUBE_API_KEY || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(Boolean);
+
+  let keyToUse = apiKey;
+  if ((!keyToUse || keyToUse.includes('...')) && envKeys.length > 0) {
+    keyToUse = envKeys[currentKeyIndex % envKeys.length];
+  }
+  return google.youtube({ version: 'v3', auth: keyToUse || process.env.YOUTUBE_API_KEY });
 };
 
 export const fetchLatestComments = async (youtube, channelId, maxResults = 50, videoId = null) => {

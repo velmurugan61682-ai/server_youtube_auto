@@ -552,23 +552,39 @@ export const getVideos = async (req, res) => {
 
           const uploadedVideos = await fetchAllVideos(youtube, channel.channelId);
           if (uploadedVideos.length > 0) {
-            const uploadBulkOps = uploadedVideos.map(v => ({
-              updateOne: {
-                filter: { userId: req.user.id, videoId: v.videoId },
-                update: {
-                  $set: {
-                    userId: req.user.id,
-                    channelId: channel.channelId,
-                    videoId: v.videoId,
-                    title: v.title,
-                    description: v.description,
-                    thumbnail: v.thumbnail,
-                    publishedAt: v.publishedAt
-                  }
-                },
-                upsert: true
+            const uploadBulkOps = uploadedVideos.map(v => {
+              const titleUpper = String(v.title || '').trim().toUpperCase();
+              const isLiveTitle = titleUpper.startsWith('LIVE |') ||
+                titleUpper.startsWith('LIVE:') ||
+                titleUpper.startsWith('[LIVE]') ||
+                titleUpper.startsWith('LIVE -') ||
+                titleUpper.includes('LIVE STREAM') ||
+                titleUpper.includes('STREAMED LIVE') ||
+                titleUpper.includes('WAS LIVE');
+
+              const setData = {
+                userId: req.user.id,
+                channelId: channel.channelId,
+                videoId: v.videoId,
+                title: v.title,
+                description: v.description,
+                thumbnail: v.thumbnail,
+                publishedAt: v.publishedAt
+              };
+
+              if (isLiveTitle) {
+                setData.isLive = true;
+                setData.liveBroadcastContent = 'completed';
               }
-            }));
+
+              return {
+                updateOne: {
+                  filter: { userId: req.user.id, videoId: v.videoId },
+                  update: { $set: setData },
+                  upsert: true
+                }
+              };
+            });
             await Video.bulkWrite(uploadBulkOps);
             logger.info(`[SYNC] Upserted ${uploadBulkOps.length} uploaded videos for channel: ${channelId}.`);
             videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();

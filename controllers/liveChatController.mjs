@@ -96,7 +96,14 @@ export const getLiveStreams = async (req, res) => {
       }
     } else {
       // Fallback query saved live videos from DB
-      const dbLiveVideos = await Video.find({ channelId, isLive: true }).sort({ createdAt: -1 }).lean();
+      const dbLiveVideos = await Video.find({
+        channelId,
+        $or: [
+          { isLive: true },
+          { liveBroadcastContent: { $in: ['live', 'completed', 'upcoming'] } },
+          { title: { $regex: /^LIVE\s*\||LIVE STREAM|WAS LIVE/i } }
+        ]
+      }).sort({ publishedAt: -1, createdAt: -1 }).lean();
       if (dbLiveVideos.length > 0) {
         streams = dbLiveVideos.map(v => ({
           videoId: v.videoId,
@@ -104,12 +111,12 @@ export const getLiveStreams = async (req, res) => {
           description: v.description || '',
           thumbnail: v.thumbnail || '',
           liveChatId: v.liveChatId || `lc_${v.videoId}`,
-          concurrentViewers: v.statistics?.viewCount || 128,
-          likeCount: v.statistics?.likeCount || 94,
-          commentCount: v.statistics?.commentCount || 45,
+          concurrentViewers: v.statistics?.viewCount || 0,
+          likeCount: v.statistics?.likeCount || 0,
+          commentCount: v.statistics?.commentCount || 0,
           publishedAt: v.publishedAt || v.createdAt,
-          liveBroadcastContent: v.liveBroadcastContent || 'live',
-          isLive: true
+          liveBroadcastContent: v.liveBroadcastContent || (v.isLive ? 'live' : 'completed'),
+          isLive: Boolean(v.isLive || v.liveBroadcastContent === 'live')
         }));
       }
     }

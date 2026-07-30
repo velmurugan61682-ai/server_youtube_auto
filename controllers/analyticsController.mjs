@@ -223,7 +223,10 @@ export const getAnalytics = async (req, res) => {
               }
             }
           } catch (liveErr) {
-            logger.error(`Failed to fetch active live viewers in analytics: ${liveErr.message}`);
+            // Live streaming may not be enabled or channel may not be live — fallback safely to 0 live viewers
+            if (!liveErr.message?.includes('live streaming')) {
+              logger.debug(`Failed to fetch active live viewers in analytics: ${liveErr.message}`);
+            }
           }
 
           // Fetch subscriptions

@@ -72,6 +72,11 @@ export const createLead = async (leadData, options = {}) => {
     await lead.save(options);
     return { lead, isDuplicate };
   } catch (error) {
+    if (error.code === 11000 || error.message?.includes('E11000')) {
+      logger.warn(`[LeadService] Lead creation skipped due to duplicate key (${error.message}). Marking as duplicate.`);
+      const existing = leadData.commentId ? await Lead.findOne({ commentId: leadData.commentId }) : null;
+      return { lead: existing, isDuplicate: true };
+    }
     logger.error(`Error creating lead: ${error.message}`);
     throw error;
   }

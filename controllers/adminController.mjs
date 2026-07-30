@@ -1053,11 +1053,13 @@ export const getAdminAnalytics = async (req, res) => {
 
 export const getAdminApiKeys = async (req, res) => {
   try {
-    const keys = await ApiKey.find({ userId: { $exists: false } }).sort({ createdAt: -1 });
+    const keys = await ApiKey.find({ $or: [{ userId: null }, { userId: { $exists: false } }] }).sort({ createdAt: -1 });
     const sanitizedKeys = keys.map(k => ({
       _id: k._id,
       name: k.name,
       key: maskKey(k.key),
+      rawKey: k.key,
+      permissions: k.permissions || [],
       isActive: k.isActive,
       createdAt: k.createdAt
     }));
@@ -1072,7 +1074,12 @@ export const createAdminApiKey = async (req, res) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Key label is required.' });
     const rawKey = `yt_${crypto.randomBytes(24).toString('hex')}`;
-    const newKey = new ApiKey({ name: name.trim(), key: rawKey, isActive: true });
+    const newKey = new ApiKey({
+      name: name.trim(),
+      key: rawKey,
+      permissions: ['leads:read', 'leads:write', 'users:read', 'customers:read', 'comments:read', 'analytics:read'],
+      isActive: true
+    });
     await newKey.save();
     return res.status(201).json({ success: true, apiKey: newKey });
   } catch (error) {
