@@ -3,8 +3,8 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
-const NEW_EMAIL   = process.env.ADMIN_EMAIL    || 'admin@channelbot.ai';
-const NEW_PASS    = process.env.ADMIN_PASSWORD || 'AdminPass@123';
+const NEW_EMAIL = process.env.ADMIN_EMAIL || 'admin@channelbot.ai';
+const NEW_PASS = process.env.ADMIN_PASSWORD || 'AdminPass@123';
 
 await mongoose.connect(MONGODB_URI);
 console.log('✅ Connected to MongoDB');
@@ -22,11 +22,11 @@ const result = await col.findOneAndUpdate(
   { email: NEW_EMAIL },
   {
     $set: {
-      email:        NEW_EMAIL,
+      email: NEW_EMAIL,
       passwordHash: hashed,
-      role:         'superadmin',
-      name:         'ChannelMate Admin',
-      updatedAt:    new Date()
+      role: 'superadmin',
+      name: 'ChannelBot Admin',
+      updatedAt: new Date()
     },
     $setOnInsert: { createdAt: new Date() }
   },

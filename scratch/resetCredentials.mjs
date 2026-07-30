@@ -18,7 +18,7 @@ async function resetCredentials() {
     let adminDoc = await User.findOne({ email: adminEmail });
     if (!adminDoc) {
       adminDoc = new User({
-        name: 'ChannelMate Admin',
+        name: 'ChannelBot Admin',
         email: adminEmail,
         password: hashedPassword,
         role: 'admin'
@@ -34,7 +34,7 @@ async function resetCredentials() {
     let adminRecord = await Admin.findOne({ email: adminEmail });
     if (!adminRecord) {
       adminRecord = new Admin({
-        name: 'ChannelMate Admin',
+        name: 'ChannelBot Admin',
         email: adminEmail,
         passwordHash: hashedPassword,
         role: 'superadmin'

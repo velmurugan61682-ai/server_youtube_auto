@@ -36,7 +36,7 @@ async function run() {
       messages: [
         {
           role: 'system',
-          content: `You are an expert multi-lingual ChannelMate YouTube comment safety and lead-intent auditor.
+          content: `You are an expert multi-lingual ChannelBot YouTube comment safety and lead-intent auditor.
 Analyze the given YouTube comment across ALL languages (Tamil script, Tanglish/Latin Tamil, English, Hindi, Hinglish, Spanish, Malayalam, Telugu, etc.) with human-level intelligence.
 
 Output a JSON object containing EXACTLY the following keys:

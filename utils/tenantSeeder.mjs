@@ -8,10 +8,10 @@ export const seedOrganizations = async () => {
     logger.info('🌱 [Tenant Seeder] Initializing organization profiles...');
 
     // 1. Seed Organization
-    let vedaOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Vaseegrah Veda'] } });
+    let vedaOrg = await Organization.findOne({ name: { $in: ['ChannelBot', 'ChannelBot', 'Vaseegrah Veda'] } });
     if (!vedaOrg) {
       vedaOrg = new Organization({
-        name: 'ChannelMate',
+        name: 'ChannelBot',
         logo: '',
         contactDetails: {
           email: 'contact@vaseegrahveda.test',
@@ -25,19 +25,19 @@ export const seedOrganizations = async () => {
         }
       });
       await vedaOrg.save();
-      logger.info('🌱 Created organization profile: ChannelMate');
+      logger.info('🌱 Created organization profile: ChannelBot');
     }
 
-    // 2. Seed Primary Organization (ChannelMate)
-    let techOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah'] } });
+    // 2. Seed Primary Organization (ChannelBot)
+    let techOrg = await Organization.findOne({ name: { $in: ['ChannelBot', 'ChannelBot', 'Channelbot', 'Tech Vaseegrah'] } });
     if (!techOrg) {
       techOrg = new Organization({
-        name: 'ChannelMate',
+        name: 'ChannelBot',
         logo: '/logo.svg',
         contactDetails: {
           email: 'contact@Channelbot.test',
           phone: '+918888822222',
-          address: 'ChannelMate Hub, India'
+          address: 'ChannelBot Hub, India'
         },
         subscription: {
           status: 'active',
@@ -46,31 +46,31 @@ export const seedOrganizations = async () => {
         }
       });
       await techOrg.save();
-      logger.info('🌱 Created organization profile: Channelbot');
-    } else if (['Tech Vaseegrah', 'Channelbot'].includes(techOrg.name)) {
-      techOrg.name = 'ChannelMate';
+      logger.info('🌱 Created organization profile: ChannelBot');
+    } else if (['Tech Vaseegrah', 'Channelbot', 'ChannelBot'].includes(techOrg.name)) {
+      techOrg.name = 'ChannelBot';
       techOrg.contactDetails.email = 'contact@Channelbot.test';
-      techOrg.contactDetails.address = 'ChannelMate Hub, India';
+      techOrg.contactDetails.address = 'ChannelBot Hub, India';
       await techOrg.save();
-      logger.info('🌱 Renamed legacy organization profile to ChannelMate');
+      logger.info('🌱 Renamed legacy organization profile to ChannelBot');
     }
 
-    // 3. Migrate any legacy Users (without organizationId) to ChannelMate
+    // 3. Migrate any legacy Users (without organizationId) to ChannelBot
     const userUpdateRes = await User.updateMany(
       { organizationId: { $exists: false } },
       { $set: { organizationId: techOrg._id } }
     );
     if (userUpdateRes.modifiedCount > 0) {
-      logger.info(`🌱 Migrated ${userUpdateRes.modifiedCount} legacy users to ChannelMate tenant`);
+      logger.info(`🌱 Migrated ${userUpdateRes.modifiedCount} legacy users to ChannelBot tenant`);
     }
 
-    // 4. Migrate any legacy Channels (without organizationId) to ChannelMate
+    // 4. Migrate any legacy Channels (without organizationId) to ChannelBot
     const channelUpdateRes = await Channel.updateMany(
       { organizationId: { $exists: false } },
       { $set: { organizationId: techOrg._id } }
     );
     if (channelUpdateRes.modifiedCount > 0) {
-      logger.info(`🌱 Migrated ${channelUpdateRes.modifiedCount} legacy channels to ChannelMate tenant`);
+      logger.info(`🌱 Migrated ${channelUpdateRes.modifiedCount} legacy channels to ChannelBot tenant`);
     }
 
     logger.info('🌱 [Tenant Seeder] Organization initialization completed successfully');

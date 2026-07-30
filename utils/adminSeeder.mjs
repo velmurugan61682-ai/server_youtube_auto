@@ -25,7 +25,7 @@ export const seedSingleAdmin = async () => {
           {
             $set: {
               email: SINGLE_ADMIN_EMAIL,
-              name: legacyAdmin.name || 'ChannelMate Admin',
+              name: legacyAdmin.name || 'ChannelBot Admin',
               role: 'admin'
             }
           }
@@ -41,7 +41,7 @@ export const seedSingleAdmin = async () => {
       }
       const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
       primaryAdmin = await User.create({
-        name: 'ChannelMate Admin',
+        name: 'ChannelBot Admin',
         email: SINGLE_ADMIN_EMAIL,
         password: hashedPassword,
         passwordHash: hashedPassword,

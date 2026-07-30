@@ -33,7 +33,7 @@ async function migrate() {
     console.log("Connected successfully.");
 
     // Resolve default organization
-    let defaultOrg = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah'] } });
+    let defaultOrg = await Organization.findOne({ name: { $in: ['ChannelBot', 'Channelbot', 'Tech Vaseegrah'] } });
     if (!defaultOrg) {
       defaultOrg = await Organization.findOne({});
     }

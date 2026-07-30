@@ -65,8 +65,9 @@ export const initiateAuth = async (req, res) => {
       }
 
       const isAdmin = user.role === 'admin';
-      const isSubActive = true;
-      let planType = 'professional';
+      const subStatus = org?.subscription?.status || user?.subscription?.status || 'active';
+      const planType = org?.subscription?.planType || user?.subscription?.planId || 'free';
+      const isSubActive = subStatus === 'active' || subStatus === 'completed';
 
       const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
       const isTrialExpired = new Date() > new Date((user.createdAt || new Date()).getTime() + oneMonthMs);
@@ -78,7 +79,10 @@ export const initiateAuth = async (req, res) => {
         channelLimit = 1000;
         planName = 'Admin';
       } else if (isSubActive) {
-        if (planType === 'one_rupee') {
+        if (planType === 'free') {
+          channelLimit = 1;
+          planName = 'Free Plan';
+        } else if (planType === 'one_rupee') {
           channelLimit = 1;
           planName = 'INR 1 Plan';
         } else if (planType === 'monthly_345') {
@@ -87,12 +91,12 @@ export const initiateAuth = async (req, res) => {
         } else if (planType === 'two_months_600') {
           channelLimit = 10;
           planName = 'INR 600 Plan';
-        } else if (planType === 'three_months_999') {
-          channelLimit = 1000;
-          planName = 'INR 999 Plan';
-        } else {
+        } else if (planType === 'three_months_999' || planType === 'quarterly_pro' || planType === 'annual_pro') {
           channelLimit = 1000;
           planName = 'Premium Pro';
+        } else {
+          channelLimit = 1;
+          planName = 'Free Plan';
         }
       } else {
         if (isTrialExpired) {
@@ -344,8 +348,9 @@ export const handleCallback = async (req, res) => {
       }
 
       const isAdmin = user && user.role === 'admin';
-      const isSubActive = true;
-      let planType = 'professional';
+      const subStatus = org?.subscription?.status || user?.subscription?.status || 'active';
+      const planType = org?.subscription?.planType || user?.subscription?.planId || 'free';
+      const isSubActive = subStatus === 'active' || subStatus === 'completed';
 
       const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
       const isTrialExpired = new Date() > new Date(((user && user.createdAt) || new Date()).getTime() + oneMonthMs);
@@ -357,7 +362,10 @@ export const handleCallback = async (req, res) => {
         channelLimit = 1000;
         planName = 'Admin';
       } else if (isSubActive) {
-        if (planType === 'one_rupee') {
+        if (planType === 'free') {
+          channelLimit = 1;
+          planName = 'Free Plan';
+        } else if (planType === 'one_rupee') {
           channelLimit = 1;
           planName = 'INR 1 Plan';
         } else if (planType === 'monthly_345') {
@@ -366,12 +374,12 @@ export const handleCallback = async (req, res) => {
         } else if (planType === 'two_months_600') {
           channelLimit = 10;
           planName = 'INR 600 Plan';
-        } else if (planType === 'three_months_999') {
-          channelLimit = 1000;
-          planName = 'INR 999 Plan';
-        } else {
+        } else if (planType === 'three_months_999' || planType === 'quarterly_pro' || planType === 'annual_pro') {
           channelLimit = 1000;
           planName = 'Premium Pro';
+        } else {
+          channelLimit = 1;
+          planName = 'Free Plan';
         }
       } else {
         if (isTrialExpired) {

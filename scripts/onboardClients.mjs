@@ -25,12 +25,12 @@ async function onboard() {
 
     const clients = [
       {
-        name: process.env.ONBOARD_CLIENT_ONE_NAME || 'ChannelMate',
+        name: process.env.ONBOARD_CLIENT_ONE_NAME || 'ChannelBot',
         email: process.env.ONBOARD_CLIENT_ONE_EMAIL,
         password: process.env.ONBOARD_CLIENT_ONE_PASSWORD
       },
       {
-        name: process.env.ONBOARD_CLIENT_TWO_NAME || 'ChannelMate Client',
+        name: process.env.ONBOARD_CLIENT_TWO_NAME || 'ChannelBot Client',
         email: process.env.ONBOARD_CLIENT_TWO_EMAIL,
         password: process.env.ONBOARD_CLIENT_TWO_PASSWORD
       }

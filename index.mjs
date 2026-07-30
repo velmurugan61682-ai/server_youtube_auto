@@ -467,7 +467,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/', (_req, res) => {
-  res.send('ChannelMate API is running.');
+  res.send('ChannelBot API is running.');
 });
 
 // Global JSON 404 Fallback Handler (after all routes)

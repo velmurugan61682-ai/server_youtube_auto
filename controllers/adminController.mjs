@@ -111,7 +111,7 @@ export const adminLogin = async (req, res) => {
       // Use upsert to avoid duplicate-key race condition
       adminRecord = await Admin.findOneAndUpdate(
         { email: adminEmail },
-        { $setOnInsert: { name: 'ChannelMate Superadmin', email: adminEmail, passwordHash: hashed, role: 'superadmin' } },
+        { $setOnInsert: { name: 'ChannelBot Superadmin', email: adminEmail, passwordHash: hashed, role: 'superadmin' } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
     }
@@ -148,12 +148,12 @@ export const adminLogin = async (req, res) => {
 
     // Sign JWT strictly with ADMIN_JWT_SECRET (completely isolated from client JWT_SECRET)
     const token = jwt.sign(
-      { 
-        id: adminRecord._id, 
-        email: adminRecord.email, 
-        role: adminRecord.role, 
+      {
+        id: adminRecord._id,
+        email: adminRecord.email,
+        role: adminRecord.role,
         isAdminToken: true,
-        isAdmin: true 
+        isAdmin: true
       },
       ADMIN_JWT_SECRET,
       { expiresIn: '24h' }
@@ -210,14 +210,14 @@ export const getAdminProfile = async (req, res) => {
     if (!adminRecord) {
       return res.status(404).json({ success: false, error: 'Admin profile not found.' });
     }
-    return res.json({ 
-      success: true, 
-      admin: { 
-        id: adminRecord._id, 
-        name: adminRecord.name, 
-        email: adminRecord.email, 
-        role: adminRecord.role 
-      } 
+    return res.json({
+      success: true,
+      admin: {
+        id: adminRecord._id,
+        name: adminRecord.name,
+        email: adminRecord.email,
+        role: adminRecord.role
+      }
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
@@ -290,11 +290,11 @@ export const onboardClient = async (req, res) => {
     await newUser.save();
 
     await logAudit(
-      req.admin?.id, 
-      req.admin?.email, 
-      'ONBOARD_CLIENT', 
-      'User', 
-      newUser._id, 
+      req.admin?.id,
+      req.admin?.email,
+      'ONBOARD_CLIENT',
+      'User',
+      newUser._id,
       { email: newUser.email, plan, organization }
     );
 
@@ -351,7 +351,7 @@ export const getAdminUsers = async (req, res) => {
     const enrichedClients = await Promise.all(users.map(async (u) => {
       const channel = await Channel.findOne({ userId: u._id }).sort({ createdAt: -1 }).lean();
       const subDoc = await Subscription.findOne({ user: u._id }).sort({ createdAt: -1 }).lean();
-      
+
       const totalComments = await Comment.countDocuments({ userId: u._id });
       const totalAiReplies = await Comment.countDocuments({ userId: u._id, autoReplied: true });
       const totalLeads = await Lead.countDocuments({ userId: u._id });
@@ -384,8 +384,8 @@ export const getAdminUsers = async (req, res) => {
       };
     }));
 
-    const finalClients = plan && plan !== 'all' 
-      ? enrichedClients.filter(c => c.plan === plan) 
+    const finalClients = plan && plan !== 'all'
+      ? enrichedClients.filter(c => c.plan === plan)
       : enrichedClients;
 
     return res.json({
@@ -581,7 +581,7 @@ export const getAdminClientById = async (req, res) => {
   try {
     const { id } = req.params;
     const userObjectId = mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id;
-    
+
     const user = await User.findById(userObjectId).select('-password -passwordHash').lean();
     if (!user) {
       return res.status(404).json({ success: false, error: 'Client not found.' });
@@ -591,7 +591,7 @@ export const getAdminClientById = async (req, res) => {
     const subDoc = await Subscription.findOne({ user: userObjectId }).sort({ createdAt: -1 }).lean();
     const subscriptionHistory = await Subscription.find({ user: userObjectId }).sort({ createdAt: -1 }).lean();
     const auditLogs = await AuditLog.find({ targetId: userObjectId }).sort({ timestamp: -1 }).limit(20).lean();
-    
+
     const commentsScanned = await Comment.countDocuments({ userId: userObjectId });
     const aiRepliesSent = await Comment.countDocuments({ userId: userObjectId, autoReplied: true });
     const toxicComments = await ModerationLog.countDocuments({ userId: userObjectId });
@@ -654,11 +654,11 @@ export const updateAdminClient = async (req, res) => {
     if (name && name !== user.name) { changes.name = { from: user.name, to: name }; user.name = name; }
     if (email && email !== user.email) { changes.email = { from: user.email, to: email }; user.email = email.toLowerCase().trim(); }
     if (organization !== undefined) { changes.organization = { from: user.organization, to: organization }; user.organization = organization; }
-    
+
     if (assignedAgentType || assignedAgent) {
       const agentVal = assignedAgent || (assignedAgentType === 'human_agent' ? 'Human Agent' : 'AI Agent');
       const agentTypeVal = assignedAgentType || (assignedAgent === 'Human Agent' ? 'human_agent' : 'ai_agent');
-      
+
       changes.assignedAgent = { from: user.assignedAgent, to: agentVal };
       user.assignedAgent = agentVal;
       user.assignedAgentType = agentTypeVal;

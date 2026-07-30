@@ -28,9 +28,9 @@ const run = async () => {
 
     if (!orgId) {
       // Find or create a default organization
-      let org = await Organization.findOne({ name: { $in: ['ChannelMate', 'Channelbot', 'Tech Vaseegrah', 'Default'] } }).lean();
+      let org = await Organization.findOne({ name: { $in: ['ChannelBot', 'Channelbot', 'Tech Vaseegrah', 'Default'] } }).lean();
       if (!org) {
-        const newOrg = await Organization.create({ name: 'ChannelMate', slug: 'ChannelMate-default' });
+        const newOrg = await Organization.create({ name: 'ChannelBot', slug: 'ChannelBot-default' });
         orgId = newOrg._id;
         console.log('Created new default org:', orgId);
       } else {

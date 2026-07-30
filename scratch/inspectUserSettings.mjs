@@ -6,11 +6,11 @@ dotenv.config();
 
 async function run() {
   await mongoose.connect(process.env.MONGODB_URI);
-  
-  const user = await User.findOne({ email: 'channelmate@gmail.com' }).lean();
+
+  const user = await User.findOne({ email: 'ChannelBot@gmail.com' }).lean();
   console.log('--- USER SETTINGS ---');
   console.log(JSON.stringify(user.settings, null, 2));
-  
+
   process.exit(0);
 }
 
