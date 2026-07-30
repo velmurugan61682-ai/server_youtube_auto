@@ -16,6 +16,14 @@ const oauthStateSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  redirectUrl: {
+    type: String,
+    default: null
+  },
+  lastToken: {
+    type: String,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now,

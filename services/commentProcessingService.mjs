@@ -580,13 +580,29 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         aiStatus: 'completed'
       };
 
-      const restoredComment = await Comment.findOneAndUpdate(
-        { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-        { $set: commentData },
-        { upsert: true, returnDocument: 'after' }
-      );
+      let restoredComment = null;
+      try {
+        restoredComment = await Comment.findOneAndUpdate(
+          { commentId: commentDoc.youtubeId },
+          { $set: commentData },
+          { upsert: true, returnDocument: 'after' }
+        );
+      } catch (dupErr) {
+        if (dupErr.code === 11000) {
+          // Document already exists with this commentId — just update it
+          logger.warn(`[Pipeline] Duplicate key on restore for ${commentDoc.youtubeId}. Updating existing record.`);
+          restoredComment = await Comment.findOneAndUpdate(
+            { commentId: commentDoc.youtubeId },
+            { $set: commentData },
+            { returnDocument: 'after' }
+          );
+        } else {
+          throw dupErr;
+        }
+      }
 
       logger.info(`[Pipeline] Successfully restored comment ${commentDoc.youtubeId} to DB (Status: ${status}).`);
+
 
       // Broadcast real-time Socket.IO updates if reconstructed
       if (io && restoredComment) {

@@ -1053,6 +1053,11 @@ export const getAdminAnalytics = async (req, res) => {
 
 export const getAdminApiKeys = async (req, res) => {
   try {
+    const maskKey = (key) => {
+      if (!key || key.length < 12) return '••••••••';
+      return `${key.substring(0, 7)}••••••••${key.substring(key.length - 4)}`;
+    };
+
     const keys = await ApiKey.find({ $or: [{ userId: null }, { userId: { $exists: false } }] }).sort({ createdAt: -1 });
     const sanitizedKeys = keys.map(k => ({
       _id: k._id,

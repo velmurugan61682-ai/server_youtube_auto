@@ -27,26 +27,33 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 const activeRefreshes = new Set();
 
-// Select FRONTEND_URL based on NODE_ENV
-const getFrontendUrl = () => {
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  if (isProduction) {
-    const frontendUrl = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || 'https://channelbot.in';
-    console.log(`[Frontend URL] Production mode - using: ${frontendUrl}`);
-    return frontendUrl;
-  } else {
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    console.log(`[Frontend URL] Development mode - using: ${frontendUrl}`);
-    return frontendUrl;
+// Select FRONTEND_URL dynamically based on request origin/referer or process.env
+const getFrontendUrl = (req) => {
+  if (req) {
+    const ref = req.get('referer') || req.get('origin');
+    if (ref) {
+      try {
+        const u = new URL(ref);
+        if (u.hostname === 'channelbot.in' || u.hostname === 'www.channelbot.in') {
+          return `${u.protocol}//${u.host}`;
+        }
+        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+          return `${u.protocol}//${u.host}`;
+        }
+      } catch (_) {}
+    }
   }
+  const isProduction = process.env.NODE_ENV === 'production';
+  return process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || (isProduction ? 'https://channelbot.in' : 'http://localhost:5173');
 };
 
-const FRONTEND_URL = getFrontendUrl();
 
 export const initiateAuth = async (req, res) => {
   try {
-    const userId = req.user ? req.user.id : null;
+    // Explicitly check if this is a login flow (from /auth/google or query param flow=login)
+    const isExplicitLoginFlow = req.originalUrl?.includes('/auth/google') || req.path?.includes('/auth/google') || req.query.flow === 'login';
+    const userId = isExplicitLoginFlow ? null : (req.user ? req.user.id : null);
+    const isLoginFlow = isExplicitLoginFlow || !userId;
 
     if (userId) {
       const user = await User.findById(userId).lean();
@@ -107,13 +114,13 @@ export const initiateAuth = async (req, res) => {
 
     const state = crypto.randomUUID();
 
-    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId || 'guest'}`);
+    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId || 'guest'} (isLoginFlow: ${isLoginFlow})`);
     console.log(`[OAuth State Gen] TTL: 5 minutes`);
 
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
-      { state, userId: userId || null, isLoginFlow: !userId },
+      { state, userId: userId || null, isLoginFlow },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -147,6 +154,7 @@ export const initiateAuth = async (req, res) => {
 };
 
 export const handleCallback = async (req, res) => {
+  const frontendUrl = getFrontendUrl(req);
   const { code, state, error: oauthError } = req.query;
 
   // OAuth callback logging without credentials
@@ -156,33 +164,40 @@ export const handleCallback = async (req, res) => {
 
   if (oauthError) {
     logger.error(`[OAuth Error] Google OAuth error received: ${oauthError}`);
-    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent(oauthError)}`);
+    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent(oauthError)}`);
   }
 
   if (!state) {
     logger.error('[OAuth Error] Missing state parameter from Google redirect');
     console.error('[OAuth Error] Missing state parameter - this is a critical OAuth security violation');
-    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Missing state parameter')}`);
+    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Missing state parameter')}`);
   }
 
   if (!code) {
     logger.error('[OAuth Error] Missing authorization code from Google');
-    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Missing authorization code')}`);
+    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Missing authorization code')}`);
   }
 
-  // Look up and delete single-use state mapping
+  // Look up state mapping (with duplicate request protection)
   let stateRecord = null;
   try {
-    stateRecord = await OAuthState.findOneAndDelete({ state });
+    stateRecord = await OAuthState.findOne({ state });
     if (!stateRecord) {
       console.log(`[OAuth State Ver] State record NOT found for state: ${state}`);
       logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
-      return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
+      return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
     }
+
+    // Handle duplicate callback requests gracefully (e.g. Chrome pre-fetch or double redirects)
+    if (stateRecord.redirectUrl) {
+      console.log(`[OAuth State Ver] Reusing cached redirect URL for duplicate state request: ${state}`);
+      return res.redirect(stateRecord.redirectUrl);
+    }
+
     console.log(`[OAuth State Ver] ✅ State verified successfully for user: ${stateRecord.userId || 'guest'}`);
   } catch (dbErr) {
     logger.error(`[OAuth Error] Database error during state verification: ${dbErr.message}`);
-    return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Database error during verification')}`);
+    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Database error during verification')}`);
   }
 
   const userId = stateRecord.userId;
@@ -235,7 +250,7 @@ export const handleCallback = async (req, res) => {
       }
 
       if (!googleEmail) {
-        return res.redirect(`${FRONTEND_URL}/login?status=error&error=${encodeURIComponent('Unable to connect to Google. Please try again.')}`);
+        return res.redirect(`${getFrontendUrl(req)}/oauth/callback?status=error&error=${encodeURIComponent('Unable to connect to Google. Please try again.')}`);
       }
 
       let guestUser = await User.findOne({ email: new RegExp(`^${googleEmail.trim()}$`, 'i') });
@@ -260,12 +275,13 @@ export const handleCallback = async (req, res) => {
         logger.info(`[Google OAuth] Auto-created user: ${guestUser.email}`);
       }
 
+      const jwtSecret = process.env.JWT_SECRET;
       const token = jwt.sign({
         id: guestUser._id,
         email: guestUser.email,
         role: guestUser.role || 'client',
         organizationId: guestUser.organizationId
-      }, JWT_SECRET, { expiresIn: '7d' });
+      }, jwtSecret, { expiresIn: '7d' });
 
       const isProd = process.env.NODE_ENV === 'production';
       res.cookie('token', token, {
@@ -275,7 +291,9 @@ export const handleCallback = async (req, res) => {
         maxAge: 7 * 24 * 60 * 60 * 1000
       });
 
-      return res.redirect(`${FRONTEND_URL}/dashboard?token=${token}&status=success`);
+      const targetRedirect = `${frontendUrl}/oauth/callback?token=${token}&status=success`;
+      await OAuthState.updateOne({ state }, { $set: { redirectUrl: targetRedirect } });
+      return res.redirect(targetRedirect);
     }
 
     const user = await User.findById(userId).lean();
@@ -287,7 +305,7 @@ export const handleCallback = async (req, res) => {
 
     if (!items || items.length === 0) {
       logger.error('YouTube Channel Response empty items');
-      return res.status(400).json({ error: 'no_channel', message: 'No YouTube channel found' });
+      return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('No YouTube channel found on this Google Account. Please create a channel on YouTube and try again.')}`);
     }
 
     const channelData = items[0];
@@ -295,11 +313,26 @@ export const handleCallback = async (req, res) => {
 
     if (existingChannel && existingChannel.userId.toString() !== userId.toString()) {
       logger.info(`Reassigning YouTube channel ${channelData.id} to newly authenticated user ${userId}`);
-      await Comment.updateMany({ channelId: channelData.id }, { $set: { userId } });
-      await Video.updateMany({ channelId: channelData.id }, { $set: { userId } });
-      await ModerationLog.updateMany({ channelId: channelData.id }, { $set: { userId } });
-      await AutoReplyLog.updateMany({ channelId: channelData.id }, { $set: { userId } });
-      await Lead.updateMany({ channelId: channelData.id }, { $set: { userId } });
+      const collections = [
+        { model: Comment, name: 'Comment' },
+        { model: Video, name: 'Video' },
+        { model: ModerationLog, name: 'ModerationLog' },
+        { model: AutoReplyLog, name: 'AutoReplyLog' },
+        { model: Lead, name: 'Lead' }
+      ];
+
+      for (const { model, name } of collections) {
+        try {
+          await model.updateMany({ channelId: channelData.id }, { $set: { userId } });
+        } catch (err) {
+          if (err.code === 11000) {
+            logger.warn(`Duplicate key error transferring ${name} for channel ${channelData.id}. Cleaning up remaining legacy records.`);
+            await model.deleteMany({ channelId: channelData.id, userId: existingChannel.userId });
+          } else {
+            logger.error(`Error transferring ${name}: ${err.message}`);
+          }
+        }
+      }
     }
 
     // Post-flight check: prevent exceeding channel limits based on subscription plan
@@ -357,7 +390,7 @@ export const handleCallback = async (req, res) => {
         if (channelLimit === 0) {
           errorMsg = 'Your 30-day Free Trial has expired. Please subscribe to a plan to connect channels.';
         }
-        return res.redirect(`${FRONTEND_URL}/dashboard?status=error&error=${encodeURIComponent(errorMsg)}`);
+        return res.redirect(`${frontendUrl}/dashboard?status=error&error=${encodeURIComponent(errorMsg)}`);
       }
     }
 
@@ -426,7 +459,9 @@ export const handleCallback = async (req, res) => {
       logger.error('Initial processComments error:', err)
     );
 
-    res.redirect(`${FRONTEND_URL}/dashboard?status=success&channelId=${channel.channelId}`);
+    const targetRedirect = `${frontendUrl}/oauth/callback?status=success&channelId=${channel.channelId}`;
+    await OAuthState.updateOne({ state }, { $set: { redirectUrl: targetRedirect } });
+    return res.redirect(targetRedirect);
   } catch (error) {
     if (error.code === 11000) {
       logger.error('COMPLETE_MONGODB_DUPLICATE_KEY_ERROR:', {
@@ -472,7 +507,7 @@ export const handleCallback = async (req, res) => {
       console.error('Failed to stringify error object:', error);
     }
 
-    return res.redirect(`${FRONTEND_URL}/dashboard?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`);
+    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`);
   }
 };
 

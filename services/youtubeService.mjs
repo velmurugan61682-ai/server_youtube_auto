@@ -913,12 +913,11 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
   const auth = getAuthFromClient(youtube);
   try {
     await ensureAuthToken(auth, auth?.channelDbId);
-    logger.info(`[YOUTUBE API] Request: liveBroadcasts.list/search.list for live streams on channel: ${channelId}`);
+    logger.info(`[YOUTUBE API] Request: liveBroadcasts.list for live streams on channel: ${channelId}`);
     
     let videoIds = [];
-    let items = [];
 
-    // Try liveBroadcasts.list first (instant, real-time) if we have OAuth credentials
+    // Use liveBroadcasts.list only (free, real-time) — search.list costs 100 units/call which drains quota fast
     if (auth && auth.credentials && auth.credentials.access_token) {
       try {
         const broadcastRes = await youtube.liveBroadcasts.list({
@@ -927,8 +926,7 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
           maxResults: 10
         });
         if (broadcastRes.data.items && broadcastRes.data.items.length > 0) {
-          items = broadcastRes.data.items;
-          videoIds = items.map(item => item.id).filter(Boolean);
+          videoIds = broadcastRes.data.items.map(item => item.id).filter(Boolean);
           logger.info(`[YOUTUBE API] liveBroadcasts.list found ${videoIds.length} active live stream(s).`);
         }
       } catch (broadcastErr) {
@@ -936,20 +934,8 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
       }
     }
 
-    // Fallback to search.list if liveBroadcasts found nothing
-    if (videoIds.length === 0) {
-      logger.info(`[YOUTUBE API] Falling back to search.list for live stream on channel: ${channelId}`);
-      const searchRes = await youtube.search.list({
-        part: 'snippet',
-        channelId,
-        type: 'video',
-        eventType: 'live',
-        maxResults: 10
-      });
-      const searchItems = searchRes.data.items || [];
-      videoIds = searchItems.map(item => item.id.videoId).filter(Boolean);
-    }
-
+    // NOTE: We do NOT fallback to search.list — it costs 100 quota units per call.
+    // If liveBroadcasts.list returns nothing, return empty array.
     if (videoIds.length === 0) {
       return [];
     }
@@ -981,6 +967,7 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
     return [];
   }
 };
+
 
 export const deleteLiveChatMessage = async (youtube, messageId) => {
   const auth = getAuthFromClient(youtube);
