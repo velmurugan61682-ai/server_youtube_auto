@@ -144,6 +144,7 @@ const normalizeOrigin = (urlStr) => {
 
 const allowedOrigins = [
   'https://channelbot.in',
+  'https://www.channelbot.in',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:5174',
@@ -160,18 +161,19 @@ const allowedOrigins = [
 
 const checkOrigin = (origin, callback) => {
   if (!origin) {
-    logger.info('🌐 [CORS Check] Allowed request with no origin header');
     return callback(null, true);
   }
-  const isAllowed = allowedOrigins.some(allowedOrigin => {
-    if (allowedOrigin === origin) return true;
-    // Allow preview deployments only when explicitly enabled.
-    if (process.env.ALLOW_ANY_VERCEL_ORIGIN === 'true' && origin.endsWith('.vercel.app')) return true;
-    return false;
-  });
-  const isLocal = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  if (isAllowed || isLocal) {
-    logger.info(`🌐 [CORS Check] Allowed origin: ${origin}`);
+  const cleanOrigin = origin.trim().replace(/\/$/, '').toLowerCase();
+  
+  const isAllowed = allowedOrigins.some(allowed => allowed.toLowerCase() === cleanOrigin) ||
+    cleanOrigin.endsWith('.channelbot.in') ||
+    cleanOrigin.endsWith('.ciphergate.in') ||
+    cleanOrigin.endsWith('.techvaseegrah.com') ||
+    cleanOrigin.endsWith('.gowhats.in') ||
+    cleanOrigin.endsWith('.vercel.app') ||
+    /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin);
+
+  if (isAllowed) {
     callback(null, true);
   } else {
     logger.warn(`⚠️ [CORS Check] Rejected origin: ${origin}`);
