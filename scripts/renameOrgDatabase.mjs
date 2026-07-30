@@ -46,12 +46,12 @@ const run = async () => {
 
     // Rename legacy admin names
     const userRes1 = await User.updateMany(
-      { name: 'ChannelMate Admin' },
+      { name: 'ChannelBot'},
       { $set: { name: 'ChannelBot Admin' } }
     );
 
     const userRes2 = await User.updateMany(
-      { name: 'ChannelMate Superadmin' },
+      { name: 'ChannelBot' },
       { $set: { name: 'ChannelBot Superadmin' } }
     );
 
