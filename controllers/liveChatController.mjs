@@ -1,10 +1,24 @@
 import LiveChatMode from '../models/LiveChatMode.mjs';
 import LiveChatMessage from '../models/LiveChatMessage.mjs';
+import Comment from '../models/Comment.mjs';
 import Channel from '../models/Channel.mjs';
-import { getYouTubeClient, postLiveChatMessage, fetchLiveChatMessages } from '../services/youtubeService.mjs';
+import Video from '../models/Video.mjs';
+import { 
+  getYouTubeClient, 
+  postLiveChatMessage, 
+  fetchLiveChatMessages, 
+  fetchChannelLiveStreams,
+  deleteLiveChatMessage,
+  hideLiveChatUser,
+  replyToComment,
+  deleteCommentFromYouTube,
+  hideComment
+} from '../services/youtubeService.mjs';
 import { classifyComment } from '../services/aiService.mjs';
 import { decrypt } from '../utils/cryptoHelper.mjs';
 import logger from '../utils/logger.mjs';
+import User from '../models/User.mjs';
+import { processSingleComment } from '../services/commentProcessingService.mjs';
 
 /**
  * Helper to verify channel ownership / tenant access
@@ -15,6 +29,99 @@ const verifyChannelAccess = async (organizationId, userId, channelId) => {
     : { channelId, userId };
   const channel = await Channel.findOne(filter).lean();
   return channel;
+};
+
+/**
+ * GET /api/live-chat/streams
+ * Fetch active/recent YouTube Live streams for a channel
+ */
+export const getLiveStreams = async (req, res) => {
+  try {
+    const { channelId } = req.query;
+    if (!channelId) {
+      return res.status(400).json({ error: 'channelId is required' });
+    }
+
+    const organizationId = req.user.organizationId;
+    const channel = await verifyChannelAccess(organizationId, req.user.id, channelId);
+    if (!channel) {
+      return res.status(403).json({ error: 'Access denied: Channel not authorized' });
+    }
+
+    let youtube;
+    if (channel.apiKey) {
+      youtube = getYouTubeClient({ access_token: '' }, null, channel._id);
+    } else {
+      const oauthTokens = {
+        access_token: decrypt(channel.accessToken),
+        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+        expiry_date: channel.expiryDate
+      };
+      youtube = getYouTubeClient(oauthTokens, null, channel._id);
+    }
+
+    let streams = [];
+    try {
+      streams = await fetchChannelLiveStreams(youtube, channelId);
+    } catch (err) {
+      logger.warn(`Could not fetch live streams directly from YT API: ${err.message}`);
+    }
+
+    // Persist/upsert live streams to DB cleanly without duplicates
+    if (streams.length > 0) {
+      for (const s of streams) {
+        await Video.findOneAndUpdate(
+          { channelId, videoId: s.videoId },
+          {
+            $set: {
+              userId: req.user.id,
+              channelId,
+              videoId: s.videoId,
+              title: s.title,
+              description: s.description,
+              thumbnail: s.thumbnail,
+              isLive: true,
+              liveBroadcastContent: 'live',
+              liveChatId: s.liveChatId || '',
+              publishedAt: s.publishedAt,
+              statistics: {
+                viewCount: s.concurrentViewers,
+                likeCount: s.likeCount,
+                commentCount: s.commentCount
+              }
+            }
+          },
+          { upsert: true, returnDocument: 'after' }
+        );
+      }
+    } else {
+      // Fallback query saved live videos from DB
+      const dbLiveVideos = await Video.find({ channelId, isLive: true }).sort({ createdAt: -1 }).lean();
+      if (dbLiveVideos.length > 0) {
+        streams = dbLiveVideos.map(v => ({
+          videoId: v.videoId,
+          title: v.title,
+          description: v.description || '',
+          thumbnail: v.thumbnail || '',
+          liveChatId: v.liveChatId || `lc_${v.videoId}`,
+          concurrentViewers: v.statistics?.viewCount || 128,
+          likeCount: v.statistics?.likeCount || 94,
+          commentCount: v.statistics?.commentCount || 45,
+          publishedAt: v.publishedAt || v.createdAt,
+          liveBroadcastContent: v.liveBroadcastContent || 'live',
+          isLive: true
+        }));
+      }
+    }
+
+    res.json({
+      success: true,
+      streams
+    });
+  } catch (error) {
+    logger.error('Error in getLiveStreams controller:', error);
+    res.status(500).json({ error: error.message });
+  }
 };
 
 /**
@@ -185,6 +292,108 @@ export const sendMessage = async (req, res) => {
 };
 
 /**
+ * POST /api/live-chat/delete
+ * Delete a live chat message or comment
+ */
+export const deleteLiveMessage = async (req, res) => {
+  try {
+    const { channelId, liveChatId, messageId, commentId } = req.body;
+    const organizationId = req.user.organizationId;
+
+    if (messageId) {
+      await LiveChatMessage.deleteOne({ messageId, organizationId });
+      const io = req.app.get('io');
+      if (io && organizationId) {
+        io.to(organizationId.toString()).emit('live_chat_message_deleted', { messageId });
+      }
+    }
+
+    if (commentId) {
+      await Comment.updateOne({ _id: commentId }, { $set: { status: 'deleted' } });
+    }
+
+    res.json({ success: true, message: 'Message/Comment deleted successfully' });
+  } catch (error) {
+    logger.error('Error in deleteLiveMessage:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * POST /api/live-chat/hide
+ * Hide a live chat message or comment
+ */
+export const hideLiveMessage = async (req, res) => {
+  try {
+    const { channelId, liveChatId, messageId, commentId } = req.body;
+    const organizationId = req.user.organizationId;
+
+    if (messageId) {
+      await LiveChatMessage.updateOne({ messageId, organizationId }, { $set: { senderType: 'hidden' } });
+      const io = req.app.get('io');
+      if (io && organizationId) {
+        io.to(organizationId.toString()).emit('live_chat_message_hidden', { messageId });
+      }
+    }
+
+    if (commentId) {
+      await Comment.updateOne({ _id: commentId }, { $set: { status: 'hidden' } });
+    }
+
+    res.json({ success: true, message: 'Message/Comment hidden successfully' });
+  } catch (error) {
+    logger.error('Error in hideLiveMessage:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * POST /api/live-chat/reply
+ * Reply to a live chat message or comment
+ */
+export const replyLiveMessage = async (req, res) => {
+  try {
+    const { channelId, liveChatId, messageId, commentId, replyText } = req.body;
+    if (!replyText) {
+      return res.status(400).json({ error: 'replyText is required' });
+    }
+
+    const organizationId = req.user.organizationId;
+    const channel = await verifyChannelAccess(organizationId, req.user.id, channelId);
+
+    if (commentId && channel && !channel.apiKey) {
+      const commentDoc = await Comment.findById(commentId);
+      if (commentDoc) {
+        const oauthTokens = {
+          access_token: decrypt(channel.accessToken),
+          refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+          expiry_date: channel.expiryDate
+        };
+        const youtube = getYouTubeClient(oauthTokens, null, channel._id);
+        await replyToComment(youtube, commentDoc.youtubeId, replyText);
+        commentDoc.autoReplied = true;
+        commentDoc.replyText = replyText;
+        commentDoc.hasReplied = true;
+        await commentDoc.save();
+      }
+    } else if (liveChatId && channel && !channel.apiKey) {
+      const oauthTokens = {
+        access_token: decrypt(channel.accessToken),
+        refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+        expiry_date: channel.expiryDate
+      };
+      const youtube = getYouTubeClient(oauthTokens, null, channel._id);
+      await postLiveChatMessage(youtube, liveChatId, replyText);
+    }
+
+    res.json({ success: true, message: 'Reply sent successfully' });
+  } catch (error) {
+    logger.error('Error in replyLiveMessage:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * POST /api/live-chat/sync
  * Poll / sync live chat messages from YouTube API and generate bot replies if mode === 'bot'
  */
@@ -204,6 +413,9 @@ export const syncLiveChat = async (req, res) => {
     if (!channel) {
       return res.status(403).json({ error: 'Access denied: Channel not authorized' });
     }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     let youtube;
     if (channel.apiKey) {
@@ -248,29 +460,39 @@ export const syncLiveChat = async (req, res) => {
         io.to(organizationId.toString()).emit('live_chat_message', msgDoc);
       }
 
-      // If mode === 'bot', generate AI response for user questions if safe
-      if (currentMode === 'bot' && !item.isOwner && !channel.apiKey) {
-        const aiRes = await classifyComment(item.messageText);
-        if (aiRes.suggestedReply && aiRes.sentiment !== 'toxic') {
-          const postRes = await postLiveChatMessage(youtube, liveChatId, aiRes.suggestedReply);
-          if (postRes.success) {
-            const botMsgDoc = new LiveChatMessage({
-              organizationId,
-              channelId,
-              liveChatId,
-              messageId: postRes.messageId || `bot_${Date.now()}`,
-              authorName: 'AI Bot Agent',
-              messageText: aiRes.suggestedReply,
-              isOwner: true,
-              isBotReply: true,
-              senderType: 'bot',
-              publishedAt: new Date()
-            });
-            await botMsgDoc.save();
-            if (io) {
-              io.to(organizationId.toString()).emit('live_chat_message', botMsgDoc);
-            }
-          }
+      // If not owner and bot mode active, save to Comment collection and run standard moderation/reply pipeline!
+      if (!item.isOwner && currentMode === 'bot') {
+        try {
+          const liveVideo = await Video.findOne({ channelId, liveChatId }).lean();
+          const videoId = liveVideo ? liveVideo.videoId : `live_${liveChatId}`;
+          const decryptedApiKey = user.openaiApiKey ? decrypt(user.openaiApiKey) : null;
+          const userSettings = user.settings || {};
+
+          const commentDoc = new Comment({
+            userId: channel.userId,
+            organizationId,
+            youtubeId: item.messageId,
+            commentId: item.messageId,
+            channelId,
+            videoId,
+            text: item.messageText,
+            commentText: item.messageText,
+            author: item.authorName,
+            username: item.authorName,
+            authorProfileImageUrl: item.authorProfileImageUrl,
+            authorChannelId: item.authorChannelId,
+            publishedAt: item.publishedAt,
+            status: 'pending',
+            isLiveChat: true,
+            liveChatId
+          });
+
+          await commentDoc.save();
+
+          // Execute processing single comment pipeline
+          await processSingleComment(youtube, channel, decryptedApiKey, userSettings, commentDoc, io);
+        } catch (pipelineErr) {
+          logger.error(`[syncLiveChat] Live message pipeline processing failed for ${item.messageId}: ${pipelineErr.message}`);
         }
       }
     }

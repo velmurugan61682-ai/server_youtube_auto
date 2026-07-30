@@ -57,18 +57,29 @@ export const getComments = async (req, res) => {
     if (sentiment) query.sentiment = sentiment;
     if (autoLiked !== undefined) query.autoLiked = autoLiked === 'true';
 
-    // ✅ PERFORMANCE: Added pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const comments = await Comment.find(query)
+
+    // ✅ PERFORMANCE & ANTI-DUPLICATION: Deduplicate comments array
+    const commentsRaw = await Comment.find(query)
       .sort({ publishedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .lean();
     
+    const uniqueComments = [];
+    const seenKeys = new Set();
+    for (const c of commentsRaw) {
+      const key = c.youtubeId || `${c.author || c.username}:${c.text || c.commentText}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        uniqueComments.push(c);
+      }
+    }
+    
     const total = await Comment.countDocuments(query);
     
     res.json({
-      comments,
+      comments: uniqueComments,
       pagination: {
         total,
         pages: Math.ceil(total / parseInt(limit)),

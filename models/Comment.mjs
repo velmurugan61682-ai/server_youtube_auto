@@ -62,6 +62,8 @@ const commentSchema = new mongoose.Schema({
   moderationReason: String,
   // textHash index is defined in schema.index() below — NOT inline to avoid duplicate
   textHash: { type: String },
+  isLiveChat: { type: Boolean, default: false },
+  liveChatId: { type: String },
 }, { timestamps: true });
 
 // ✅ PERFORMANCE: All indexes defined here (schema-level only — no inline index:true duplicates)

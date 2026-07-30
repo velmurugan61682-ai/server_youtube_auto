@@ -28,7 +28,10 @@ import {
   fetchVideos,
   fetchAllVideos,
   fetchAllCommentsAndRepliesForVideo,
-  isQuotaError
+  isQuotaError,
+  deleteLiveChatMessage,
+  hideLiveChatUser,
+  postLiveChatMessage
 } from './youtubeService.mjs';
 
 // In-memory backoff tracking
@@ -738,7 +741,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         deleteErrorReason = 'Authentication via API Key does not permit write actions (OAuth required)';
       } else {
         if (modAction === 'delete') {
-          const delRes = await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
+          const delRes = commentDoc.isLiveChat
+            ? await deleteLiveChatMessage(youtube, commentDoc.youtubeId)
+            : await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
           if (delRes.success) {
             const youtubeAction = delRes.action || 'delete';
             const removedFromPublic = youtubeAction === 'delete' || youtubeAction === 'reject';
@@ -760,7 +765,11 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           }
         } else {
           // hold for review
-          const hideRes = await hideComment(youtube, commentDoc.youtubeId);
+          const hideRes = commentDoc.isLiveChat
+            ? (commentDoc.authorChannelId
+              ? await hideLiveChatUser(youtube, commentDoc.liveChatId || commentDoc.videoId, commentDoc.authorChannelId)
+              : await deleteLiveChatMessage(youtube, commentDoc.youtubeId))
+            : await hideComment(youtube, commentDoc.youtubeId);
           if (hideRes.success) {
             status = 'flagged';
             wasHidden = true;
@@ -800,7 +809,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           action: loggedAction,
           executedAction: loggedAction,
           status: deleteFailed ? 'Failed' : 'Success',
-          failureReason: deleteFailed ? (deleteErrorReason || 'YouTube API call failed') : null
+          failureReason: deleteFailed ? (deleteErrorReason || 'YouTube API call failed') : null,
+          isLiveChat: commentDoc.isLiveChat || false,
+          liveChatId: commentDoc.liveChatId || null
         };
         // Upsert: one ModerationLog per commentId (first action wins)
         await ModerationLog.findOneAndUpdate(
@@ -837,6 +848,8 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         publishedAt: commentDoc.publishedAt,
         parentCommentId: commentDoc.parentCommentId || null,
         isReply: commentDoc.isReply || false,
+        isLiveChat: commentDoc.isLiveChat || false,
+        liveChatId: commentDoc.liveChatId || null,
 
         sentiment: aiResult.sentiment,
         toxicityScore: aiResult.toxicityScore,
@@ -886,6 +899,10 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let replyText = null;
     let replyError = null;
 
+    const commentAgeMs = Date.now() - new Date(commentDoc.publishedAt).getTime();
+    const MAX_REPLY_AGE_MS = 15 * 60 * 1000; // 15 minutes
+    const isTooOldForReply = commentAgeMs > MAX_REPLY_AGE_MS;
+
     const rules = await AutoReplyRule.find({
       channelId: channel.channelId,
       userId: channel.userId,
@@ -930,146 +947,168 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
 
       if (matchedRule.replyType === 'Carousel' && matchedRule.carouselCards && matchedRule.carouselCards.length > 0) {
         const cardsFormatted = matchedRule.carouselCards.map(card => {
-          return `Card:\nImage:\n${card.imageUrl || ''}\n\nTitle:\n${card.title || ''}\n\nDescription:\n${card.description || ''}\n\nButton:\n${card.btnLabel || card.buttonText || 'View Detail'}\n\nURL:\n${card.link || card.buttonUrl || ''}`;
-        }).join('\n\n');
+          const title = card.title ? `🌟 *${card.title}*\n` : '';
+          const desc = card.description ? `${card.description}\n` : '';
+          const link = card.link || card.buttonUrl;
+          const btn = link ? `👉 *${card.btnLabel || card.buttonText || 'View Detail'}*: ${link}\n` : '';
+          const img = card.imageUrl ? `🖼️ Image: ${card.imageUrl}\n` : '';
+          return `${title}${desc}${btn}${img}`.trim();
+        }).filter(Boolean).join('\n\n───────────────────\n\n');
         replyText = cardsFormatted;
       }
 
       if (replyText && !channel.apiKey) {
-        // Post reply on YouTube
-        const repRes = await replyToComment(youtube, commentDoc.youtubeId, replyText);
-        if (repRes.success) {
-          replyStatus = 'sent';
-          ruleMatchedAndExecuted = true;
-
-          // Save AutoReplyLog — success
-          try {
-            const autoLog = new AutoReplyLog({
-              commentId: commentDoc.youtubeId,
-              userId: channel.userId,
-              organizationId: channel.organizationId,
-              channelId: channel.channelId,
-              videoId: commentDoc.videoId,
-              username: commentDoc.author || 'Anonymous',
-              commentText: commentDoc.text,
-              triggerKeyword: matchedKeyword || '*',
-              replyType: matchedRule.replyType || 'Text',
-              carouselCards: matchedRule.replyType === 'Carousel' ? matchedRule.carouselCards : [],
-              replyText: replyText,
-              aiReply: replyText,
-              deepseekResponse: replyText,
-              youtubeReplyId: repRes.newCommentId,
-              status: 'success'
-            });
-            await autoLog.save();
-          } catch (logErr) {
-            if (logErr.code !== 11000) logger.error(`[Reply] Failed to save AutoReplyLog: ${logErr.message}`);
-          }
-
-          // Update Comment with reply details
-          await Comment.findOneAndUpdate(
-            { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-            {
-              $set: {
-                sentiment: aiResult.sentiment || 'positive',
-                status: 'approved',
-                hasReplied: true,
-                repliedAt: new Date(),
-                replyText,
-                replyStatus: 'sent',
-                youtubeReplyId: repRes.newCommentId,
-                aiStatus: 'completed'
-              }
-            },
-            { upsert: true }
-          );
-
-          // Save bot reply comment to skip moderation downstream
-          if (repRes.newCommentId) {
-            try {
-              await Comment.findOneAndUpdate(
-                { youtubeId: repRes.newCommentId, userId: channel.userId },
-                {
-                  $setOnInsert: {
-                    userId: channel.userId,
-                    organizationId: channel.organizationId,
-                    youtubeId: repRes.newCommentId,
-                    commentId: repRes.newCommentId,
-                    channelId: channel.channelId,
-                    videoId: commentDoc.videoId,
-                    text: replyText,
-                    commentText: replyText,
-                    author: 'Bot (Comment Automation)',
-                    username: 'Bot (Comment Automation)',
-                    authorChannelId: channel.channelId,
-                    publishedAt: new Date(),
-                  },
-                  $set: {
-                    isBotReply: true,
-                    hasReplied: false,
-                    status: 'approved',
-                    aiActionTaken: true,
-                    aiStatus: 'completed',
-                    classification: 'bot_reply',
-                    moderationStatus: 'safe',
-                    actionTaken: 'skip_bot',
-                  }
-                },
-                { upsert: true, returnDocument: 'after' }
-              );
-            } catch (botSaveErr) {
-              logger.error(`[Comment Automation] Failed to save bot reply: ${botSaveErr.message}`);
-            }
-          }
-
-          // Broadcast Socket updates
-          if (io) {
-            const roomName = channel.userId.toString();
-            io.to(roomName).emit('live_activity', {
-              youtubeId: commentDoc.youtubeId,
-              commentId: commentDoc.youtubeId,
-              text: commentDoc.text,
-              commentText: commentDoc.text,
-              author: commentDoc.author,
-              username: commentDoc.author,
-              replyText,
-              aiReply: replyText,
-              type: 'new_comment',
-              confidence: 1.0
-            });
-            io.to(roomName).emit('stats_updated');
-            io.to(roomName).emit('replyUpdate');
-          }
+        if (isTooOldForReply) {
+          logger.info(`[Pipeline] Skipping auto-reply for comment ${commentDoc.youtubeId} because it was published ${Math.round(commentAgeMs / 60000)} minutes ago (older than 15-minute threshold).`);
+          replyStatus = 'none';
         } else {
-          // Reply failed — save AutoReplyLog with status:failed so Comment History shows it
-          replyStatus = 'failed';
-          replyError = repRes.reason || 'YouTube reply API failed';
-          try {
-            const failLog = new AutoReplyLog({
-              commentId: commentDoc.youtubeId,
-              userId: channel.userId,
-              organizationId: channel.organizationId,
-              channelId: channel.channelId,
-              videoId: commentDoc.videoId,
-              username: commentDoc.author || 'Anonymous',
-              commentText: commentDoc.text,
-              triggerKeyword: matchedKeyword || '*',
-              replyText: replyText,
-              aiReply: replyText,
-              status: 'failed',
-              failureReason: replyError
-            });
-            await failLog.save();
-          } catch (logErr) {
-            if (logErr.code !== 11000) logger.error(`[Reply] Failed to save failed AutoReplyLog: ${logErr.message}`);
+          // Post reply on YouTube
+          const repRes = commentDoc.isLiveChat
+            ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, replyText)
+            : await replyToComment(youtube, commentDoc.youtubeId, replyText);
+          if (repRes.success) {
+            replyStatus = 'sent';
+            ruleMatchedAndExecuted = true;
+
+            // Save AutoReplyLog — success
+            try {
+              const autoLog = new AutoReplyLog({
+                commentId: commentDoc.youtubeId,
+                userId: channel.userId,
+                organizationId: channel.organizationId,
+                channelId: channel.channelId,
+                videoId: commentDoc.videoId,
+                username: commentDoc.author || 'Anonymous',
+                commentText: commentDoc.text,
+                triggerKeyword: matchedKeyword || '*',
+                replyType: matchedRule.replyType || 'Text',
+                carouselCards: matchedRule.replyType === 'Carousel' ? matchedRule.carouselCards : [],
+                replyText: replyText,
+                aiReply: replyText,
+                deepseekResponse: replyText,
+                youtubeReplyId: repRes.newCommentId || repRes.messageId,
+                status: 'success',
+                isLiveChat: commentDoc.isLiveChat || false,
+                liveChatId: commentDoc.liveChatId || null
+              });
+              await autoLog.save();
+            } catch (logErr) {
+              if (logErr.code !== 11000) logger.error(`[Reply] Failed to save AutoReplyLog: ${logErr.message}`);
+            }
+
+            // Update Comment with reply details
+            await Comment.findOneAndUpdate(
+              { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+              {
+                $set: {
+                  sentiment: aiResult.sentiment || 'positive',
+                  status: 'approved',
+                  hasReplied: true,
+                  repliedAt: new Date(),
+                  replyText,
+                  replyStatus: 'sent',
+                  youtubeReplyId: repRes.newCommentId || repRes.messageId,
+                  aiStatus: 'completed',
+                  isLiveChat: commentDoc.isLiveChat || false,
+                  liveChatId: commentDoc.liveChatId || null
+                }
+              },
+              { upsert: true }
+            );
+
+            // Save bot reply comment to skip moderation downstream
+            if (repRes.newCommentId) {
+              try {
+                await Comment.findOneAndUpdate(
+                  { youtubeId: repRes.newCommentId, userId: channel.userId },
+                  {
+                    $setOnInsert: {
+                      userId: channel.userId,
+                      organizationId: channel.organizationId,
+                      youtubeId: repRes.newCommentId,
+                      commentId: repRes.newCommentId,
+                      channelId: channel.channelId,
+                      videoId: commentDoc.videoId,
+                      text: replyText,
+                      commentText: replyText,
+                      author: 'Bot (Comment Automation)',
+                      username: 'Bot (Comment Automation)',
+                      authorChannelId: channel.channelId,
+                      publishedAt: new Date(),
+                    },
+                    $set: {
+                      isBotReply: true,
+                      hasReplied: false,
+                      status: 'approved',
+                      aiActionTaken: true,
+                      aiStatus: 'completed',
+                      classification: 'bot_reply',
+                      moderationStatus: 'safe',
+                      actionTaken: 'skip_bot',
+                    }
+                  },
+                  { upsert: true, returnDocument: 'after' }
+                );
+              } catch (botSaveErr) {
+                logger.error(`[Comment Automation] Failed to save bot reply: ${botSaveErr.message}`);
+              }
+            }
+
+            // Broadcast Socket updates
+            if (io) {
+              const roomName = channel.userId.toString();
+              io.to(roomName).emit('live_activity', {
+                youtubeId: commentDoc.youtubeId,
+                commentId: commentDoc.youtubeId,
+                text: commentDoc.text,
+                commentText: commentDoc.text,
+                author: commentDoc.author,
+                username: commentDoc.author,
+                replyText,
+                aiReply: replyText,
+                type: 'new_comment',
+                confidence: 1.0
+              });
+              io.to(roomName).emit('stats_updated');
+              io.to(roomName).emit('replyUpdate');
+            }
+          } else {
+            // Reply failed — save AutoReplyLog with status:failed so Comment History shows it
+            replyStatus = 'failed';
+            replyError = repRes.reason || 'YouTube reply API failed';
+            try {
+              const failLog = new AutoReplyLog({
+                commentId: commentDoc.youtubeId,
+                userId: channel.userId,
+                organizationId: channel.organizationId,
+                channelId: channel.channelId,
+                videoId: commentDoc.videoId,
+                username: commentDoc.author || 'Anonymous',
+                commentText: commentDoc.text,
+                triggerKeyword: matchedKeyword || '*',
+                replyText: replyText,
+                aiReply: replyText,
+                status: 'failed',
+                failureReason: replyError
+              });
+              await failLog.save();
+            } catch (logErr) {
+              if (logErr.code !== 11000) logger.error(`[Reply] Failed to save failed AutoReplyLog: ${logErr.message}`);
+            }
           }
         }
       }
     } else if (tenantSettings.smartAiReply && aiResult.suggestedReply && !channel.apiKey) {
       replyText = aiResult.suggestedReply;
 
-      // Post reply on YouTube
-      const repRes = await replyToComment(youtube, commentDoc.youtubeId, replyText);
+      if (isTooOldForReply) {
+        logger.info(`[Pipeline] Skipping smart AI auto-reply for comment ${commentDoc.youtubeId} because it was published ${Math.round(commentAgeMs / 60000)} minutes ago (older than 15-minute threshold).`);
+        replyStatus = 'none';
+      } else {
+        // Post reply on YouTube
+        const repRes = commentDoc.isLiveChat
+          ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, replyText)
+          : await replyToComment(youtube, commentDoc.youtubeId, replyText);
       if (repRes.success) {
         replyStatus = 'sent';
         ruleMatchedAndExecuted = true;
@@ -1088,8 +1127,10 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
             replyText: replyText,
             aiReply: replyText,
             deepseekResponse: replyText,
-            youtubeReplyId: repRes.newCommentId,
-            status: 'success'
+            youtubeReplyId: repRes.newCommentId || repRes.messageId,
+            status: 'success',
+            isLiveChat: commentDoc.isLiveChat || false,
+            liveChatId: commentDoc.liveChatId || null
           });
           await autoLog.save();
         } catch (logErr) {
@@ -1107,8 +1148,10 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
               repliedAt: new Date(),
               replyText,
               replyStatus: 'sent',
-              youtubeReplyId: repRes.newCommentId,
-              aiStatus: 'completed'
+              youtubeReplyId: repRes.newCommentId || repRes.messageId,
+              aiStatus: 'completed',
+              isLiveChat: commentDoc.isLiveChat || false,
+              liveChatId: commentDoc.liveChatId || null
             }
           },
           { upsert: true }
@@ -1195,6 +1238,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         }
       }
     }
+  }
 
     // Auto Like positive comments (if safe and positive)
     let autoLiked = false;

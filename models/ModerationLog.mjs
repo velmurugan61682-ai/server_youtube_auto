@@ -70,6 +70,14 @@ const moderationLogSchema = new mongoose.Schema({
   failureReason: {
     type: String,
     default: null
+  },
+  isLiveChat: {
+    type: Boolean,
+    default: false
+  },
+  liveChatId: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true

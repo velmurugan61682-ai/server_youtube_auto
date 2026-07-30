@@ -357,7 +357,7 @@ export const handleCallback = async (req, res) => {
         if (channelLimit === 0) {
           errorMsg = 'Your 30-day Free Trial has expired. Please subscribe to a plan to connect channels.';
         }
-        return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent(errorMsg)}`);
+        return res.redirect(`${FRONTEND_URL}/dashboard?status=error&error=${encodeURIComponent(errorMsg)}`);
       }
     }
 
@@ -426,7 +426,7 @@ export const handleCallback = async (req, res) => {
       logger.error('Initial processComments error:', err)
     );
 
-    res.redirect(`${FRONTEND_URL}/?status=success&channelId=${channel.channelId}`);
+    res.redirect(`${FRONTEND_URL}/dashboard?status=success&channelId=${channel.channelId}`);
   } catch (error) {
     if (error.code === 11000) {
       logger.error('COMPLETE_MONGODB_DUPLICATE_KEY_ERROR:', {
@@ -472,7 +472,7 @@ export const handleCallback = async (req, res) => {
       console.error('Failed to stringify error object:', error);
     }
 
-    return res.redirect(`${FRONTEND_URL}/?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`);
+    return res.redirect(`${FRONTEND_URL}/dashboard?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`);
   }
 };
 

@@ -65,6 +65,14 @@ const autoReplyLogSchema = new mongoose.Schema({
   }],
   failureReason: {
     type: String
+  },
+  isLiveChat: {
+    type: Boolean,
+    default: false
+  },
+  liveChatId: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true

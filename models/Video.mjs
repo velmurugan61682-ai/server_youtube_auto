@@ -37,11 +37,15 @@ const videoSchema = new mongoose.Schema({
   likedByUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   duration: String,
   isPost: { type: Boolean, default: false },
+  isLive: { type: Boolean, default: false },
+  liveBroadcastContent: { type: String, default: 'none' },
+  liveChatId: { type: String, default: '' },
   lastFetchedAt: Date
 }, { timestamps: true });
 
 videoSchema.index({ channelId: 1, videoId: 1 }, { unique: true });
 videoSchema.index({ userId: 1, videoId: 1 });
 videoSchema.index({ userId: 1, channelId: 1, publishedAt: -1 }); // Compound index for channel video queries
+videoSchema.index({ channelId: 1, isLive: 1 });
 
 export default mongoose.model('Video', videoSchema);

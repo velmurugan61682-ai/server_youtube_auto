@@ -885,4 +885,121 @@ export const postLiveChatMessage = async (youtube, liveChatId, messageText) => {
   }
 };
 
+export const fetchChannelLiveStreams = async (youtube, channelId) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    logger.info(`[YOUTUBE API] Request: liveBroadcasts.list/search.list for live streams on channel: ${channelId}`);
+    
+    let videoIds = [];
+    let items = [];
+
+    // Try liveBroadcasts.list first (instant, real-time) if we have OAuth credentials
+    if (auth && auth.credentials && auth.credentials.access_token) {
+      try {
+        const broadcastRes = await youtube.liveBroadcasts.list({
+          part: 'snippet,status,contentDetails',
+          broadcastStatus: 'active',
+          maxResults: 10
+        });
+        if (broadcastRes.data.items && broadcastRes.data.items.length > 0) {
+          items = broadcastRes.data.items;
+          videoIds = items.map(item => item.id).filter(Boolean);
+          logger.info(`[YOUTUBE API] liveBroadcasts.list found ${videoIds.length} active live stream(s).`);
+        }
+      } catch (broadcastErr) {
+        logger.warn(`liveBroadcasts.list failed: ${broadcastErr.message}`);
+      }
+    }
+
+    // Fallback to search.list if liveBroadcasts found nothing
+    if (videoIds.length === 0) {
+      logger.info(`[YOUTUBE API] Falling back to search.list for live stream on channel: ${channelId}`);
+      const searchRes = await youtube.search.list({
+        part: 'snippet',
+        channelId,
+        type: 'video',
+        eventType: 'live',
+        maxResults: 10
+      });
+      const searchItems = searchRes.data.items || [];
+      videoIds = searchItems.map(item => item.id.videoId).filter(Boolean);
+    }
+
+    if (videoIds.length === 0) {
+      return [];
+    }
+
+    const detailsRes = await youtube.videos.list({
+      part: 'snippet,liveStreamingDetails,statistics',
+      id: videoIds.join(',')
+    });
+
+    const liveStreams = (detailsRes.data.items || []).map(v => ({
+      videoId: v.id,
+      title: v.snippet?.title || 'YouTube Live Stream',
+      description: v.snippet?.description || '',
+      thumbnail: v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || '',
+      liveChatId: v.liveStreamingDetails?.activeLiveChatId || null,
+      concurrentViewers: parseInt(v.liveStreamingDetails?.concurrentViewers || 0, 10),
+      likeCount: parseInt(v.statistics?.likeCount || 0, 10),
+      commentCount: parseInt(v.statistics?.commentCount || 0, 10),
+      publishedAt: v.snippet?.publishedAt ? new Date(v.snippet.publishedAt) : new Date(),
+      liveBroadcastContent: v.snippet?.liveBroadcastContent || 'live',
+      isLive: v.snippet?.liveBroadcastContent === 'live'
+    }));
+
+    return liveStreams;
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error fetching live streams for channel ${channelId}: ${errorMsg}`);
+    return [];
+  }
+};
+
+export const deleteLiveChatMessage = async (youtube, messageId) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    logger.info(`[YOUTUBE API] Request: liveChatMessages.delete for ID: ${messageId}`);
+    await youtube.liveChatMessages.delete({
+      id: messageId
+    });
+    return { success: true };
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error deleting liveChatMessage ${messageId}: ${errorMsg}`);
+    return { success: false, reason: errorMsg };
+  }
+};
+
+export const hideLiveChatUser = async (youtube, liveChatId, authorChannelId) => {
+  const auth = getAuthFromClient(youtube);
+  try {
+    await ensureAuthToken(auth, auth?.channelDbId);
+    logger.info(`[YOUTUBE API] Request: liveChatBans.insert into ${liveChatId} for channel ${authorChannelId}`);
+    const res = await youtube.liveChatBans.insert({
+      part: 'snippet',
+      resource: {
+        snippet: {
+          liveChatId,
+          type: 'temporary',
+          banDurationSeconds: 300,
+          bannedUserDetails: {
+            channelId: authorChannelId
+          }
+        }
+      }
+    });
+    return { success: true, banId: res.data?.id };
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    logger.error(`[YOUTUBE API] Error banning liveChat user ${authorChannelId}: ${errorMsg}`);
+    return { success: false, reason: errorMsg };
+  }
+};
+
 

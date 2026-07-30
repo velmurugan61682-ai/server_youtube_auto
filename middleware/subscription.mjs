@@ -128,7 +128,15 @@ export const checkChannelLimit = async (req, res, next) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const filter = user.organizationId
+    let useOrgFilter = false;
+    if (user.organizationId) {
+      const org = await Organization.findById(user.organizationId).lean();
+      if (org && !['ChannelMate', 'Channelbot', 'Tech Vaseegrah'].includes(org.name)) {
+        useOrgFilter = true;
+      }
+    }
+
+    const filter = useOrgFilter
       ? { $or: [{ organizationId: user.organizationId }, { userId: user._id }] }
       : { userId: user._id };
 

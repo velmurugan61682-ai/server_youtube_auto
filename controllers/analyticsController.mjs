@@ -170,6 +170,7 @@ export const getAnalytics = async (req, res) => {
     // YOUTUBE CHANNEL SUMMARY CARD DATA
     // ──────────────────────────────────────────────────────────
     let channelSummary = null;
+    let liveViewers = 0;
 
     // Find the currently active connected channel
     const activeChannel = channelId 
@@ -203,6 +204,28 @@ export const getAnalytics = async (req, res) => {
         const channelItem = channelRes.data?.items?.[0];
 
         if (channelItem) {
+          // Fetch active live stream and its viewers
+          try {
+            const broadcastsRes = await youtube.liveBroadcasts.list({
+              part: 'id',
+              broadcastStatus: 'active',
+              maxResults: 1
+            });
+            const activeBroadcast = broadcastsRes.data?.items?.[0];
+            if (activeBroadcast) {
+              const videoRes = await youtube.videos.list({
+                part: 'liveStreamingDetails',
+                id: activeBroadcast.id
+              });
+              const videoItem = videoRes.data?.items?.[0];
+              if (videoItem && videoItem.liveStreamingDetails) {
+                liveViewers = parseInt(videoItem.liveStreamingDetails.concurrentViewers || '0', 10);
+              }
+            }
+          } catch (liveErr) {
+            logger.error(`Failed to fetch active live viewers in analytics: ${liveErr.message}`);
+          }
+
           // Fetch subscriptions
           let subscriptionCount = 0;
           let nextPageToken = null;
@@ -378,6 +401,7 @@ export const getAnalytics = async (req, res) => {
         changePercentage
       },
       channelSummary,
+      liveViewers: liveViewers || 0,
       aiStatus: global.isAiAvailable !== false ? 'Available' : 'Unavailable'
     });
   } catch (error) {
