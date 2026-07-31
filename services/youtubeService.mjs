@@ -804,10 +804,17 @@ export const scrapeCommunityPosts = async (customUrl, channelId) => {
         
         let thumbnail = '';
         const attachment = postRenderer.backstageAttachment;
-        if (attachment?.postImageRenderer?.image?.thumbnails?.[0]?.url) {
-          thumbnail = attachment.postImageRenderer.image.thumbnails[0].url;
-        } else if (attachment?.backstageImageRenderer?.image?.thumbnails?.[0]?.url) {
-          thumbnail = attachment.backstageImageRenderer.image.thumbnails[0].url;
+        if (attachment?.postImageRenderer?.image?.thumbnails?.length > 0) {
+          const thumbs = attachment.postImageRenderer.image.thumbnails;
+          thumbnail = thumbs[thumbs.length - 1]?.url || thumbs[0]?.url;
+        } else if (attachment?.backstageImageRenderer?.image?.thumbnails?.length > 0) {
+          const thumbs = attachment.backstageImageRenderer.image.thumbnails;
+          thumbnail = thumbs[thumbs.length - 1]?.url || thumbs[0]?.url;
+        } else if (attachment?.postMultiImageRenderer?.images?.length > 0) {
+          const firstImg = attachment.postMultiImageRenderer.images[0]?.backstageImageRenderer?.image;
+          if (firstImg?.thumbnails?.length > 0) {
+            thumbnail = firstImg.thumbnails[firstImg.thumbnails.length - 1]?.url || firstImg.thumbnails[0]?.url;
+          }
         }
         
         posts.push({
