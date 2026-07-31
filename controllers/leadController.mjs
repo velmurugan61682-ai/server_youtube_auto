@@ -9,14 +9,7 @@ const escapeRegex = (string) => {
 };
 
 const getUserChannelIds = async (user) => {
-  let filter = { userId: user.id };
-  if (user.organizationId) {
-    filter = { $or: [{ userId: user.id }, { organizationId: user.organizationId }] };
-  }
-  let channels = await Channel.find(filter).select('channelId').lean();
-  if (!channels || channels.length === 0) {
-    channels = await Channel.find({}).select('channelId').lean();
-  }
+  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
   return channels.map(c => c.channelId);
 };
 
@@ -33,6 +26,7 @@ const hasLeadIntent = (text = '') => {
 
 const backfillMissingLeads = async (userIds, allowedChannelIds) => {
   const comments = await Comment.find({
+    userId: { $in: userIds },
     channelId: { $in: allowedChannelIds },
     isBotReply: { $ne: true },
     sentiment: { $ne: 'toxic' },
@@ -44,7 +38,9 @@ const backfillMissingLeads = async (userIds, allowedChannelIds) => {
     const phone = detectWhatsAppNumber(comment.text);
     if (!phone && !hasLeadIntent(comment.text)) continue;
 
-    const idempotencyKey = `${comment.organizationId || comment.userId}_${comment.channelId}_${comment.youtubeId || comment._id}_lead`;
+    if (!comment.organizationId || !comment.youtubeId) continue;
+
+    const idempotencyKey = `${comment.organizationId || comment.userId}_${comment.channelId}_${comment.youtubeId}_lead`;
     const exists = await Lead.exists({
       $or: [
         { idempotencyKey },
@@ -80,12 +76,14 @@ export const getLeads = async (req, res) => {
     const { status, channelId, search } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    await backfillMissingLeads([req.user.id], allowedChannelIds);
+    const userIds = [req.user.id];
 
-    const query = {};
-    if (allowedChannelIds.length > 0) {
-      query.channelId = { $in: allowedChannelIds };
-    }
+    await backfillMissingLeads(userIds, allowedChannelIds);
+
+    const query = { 
+      channelId: { $in: allowedChannelIds },
+      userId: { $in: userIds }
+    };
 
     if (status) query.status = status;
     if (channelId) {

@@ -32,16 +32,11 @@ router.get('/', authMiddleware, async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
     // ── 1. Resolve channels the user owns ──────────────────────────────────
-    let channelFilter = { userId };
-    if (organizationId) {
-      channelFilter = { $or: [{ userId }, { organizationId }] };
-    }
+    const channelFilter = { userId };
+
     if (channelId) channelFilter.channelId = channelId;
 
-    let ownedChannels = await Channel.find(channelFilter).select('channelId').lean();
-    if (!ownedChannels || ownedChannels.length === 0) {
-      ownedChannels = await Channel.find({}).select('channelId').lean();
-    }
+    const ownedChannels = await Channel.find(channelFilter).select('channelId').lean();
     const allowedChannelIds = ownedChannels.map(c => c.channelId);
 
     if (allowedChannelIds.length === 0) {
@@ -56,7 +51,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const searchRegex = search ? new RegExp(search, 'i') : null;
 
     // ── 3. Fetch AutoReplyLog (type = replied) ──────────────────────────────
-    let replyQuery = { channelId: { $in: allowedChannelIds } };
+    let replyQuery = { userId, channelId: { $in: allowedChannelIds } };
     if (channelId) replyQuery.channelId = channelId;
     if (searchRegex) {
       replyQuery.$or = [
@@ -67,7 +62,7 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     // ── 4. Fetch ModerationLog (type = deleted | hidden) ────────────────────
-    let modQuery = { channelId: { $in: allowedChannelIds } };
+    let modQuery = { userId, channelId: { $in: allowedChannelIds } };
     if (channelId) modQuery.channelId = channelId;
     if (searchRegex) {
       modQuery.$or = [

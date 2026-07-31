@@ -19,14 +19,7 @@ import logger from '../utils/logger.mjs';
 
 // Helper to get allowed channel IDs for a user
 const getUserChannelIds = async (user) => {
-  let filter = { userId: user.id };
-  if (user.organizationId) {
-    filter = { $or: [{ userId: user.id }, { organizationId: user.organizationId }] };
-  }
-  let channels = await Channel.find(filter).select('channelId').lean();
-  if (!channels || channels.length === 0) {
-    channels = await Channel.find({}).select('channelId').lean();
-  }
+  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
   return channels.map(c => c.channelId);
 };
 
@@ -37,18 +30,21 @@ export const getComments = async (req, res) => {
     // Resolve user channels
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    const query = {};
-    if (allowedChannelIds.length > 0) {
-      query.channelId = { $in: allowedChannelIds };
-    }
+    const userIds = [req.user.id];
+    
+    const query = { 
+      channelId: { $in: allowedChannelIds },
+      userId: { $in: userIds }
+    };
     
     if (videoId) {
-      const videoDoc = await Video.findOne({ videoId }).lean();
+      // Find the video and verify it belongs to allowed channelIds and userIds to prevent cross-channel/cross-user leakages
+      const videoDoc = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds }, userId: { $in: userIds } }).lean();
       if (!videoDoc) {
         return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
       }
       query.videoId = videoId;
-      query.channelId = videoDoc.channelId;
+      query.channelId = videoDoc.channelId; // Load comments strictly belonging to this video's channel
     } else if (channelId) {
       if (allowedChannelIds.includes(channelId)) {
         query.channelId = channelId;
@@ -468,9 +464,13 @@ export const getRules = async (req, res) => {
     const { channelId } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
 
-    const query = {};
-    if (allowedChannelIds.length > 0) {
-      query.channelId = { $in: allowedChannelIds };
+    const query = {
+      channelId: { $in: allowedChannelIds }
+    };
+    if (req.user.organizationId) {
+      query.organizationId = req.user.organizationId;
+    } else if (req.user.id) {
+      query.userId = req.user.id;
     }
 
     if (channelId && allowedChannelIds.includes(channelId)) {
@@ -668,9 +668,13 @@ export const getCommentHistory = async (req, res) => {
     const { page = 1, limit = 20, channelId, status, sentiment } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
 
-    const query = {};
-    if (allowedChannelIds.length > 0) {
-      query.channelId = { $in: allowedChannelIds };
+    const query = {
+      channelId: { $in: allowedChannelIds }
+    };
+    if (req.user.organizationId) {
+      query.organizationId = req.user.organizationId;
+    } else {
+      query.userId = req.user.id;
     }
 
     if (channelId && allowedChannelIds.includes(channelId)) {
