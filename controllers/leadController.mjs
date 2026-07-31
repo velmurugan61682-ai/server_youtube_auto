@@ -9,8 +9,19 @@ const escapeRegex = (string) => {
 };
 
 const getUserChannelIds = async (user) => {
-  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
+  const filter = user.organizationId
+    ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
+    : { userId: user.id };
+  const channels = await Channel.find(filter).select('channelId').lean();
   return channels.map(c => c.channelId);
+};
+
+const getOrgUserIds = async (user) => {
+  const filterUser = user.organizationId
+    ? { $or: [{ organizationId: user.organizationId }, { _id: user.id }] }
+    : { _id: user.id };
+  const users = await User.find(filterUser).select('_id').lean();
+  return users.map(u => u._id);
 };
 
 const DEFAULT_LEAD_KEYWORDS = [
@@ -26,7 +37,6 @@ const hasLeadIntent = (text = '') => {
 
 const backfillMissingLeads = async (userIds, allowedChannelIds) => {
   const comments = await Comment.find({
-    userId: { $in: userIds },
     channelId: { $in: allowedChannelIds },
     isBotReply: { $ne: true },
     sentiment: { $ne: 'toxic' },
@@ -75,14 +85,13 @@ export const getLeads = async (req, res) => {
   try {
     const { status, channelId, search } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
-    
-    const userIds = [req.user.id];
+    const userIds = await getOrgUserIds(req.user);
 
     await backfillMissingLeads(userIds, allowedChannelIds);
 
     const query = { 
       channelId: { $in: allowedChannelIds },
-      userId: { $in: userIds }
+      $or: [{ userId: { $in: userIds } }, { channelId: { $in: allowedChannelIds } }]
     };
 
     if (status) query.status = status;
