@@ -730,6 +730,13 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       }
     }
 
+    // Check comment age threshold (15 minutes max OR published before channel setup)
+    const publishedTime = commentDoc.publishedAt ? new Date(commentDoc.publishedAt).getTime() : 0;
+    const commentAgeMs = publishedTime > 0 ? (Date.now() - publishedTime) : Infinity;
+    const MAX_COMMENT_AGE_MS = 15 * 60 * 1000; // 15 minutes max threshold for auto-actions
+    const channelCreatedTime = channel.createdAt ? new Date(channel.createdAt).getTime() : 0;
+    const isTooOldForAutomation = !publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_COMMENT_AGE_MS || (channelCreatedTime > 0 && publishedTime < channelCreatedTime);
+
     const needsManualReview = !isUnsafe && !isConfident && (aiResult.isToxic === true || matchedCategory !== 'safe');
 
     let moderationActionTaken = false;
@@ -744,170 +751,176 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let deleteFailed = false;
     let deleteErrorReason = null;
 
-    // 9. If unsafe: Delete or hold for review
+    // 9. If unsafe: Delete or hold for review (ONLY FOR NEW COMMENTS)
     if (isUnsafe) {
-      moderationActionTaken = true;
-      const modAction = tenantSettings.moderationAction || 'delete';
-
-      if (channel.apiKey) {
-        status = 'flagged';
-        moderationStatus = 'heldForReview';
-        executedAction = 'hold';
-        deleteFailed = true;
-        deleteErrorReason = 'Authentication via API Key does not permit write actions (OAuth required)';
+      if (isTooOldForAutomation) {
+        logger.info(`[Pipeline] Skipping auto-moderation/deletion for toxic comment ${commentDoc.youtubeId} because it is an old comment (${Math.round(commentAgeMs / 60000)} minutes old, older than 15-min threshold).`);
+        status = 'approved';
+        moderationStatus = 'safe';
+        executedAction = 'none';
+        moderationActionTaken = false;
       } else {
-        if (modAction === 'delete') {
-          const delRes = commentDoc.isLiveChat
-            ? await deleteLiveChatMessage(youtube, commentDoc.youtubeId)
-            : await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
-          if (delRes.success) {
-            const youtubeAction = delRes.action || 'delete';
-            const removedFromPublic = youtubeAction === 'delete' || youtubeAction === 'reject';
-            status = removedFromPublic ? 'deleted' : 'flagged';
-            deletedAt = removedFromPublic ? new Date() : null;
-            deleteReason = `Auto-${youtubeAction} bad comment: ${matchedCategory}`;
-            moderationStatus = removedFromPublic ? 'deleted' : 'heldForReview';
-            executedAction = youtubeAction === 'reject' ? 'delete' : youtubeAction;
-            wasHidden = youtubeAction === 'hide';
-          } else {
-            deleteFailed = true;
-            deleteErrorReason = delRes.reason;
-            status = 'flagged';
-            moderationStatus = 'heldForReview';
-            executedAction = 'hold';
-            if (delRes.reconnectRequired) {
-              await Channel.findByIdAndUpdate(channel._id, { reconnectRequired: true, reconnectReason: 'Missing manage comments permission (youtube.force-ssl)' });
-            }
-          }
+        moderationActionTaken = true;
+        const modAction = tenantSettings.moderationAction || 'delete';
+
+        if (channel.apiKey) {
+          status = 'flagged';
+          moderationStatus = 'heldForReview';
+          executedAction = 'hold';
+          deleteFailed = true;
+          deleteErrorReason = 'Authentication via API Key does not permit write actions (OAuth required)';
         } else {
-          // hold for review
-          const hideRes = commentDoc.isLiveChat
-            ? (commentDoc.authorChannelId
-              ? await hideLiveChatUser(youtube, commentDoc.liveChatId || commentDoc.videoId, commentDoc.authorChannelId)
-              : await deleteLiveChatMessage(youtube, commentDoc.youtubeId))
-            : await hideComment(youtube, commentDoc.youtubeId);
-          if (hideRes.success) {
-            status = 'flagged';
-            wasHidden = true;
-            deleteReason = `Auto-held comment: ${matchedCategory}`;
-            moderationStatus = 'heldForReview';
-            executedAction = 'hold';
+          if (modAction === 'delete') {
+            const delRes = commentDoc.isLiveChat
+              ? await deleteLiveChatMessage(youtube, commentDoc.youtubeId)
+              : await deleteCommentFromYouTube(youtube, commentDoc.youtubeId);
+            if (delRes.success) {
+              const youtubeAction = delRes.action || 'delete';
+              const removedFromPublic = youtubeAction === 'delete' || youtubeAction === 'reject';
+              status = removedFromPublic ? 'deleted' : 'flagged';
+              deletedAt = removedFromPublic ? new Date() : null;
+              deleteReason = `Auto-${youtubeAction} bad comment: ${matchedCategory}`;
+              moderationStatus = removedFromPublic ? 'deleted' : 'heldForReview';
+              executedAction = youtubeAction === 'reject' ? 'delete' : youtubeAction;
+              wasHidden = youtubeAction === 'hide';
+            } else {
+              deleteFailed = true;
+              deleteErrorReason = delRes.reason;
+              status = 'flagged';
+              moderationStatus = 'heldForReview';
+              executedAction = 'hold';
+              if (delRes.reconnectRequired) {
+                await Channel.findByIdAndUpdate(channel._id, { reconnectRequired: true, reconnectReason: 'Missing manage comments permission (youtube.force-ssl)' });
+              }
+            }
           } else {
-            deleteFailed = true;
-            deleteErrorReason = hideRes.reason;
-            status = 'flagged';
-            moderationStatus = 'heldForReview';
-            executedAction = 'hold';
-            if (hideRes.reconnectRequired) {
-              await Channel.findByIdAndUpdate(channel._id, { reconnectRequired: true, reconnectReason: 'Missing manage comments permission (youtube.force-ssl)' });
+            // hold for review
+            const hideRes = commentDoc.isLiveChat
+              ? (commentDoc.authorChannelId
+                ? await hideLiveChatUser(youtube, commentDoc.liveChatId || commentDoc.videoId, commentDoc.authorChannelId)
+                : await deleteLiveChatMessage(youtube, commentDoc.youtubeId))
+              : await hideComment(youtube, commentDoc.youtubeId);
+            if (hideRes.success) {
+              status = 'flagged';
+              wasHidden = true;
+              deleteReason = `Auto-held comment: ${matchedCategory}`;
+              moderationStatus = 'heldForReview';
+              executedAction = 'hold';
+            } else {
+              deleteFailed = true;
+              deleteErrorReason = hideRes.reason;
+              status = 'flagged';
+              moderationStatus = 'heldForReview';
+              executedAction = 'hold';
+              if (hideRes.reconnectRequired) {
+                await Channel.findByIdAndUpdate(channel._id, { reconnectRequired: true, reconnectReason: 'Missing manage comments permission (youtube.force-ssl)' });
+              }
             }
           }
         }
-      }
 
-      const loggedAction = executedAction === 'delete' ? 'deleted' : 'hidden';
+        const loggedAction = executedAction === 'delete' ? 'deleted' : 'hidden';
 
-      // Always save ModerationLog — both on success AND failure.
-      // This ensures Comment History shows failed moderation attempts.
-      try {
-        const modLogData = {
+        // Always save ModerationLog — both on success AND failure.
+        try {
+          const modLogData = {
+            userId: channel.userId,
+            organizationId: channel.organizationId,
+            channelId: channel.channelId,
+            videoId: commentDoc.videoId,
+            commentId: commentDoc.youtubeId,
+            authorName: commentDoc.author || 'Anonymous',
+            commentText: commentDoc.text || '',
+            category: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
+            confidence: aiResult.confidence || 0.85,
+            toxicityScore: aiResult.toxicityScore || 0,
+            reason: `Auto-detected: ${matchedCategory}`,
+            action: loggedAction,
+            executedAction: loggedAction,
+            status: deleteFailed ? 'Failed' : 'Success',
+            failureReason: deleteFailed ? (deleteErrorReason || 'YouTube API call failed') : null,
+            isLiveChat: commentDoc.isLiveChat || false,
+            liveChatId: commentDoc.liveChatId || null
+          };
+          await ModerationLog.findOneAndUpdate(
+            { commentId: commentDoc.youtubeId, userId: channel.userId },
+            { $setOnInsert: modLogData },
+            { upsert: true }
+          );
+          if (!deleteFailed) {
+            await logAutomation(
+              channel.userId,
+              executedAction === 'delete' ? 'comment_delete' : 'comment_hide',
+              `Auto-moderated comment (action: ${executedAction}) due to ${matchedCategory}`,
+              { commentId: commentDoc.youtubeId, category: matchedCategory }
+            );
+          }
+        } catch (modLogErr) {
+          logger.error(`[Pipeline] Failed to save ModerationLog for ${commentDoc.youtubeId}: ${modLogErr.message}`);
+        }
+
+        // Save final classification updates and stop processing for newly moderated comments
+        const newCommentData = {
           userId: channel.userId,
           organizationId: channel.organizationId,
+          youtubeId: commentDoc.youtubeId,
+          commentId: commentDoc.youtubeId,
           channelId: channel.channelId,
           videoId: commentDoc.videoId,
-          commentId: commentDoc.youtubeId,
-          authorName: commentDoc.author || 'Anonymous',
-          commentText: commentDoc.text || '',
-          category: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
-          confidence: aiResult.confidence || 0.85,
-          toxicityScore: aiResult.toxicityScore || 0,
-          reason: `Auto-detected: ${matchedCategory}`,
-          action: loggedAction,
-          executedAction: loggedAction,
-          status: deleteFailed ? 'Failed' : 'Success',
-          failureReason: deleteFailed ? (deleteErrorReason || 'YouTube API call failed') : null,
+          text: commentDoc.text,
+          commentText: commentDoc.text,
+          author: commentDoc.author,
+          username: commentDoc.author,
+          authorProfileImageUrl: commentDoc.authorProfileImageUrl,
+          authorChannelId: commentDoc.authorChannelId || null,
+          publishedAt: commentDoc.publishedAt,
+          parentCommentId: commentDoc.parentCommentId || null,
+          isReply: commentDoc.isReply || false,
           isLiveChat: commentDoc.isLiveChat || false,
-          liveChatId: commentDoc.liveChatId || null
+          liveChatId: commentDoc.liveChatId || null,
+
+          sentiment: aiResult.sentiment,
+          toxicityScore: aiResult.toxicityScore,
+          confidence: aiResult.confidence,
+          language: aiResult.language,
+          detectedWords: aiResult.detectedWords,
+          status: status,
+          autoLiked: false,
+          deleteFailed,
+          deleteError: deleteErrorReason,
+          deleteReason,
+          deletedAt,
+          aiActionTaken: true,
+          classification,
+          moderationStatus,
+          aiStatus: 'completed',
+          actionTaken: executedAction,
+          moderationReason: matchedCategory,
+          textHash,
+          isModerated: true,
+          moderationAction: loggedAction
         };
-        // Upsert: one ModerationLog per commentId (first action wins)
-        await ModerationLog.findOneAndUpdate(
-          { commentId: commentDoc.youtubeId, userId: channel.userId },
-          { $setOnInsert: modLogData },
-          { upsert: true }
+
+        const updatedComment = await Comment.findOneAndUpdate(
+          { userId: channel.userId, youtubeId: commentDoc.youtubeId },
+          { $set: newCommentData },
+          { upsert: true, returnDocument: 'after' }
         );
-        if (!deleteFailed) {
-          await logAutomation(
-            channel.userId,
-            executedAction === 'delete' ? 'comment_delete' : 'comment_hide',
-            `Auto-moderated comment (action: ${executedAction}) due to ${matchedCategory}`,
-            { commentId: commentDoc.youtubeId, category: matchedCategory }
-          );
+
+        if (io && updatedComment) {
+          const roomName = channel.userId.toString();
+          io.to(roomName).emit('live_activity', {
+            ...updatedComment.toObject(),
+            id: updatedComment._id,
+            type: status === 'deleted' ? 'delete' : 'hold'
+          });
+          io.to(roomName).emit('new_comment_analyzed', updatedComment);
+          io.to(roomName).emit('stats_updated');
+          io.to(roomName).emit('moderationUpdate');
         }
-      } catch (modLogErr) {
-        logger.error(`[Pipeline] Failed to save ModerationLog for ${commentDoc.youtubeId}: ${modLogErr.message}`);
+
+        return true; // Stop processing for new toxic comment
       }
-
-      // Save final classification updates and stop processing
-      const newCommentData = {
-        userId: channel.userId,
-        organizationId: channel.organizationId,
-        youtubeId: commentDoc.youtubeId,
-        commentId: commentDoc.youtubeId, // alias
-        channelId: channel.channelId,
-        videoId: commentDoc.videoId,
-        text: commentDoc.text,
-        commentText: commentDoc.text, // alias
-        author: commentDoc.author,
-        username: commentDoc.author, // alias
-        authorProfileImageUrl: commentDoc.authorProfileImageUrl,
-        authorChannelId: commentDoc.authorChannelId || null,
-        publishedAt: commentDoc.publishedAt,
-        parentCommentId: commentDoc.parentCommentId || null,
-        isReply: commentDoc.isReply || false,
-        isLiveChat: commentDoc.isLiveChat || false,
-        liveChatId: commentDoc.liveChatId || null,
-
-        sentiment: aiResult.sentiment,
-        toxicityScore: aiResult.toxicityScore,
-        confidence: aiResult.confidence,
-        language: aiResult.language,
-        detectedWords: aiResult.detectedWords,
-        status: status,
-        autoLiked: false,
-        deleteFailed,
-        deleteError: deleteErrorReason,
-        deleteReason,
-        deletedAt,
-        aiActionTaken: true,
-        classification,
-        moderationStatus,
-        aiStatus: 'completed',
-        actionTaken: executedAction,
-        moderationReason: matchedCategory,
-        textHash,
-        isModerated: true,
-        moderationAction: loggedAction
-      };
-
-      const updatedComment = await Comment.findOneAndUpdate(
-        { userId: channel.userId, youtubeId: commentDoc.youtubeId },
-        { $set: newCommentData },
-        { upsert: true, returnDocument: 'after' }
-      );
-
-      if (io && updatedComment) {
-        const roomName = channel.userId.toString();
-        io.to(roomName).emit('live_activity', {
-          ...updatedComment.toObject(),
-          id: updatedComment._id,
-          type: status === 'deleted' ? 'delete' : 'hold'
-        });
-        io.to(roomName).emit('new_comment_analyzed', updatedComment);
-        io.to(roomName).emit('stats_updated');
-        io.to(roomName).emit('moderationUpdate');
-      }
-
-      return true; // Stop processing
     }
 
     // 10. If safe: Match active reply rule
@@ -915,11 +928,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let replyText = null;
     let replyError = null;
 
-    const publishedTime = commentDoc.publishedAt ? new Date(commentDoc.publishedAt).getTime() : 0;
-    const commentAgeMs = publishedTime > 0 ? (Date.now() - publishedTime) : Infinity;
-    const MAX_REPLY_AGE_MS = 15 * 60 * 1000; // 15 minutes max threshold for auto-replying to new comments
-    const channelCreatedTime = channel.createdAt ? new Date(channel.createdAt).getTime() : 0;
-    const isTooOldForReply = !publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_REPLY_AGE_MS || (channelCreatedTime > 0 && publishedTime < channelCreatedTime);
+    const isTooOldForReply = isTooOldForAutomation;
 
     const rules = await AutoReplyRule.find({
       channelId: channel.channelId,
@@ -1266,6 +1275,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     const isPositive = (aiResult.sentiment === 'positive' || rawAnalysis.positive) && isConfident;
     const isMeaningful = commentDoc.text && commentDoc.text.trim().length > 3;
     const shouldAutoLike = (
+      !isTooOldForAutomation &&
       status !== 'deleted' &&
       status !== 'flagged' &&
       tenantSettings.autoLike &&
