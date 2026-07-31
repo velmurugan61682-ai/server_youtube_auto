@@ -195,10 +195,13 @@ logger.info('🚀 Socket.IO Server Initialized with Custom Ping/Pong (10s/5s) & 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
+  const token =
+    socket.handshake.auth?.token ||
+    (socket.handshake.headers?.authorization ? socket.handshake.headers.authorization.replace(/^Bearer\s+/i, '') : null) ||
+    socket.handshake.query?.token;
 
-  if (!token) {
-    logger.warn(`🔑 [Socket Auth Failure] Connection rejected: No auth token provided. Socket ID: ${socket.id}`);
+  if (!token || token === 'null' || token === 'undefined') {
+    logger.warn(`🔑 [Socket Auth Failure] Connection rejected: No valid auth token provided. Socket ID: ${socket.id}`);
     return next(
       new Error('Authentication error')
     );
@@ -211,7 +214,6 @@ io.use((socket, next) => {
     );
 
     socket.user = decoded;
-    logger.info('✓ JWT verified');
     logger.info(`🔑 [Socket Auth Success] Token verified for User: ${decoded.id || decoded.email || 'Unknown'}. Socket ID: ${socket.id}`);
     next();
   } catch (err) {
