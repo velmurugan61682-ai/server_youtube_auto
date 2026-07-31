@@ -553,6 +553,21 @@ async function startServer() {
       }
     }
 
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.error(`⚠️ Port ${PORT} is currently in use. Retrying in 2 seconds...`);
+        setTimeout(() => {
+          try {
+            server.close();
+          } catch {}
+          server.listen(PORT, '0.0.0.0');
+        }, 2000);
+      } else {
+        logger.error(`❌ Server error: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
     server.listen(
       PORT,
       '0.0.0.0',

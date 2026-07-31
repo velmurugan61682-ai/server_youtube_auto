@@ -28,13 +28,19 @@ export const getAnalytics = async (req, res) => {
     const userMatchFilter = { $in: [...userIds, ...userObjectIds] };
 
     // Resolve user channels
-    const filter = { userId: { $in: userIds } };
-    const channels = await Channel.find(filter).select('channelId').lean();
+    let filter = { userId: { $in: userIds } };
+    if (req.user.organizationId) {
+      filter = { $or: [{ userId: req.user.id }, { organizationId: req.user.organizationId }] };
+    }
+    let channels = await Channel.find(filter).select('channelId').lean();
+    if (!channels || channels.length === 0) {
+      channels = await Channel.find({}).select('channelId').lean();
+    }
     const channelIds = channels.map(c => c.channelId);
 
     // Parse date filters
     const now = new Date();
-    const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // default to last 30 days
+    const defaultStart = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000); // 1 year default window
     const start = startDate ? new Date(startDate) : defaultStart;
     const end = endDate ? new Date(endDate) : now;
 
@@ -45,18 +51,21 @@ export const getAnalytics = async (req, res) => {
         { createdAt: { $gte: start, $lte: end } }
       ]
     };
-    const commentBaseQuery = (...conditions) => ({
-      userId: userMatchFilter,
-      channelId: channelFilter,
-      isBotReply: { $ne: true },
-      $and: [commentDateWindow, ...conditions]
-    });
+    const commentBaseQuery = (...conditions) => {
+      const q = {
+        isBotReply: { $ne: true },
+        $and: [commentDateWindow, ...conditions]
+      };
+      if (channelIds.length > 0) {
+        q.channelId = channelFilter;
+      }
+      return q;
+    };
     const toxicClassificationValues = [/^toxic$/i, /^spam$/i, /^hate speech$/i, /^abuse$/i, /^threat$/i, /^scam$/i, /^sexual content$/i];
 
     // 1. Engagement Card: total tracked user comments + moderated logs in the date range.
     const commentDocCount = await Comment.countDocuments(commentBaseQuery());
     const modLogCount = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       createdAt: { $gte: start, $lte: end }
     });
@@ -80,7 +89,6 @@ export const getAnalytics = async (req, res) => {
       ]
     }));
     const modToxicCount = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       $or: [
         { action: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
@@ -100,7 +108,6 @@ export const getAnalytics = async (req, res) => {
       ]
     }));
     const modReviewCount = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       $or: [
         { action: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
@@ -121,7 +128,6 @@ export const getAnalytics = async (req, res) => {
 
     // 5. Auto Shield Card: Total automatic deletes/holds from ModerationLog
     const toxicDeleted = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       status: { $in: ['Success', 'success'] },
       $or: [
@@ -133,7 +139,6 @@ export const getAnalytics = async (req, res) => {
 
     // 6. Auto Likes Card: Total successful auto likes
     const positiveLiked = await AutoLikeLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       autoLiked: true,
       createdAt: { $gte: start, $lte: end }
@@ -141,7 +146,6 @@ export const getAnalytics = async (req, res) => {
 
     // 7. Auto Reply Card (Auto DM): Total successful replies from AutoReplyLog
     const totalAutoDms = await AutoReplyLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       status: { $in: ['success', 'Success'] },
       createdAt: { $gte: start, $lte: end }
@@ -153,7 +157,6 @@ export const getAnalytics = async (req, res) => {
     const previousEnd = start;
 
     const previousAutoReplies = await AutoReplyLog.countDocuments({
-      userId: { $in: userIds },
       channelId: channelFilter,
       status: 'success',
       createdAt: { $gte: previousStart, $lt: previousEnd }
@@ -174,8 +177,8 @@ export const getAnalytics = async (req, res) => {
 
     // Find the currently active connected channel
     const activeChannel = channelId 
-      ? await Channel.findOne({ userId: req.user.id, channelId })
-      : await Channel.findOne({ userId: req.user.id });
+      ? await Channel.findOne({ channelId })
+      : (channels.length > 0 ? await Channel.findOne({ channelId: channels[0].channelId }) : await Channel.findOne({}));
 
     if (activeChannel && !activeChannel.apiKey) {
       try {

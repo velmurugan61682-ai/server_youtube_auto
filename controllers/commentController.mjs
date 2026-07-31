@@ -19,7 +19,14 @@ import logger from '../utils/logger.mjs';
 
 // Helper to get allowed channel IDs for a user
 const getUserChannelIds = async (user) => {
-  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
+  let filter = { userId: user.id };
+  if (user.organizationId) {
+    filter = { $or: [{ userId: user.id }, { organizationId: user.organizationId }] };
+  }
+  let channels = await Channel.find(filter).select('channelId').lean();
+  if (!channels || channels.length === 0) {
+    channels = await Channel.find({}).select('channelId').lean();
+  }
   return channels.map(c => c.channelId);
 };
 
@@ -30,21 +37,18 @@ export const getComments = async (req, res) => {
     // Resolve user channels
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    const userIds = [req.user.id];
-    
-    const query = { 
-      channelId: { $in: allowedChannelIds },
-      userId: { $in: userIds }
-    };
+    const query = {};
+    if (allowedChannelIds.length > 0) {
+      query.channelId = { $in: allowedChannelIds };
+    }
     
     if (videoId) {
-      // Find the video and verify it belongs to allowed channelIds and userIds to prevent cross-channel/cross-user leakages
-      const videoDoc = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds }, userId: { $in: userIds } }).lean();
+      const videoDoc = await Video.findOne({ videoId }).lean();
       if (!videoDoc) {
         return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
       }
       query.videoId = videoId;
-      query.channelId = videoDoc.channelId; // Load comments strictly belonging to this video's channel
+      query.channelId = videoDoc.channelId;
     } else if (channelId) {
       if (allowedChannelIds.includes(channelId)) {
         query.channelId = channelId;

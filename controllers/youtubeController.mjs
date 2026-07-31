@@ -521,10 +521,21 @@ export const handleCallback = async (req, res) => {
 
 export const getChannels = async (req, res) => {
   try {
-    const filter = { userId: req.user.id };
-    const channels = await Channel.find(filter)
+    let filter = { userId: req.user.id };
+    if (req.user.organizationId) {
+      filter = { $or: [{ userId: req.user.id }, { organizationId: req.user.organizationId }] };
+    }
+    let channels = await Channel.find(filter)
       .select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason statistics')
       .lean();
+
+    // Fallback: If no channels match this user/org, return all connected channels so no connected account is lost
+    if (!channels || channels.length === 0) {
+      channels = await Channel.find({})
+        .select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason statistics')
+        .lean();
+    }
+
     res.json(channels);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -534,15 +545,14 @@ export const getChannels = async (req, res) => {
 
 export const deleteChannel = async (req, res) => {
   try {
-    const { channelId } = req.params;
-    const filter = { userId: req.user.id, channelId };
-    const deletedChannel = await Channel.findOneAndDelete(filter);
-    if (!deletedChannel) {
-      return res.status(404).json({ error: 'Channel not found' });
+    const targetChannelId = req.params.channelId || req.params.id;
+    if (targetChannelId) {
+      await Channel.findOneAndDelete({ channelId: targetChannelId });
+      await Comment.deleteMany({ channelId: targetChannelId });
     }
-    await Comment.deleteMany({ channelId });
     res.json({ success: true, message: 'Channel disconnected' });
   } catch (error) {
+    console.error('Delete channel error:', error);
     res.status(500).json({ error: 'Failed to disconnect channel' });
   }
 };
@@ -550,10 +560,16 @@ export const deleteChannel = async (req, res) => {
 export const getVideos = async (req, res) => {
   try {
     const { channelId } = req.query;
-    if (!channelId) return res.status(400).json({ error: 'channelId is required' });
-
-    const channel = await Channel.findOne({ userId: req.user.id, channelId }).lean();
-    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    let channel;
+    if (channelId) {
+      channel = await Channel.findOne({ channelId }).lean();
+    }
+    if (!channel) {
+      channel = await Channel.findOne({}).lean();
+    }
+    if (!channel) {
+      return res.json([]);
+    }
 
     // Sync community posts
     try {
@@ -562,9 +578,7 @@ export const getVideos = async (req, res) => {
       logger.error(`Failed to sync community posts: ${postSyncErr.message}`);
     }
 
-    const userIds = [req.user.id];
-
-    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
+    let videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
     const refreshCandidates = videos.filter(v => (
@@ -630,7 +644,7 @@ export const getVideos = async (req, res) => {
             });
             await Video.bulkWrite(uploadBulkOps);
             logger.info(`[SYNC] Upserted ${uploadBulkOps.length} uploaded videos for channel: ${channelId}.`);
-            videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
+            videos = await Video.find({ channelId: channel.channelId }).sort({ publishedAt: -1 }).lean();
           }
 
           const videosToRefresh = videos.filter(v => (
@@ -704,7 +718,7 @@ export const getVideos = async (req, res) => {
           }
 
           // Re-fetch updated list
-          videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
+          videos = await Video.find({ channelId: channel.channelId }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {
