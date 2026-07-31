@@ -536,7 +536,9 @@ export const handleCallback = async (req, res) => {
 
 export const getChannels = async (req, res) => {
   try {
-    const filter = { userId: req.user.id };
+    const filter = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
     const channels = await Channel.find(filter)
       .select('title channelId thumbnailUrl apiKey reconnectRequired reconnectReason statistics')
       .lean();
@@ -550,7 +552,9 @@ export const getChannels = async (req, res) => {
 export const deleteChannel = async (req, res) => {
   try {
     const { channelId } = req.params;
-    const filter = { userId: req.user.id, channelId };
+    const filter = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
     const deletedChannel = await Channel.findOneAndDelete(filter);
     if (!deletedChannel) {
       return res.status(404).json({ error: 'Channel not found' });
