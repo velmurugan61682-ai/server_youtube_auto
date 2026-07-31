@@ -31,10 +31,16 @@ router.get('/', authMiddleware, async (req, res) => {
     const pageNum  = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
-    // ── 1. Resolve channels the user owns ──────────────────────────────────
-    const channelFilter = { userId };
+    // ── 1. Resolve channels the user/org owns ──────────────────────────────
+    let channelFilter = organizationId
+      ? { $or: [{ organizationId }, { userId }] }
+      : { userId };
 
-    if (channelId) channelFilter.channelId = channelId;
+    if (channelId) {
+      channelFilter = organizationId
+        ? { $and: [{ $or: [{ organizationId }, { userId }] }, { channelId }] }
+        : { userId, channelId };
+    }
 
     const ownedChannels = await Channel.find(channelFilter).select('channelId').lean();
     const allowedChannelIds = ownedChannels.map(c => c.channelId);
@@ -47,11 +53,19 @@ router.get('/', authMiddleware, async (req, res) => {
       });
     }
 
+    // Resolve all userIds in the organization
+    const User = (await import('../models/User.mjs')).default;
+    const orgUserFilter = organizationId
+      ? { $or: [{ organizationId }, { _id: userId }] }
+      : { _id: userId };
+    const orgUsers = await User.find(orgUserFilter).select('_id').lean();
+    const orgUserIds = orgUsers.map(u => u._id);
+
     // ── 2. Build search regex ───────────────────────────────────────────────
     const searchRegex = search ? new RegExp(search, 'i') : null;
 
     // ── 3. Fetch AutoReplyLog (type = replied) ──────────────────────────────
-    let replyQuery = { userId, channelId: { $in: allowedChannelIds } };
+    let replyQuery = { channelId: { $in: allowedChannelIds }, $or: [{ userId: { $in: orgUserIds } }, { channelId: { $in: allowedChannelIds } }] };
     if (channelId) replyQuery.channelId = channelId;
     if (searchRegex) {
       replyQuery.$or = [
@@ -62,7 +76,7 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     // ── 4. Fetch ModerationLog (type = deleted | hidden) ────────────────────
-    let modQuery = { userId, channelId: { $in: allowedChannelIds } };
+    let modQuery = { channelId: { $in: allowedChannelIds }, $or: [{ userId: { $in: orgUserIds } }, { channelId: { $in: allowedChannelIds } }, ...(organizationId ? [{ organizationId }] : [])] };
     if (channelId) modQuery.channelId = channelId;
     if (searchRegex) {
       modQuery.$or = [

@@ -714,14 +714,22 @@ router.post('/moderation/:id/action', authMiddleware, async (req, res) => {
 router.get('/stats', authMiddleware, async (req, res) => {
   try {
     const { channelId } = req.query;
-    const query = {
-      userId: req.user.id
-    };
+    const organizationId = req.user.organizationId;
+
+    // Build org-aware base filter
+    const orgBaseFilter = organizationId
+      ? { $or: [{ organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+
+    const query = { ...orgBaseFilter };
     if (channelId) {
       const hasChannel = await verifyChannelAccess(channelId, req.user);
       if (!hasChannel) return res.status(403).json({ error: 'Access denied: You do not own this channel.' });
       query.channelId = channelId;
     }
+
+    const modBaseFilter = { ...orgBaseFilter };
+    if (channelId) modBaseFilter.channelId = channelId;
 
     const totalRules = await AutoReplyRule.countDocuments(query);
     const totalTriggers = await AutoReplyLog.countDocuments(query);
@@ -729,42 +737,19 @@ router.get('/stats', authMiddleware, async (req, res) => {
     const totalFailed = await AutoReplyLog.countDocuments({ ...query, status: 'failed' });
 
     // Moderation counters
-    const totalModerated = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {})
-    });
-    const deletedCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
-      executedAction: 'delete'
-    });
-    const heldCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
-      executedAction: 'hold'
-    });
-    const approvedCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
-      executedAction: 'published'
-    });
-    const spamCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
-      category: 'spam'
-    });
+    const totalModerated = await ModerationLog.countDocuments(modBaseFilter);
+    const deletedCount = await ModerationLog.countDocuments({ ...modBaseFilter, executedAction: 'delete' });
+    const heldCount = await ModerationLog.countDocuments({ ...modBaseFilter, executedAction: 'hold' });
+    const approvedCount = await ModerationLog.countDocuments({ ...modBaseFilter, executedAction: 'published' });
+    const spamCount = await ModerationLog.countDocuments({ ...modBaseFilter, category: 'spam' });
 
     // Average Toxicity calculation
+    const avgToxMatch = organizationId
+      ? { $or: [{ organizationId }, { userId: new mongoose.Types.ObjectId(req.user.id) }], ...(channelId ? { channelId } : {}) }
+      : { userId: new mongoose.Types.ObjectId(req.user.id), ...(channelId ? { channelId } : {}) };
+
     const avgToxResult = await ModerationLog.aggregate([
-      { $match: {
-        userId: new mongoose.Types.ObjectId(req.user.id),
-        ...(channelId ? { channelId } : {})
-      } },
+      { $match: avgToxMatch },
       { $group: { _id: null, avgTox: { $avg: '$toxicityScore' } } }
     ]);
 
@@ -778,7 +763,7 @@ router.get('/stats', authMiddleware, async (req, res) => {
       heldForReview: heldCount,
       approved: approvedCount,
       spamDetected: spamCount,
-      averageToxicity: Math.round((avgToxResult[0]?.avgTox || 0) * 100) // format as percentage
+      averageToxicity: Math.round((avgToxResult[0]?.avgTox || 0) * 100)
     });
   } catch (error) {
     logger.error(`[Comment Automation Route] Error fetching stats: ${error.message}`);
