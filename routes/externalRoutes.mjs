@@ -3,7 +3,9 @@ import {
   getExternalLeads,
   createExternalLead,
   getExternalUsers,
-  getExternalCustomerDetails
+  getExternalCustomerDetails,
+  getExternalComments,
+  getExternalAnalytics
 } from '../controllers/externalController.mjs';
 import { apiKeyAuth, requirePermission } from '../middleware/apiKeyAuth.mjs';
 
@@ -37,6 +39,20 @@ router.get('/customers/details',
   apiKeyAuth,
   requirePermission('customers:read'),
   getExternalCustomerDetails
+);
+
+// ── Comments ──────────────────────────────────────────────────────────────────
+router.get('/comments',
+  apiKeyAuth,
+  requirePermission('comments:read'),
+  getExternalComments
+);
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+router.get('/analytics',
+  apiKeyAuth,
+  requirePermission('analytics:read'),
+  getExternalAnalytics
 );
 
 export default router;

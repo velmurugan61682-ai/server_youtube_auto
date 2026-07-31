@@ -241,3 +241,73 @@ export const createExternalLead = async (req, res) => {
     res.status(500).json({ error: 'Failed to store customer lead.' });
   }
 };
+
+// GET /api/external/comments
+// Fetch YouTube comments and moderation history
+export const getExternalComments = async (req, res) => {
+  try {
+    const { channelId, sentiment, limit = 50, page = 1 } = req.query;
+    const pageNum = toInt(page, 1, 10000);
+    const limitNum = toInt(limit, 50, 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = req.isAdminKey ? {} : { userId: req.user.id };
+    if (channelId) filter.channelId = channelId;
+    if (sentiment) filter.sentiment = sentiment;
+
+    const [total, comments] = await Promise.all([
+      Comment.countDocuments(filter),
+      Comment.find(filter)
+        .select('-detectedWords')
+        .sort({ publishedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean()
+    ]);
+
+    res.json({
+      success: true,
+      count: comments.length,
+      comments,
+      pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) }
+    });
+  } catch (error) {
+    console.error('[External API] Failed to fetch comments:', error);
+    res.status(500).json({ error: 'Failed to retrieve comments.' });
+  }
+};
+
+// GET /api/external/analytics
+// Fetch channel performance and comment analytics
+export const getExternalAnalytics = async (req, res) => {
+  try {
+    const filter = req.isAdminKey ? {} : { userId: req.user.id };
+    const channelFilter = req.isAdminKey ? {} : { userId: req.user.id };
+
+    const [totalComments, toxicComments, positiveComments, neutralComments, totalLeads, totalChannels] = await Promise.all([
+      Comment.countDocuments(filter),
+      Comment.countDocuments({ ...filter, sentiment: 'toxic' }),
+      Comment.countDocuments({ ...filter, sentiment: 'positive' }),
+      Comment.countDocuments({ ...filter, sentiment: 'neutral' }),
+      Lead.countDocuments(filter),
+      Channel.countDocuments(channelFilter)
+    ]);
+
+    res.json({
+      success: true,
+      analytics: {
+        totalComments,
+        sentimentBreakdown: {
+          toxic: toxicComments,
+          positive: positiveComments,
+          neutral: neutralComments
+        },
+        totalLeads,
+        totalChannels
+      }
+    });
+  } catch (error) {
+    console.error('[External API] Failed to fetch analytics:', error);
+    res.status(500).json({ error: 'Failed to retrieve analytics metrics.' });
+  }
+};
