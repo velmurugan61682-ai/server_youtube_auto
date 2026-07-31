@@ -246,18 +246,20 @@ export const createExternalLead = async (req, res) => {
 // Fetch YouTube comments and moderation history
 export const getExternalComments = async (req, res) => {
   try {
-    const { channelId, sentiment, limit = 50, page = 1 } = req.query;
+    const { channelId, videoId, sentiment, limit = 50, page = 1 } = req.query;
     const pageNum = toInt(page, 1, 10000);
     const limitNum = toInt(limit, 50, 100);
     const skip = (pageNum - 1) * limitNum;
 
     const filter = req.isAdminKey ? {} : { userId: req.user.id };
     if (channelId) filter.channelId = channelId;
+    if (videoId) filter.videoId = videoId;
     if (sentiment) filter.sentiment = sentiment;
 
     const [total, comments] = await Promise.all([
       Comment.countDocuments(filter),
       Comment.find(filter)
+        .populate('userId', 'name email')
         .select('-detectedWords')
         .sort({ publishedAt: -1, createdAt: -1 })
         .skip(skip)
@@ -265,10 +267,28 @@ export const getExternalComments = async (req, res) => {
         .lean()
     ]);
 
+    const formattedComments = comments.map(c => ({
+      id: c._id,
+      commentId: c.commentId || c.youtubeId,
+      userId: c.userId?._id || c.userId,
+      userEmail: c.userId?.email || undefined,
+      userName: c.userId?.name || undefined,
+      authorName: c.author || c.username || 'Anonymous',
+      authorChannelId: c.authorChannelId || null,
+      text: c.text || c.commentText || '',
+      channelId: c.channelId,
+      videoId: c.videoId,
+      sentiment: c.sentiment || 'neutral',
+      status: c.status || 'pending',
+      autoLiked: c.autoLiked || false,
+      publishedAt: c.publishedAt,
+      createdAt: c.createdAt
+    }));
+
     res.json({
       success: true,
-      count: comments.length,
-      comments,
+      count: formattedComments.length,
+      comments: formattedComments,
       pagination: { total, page: pageNum, limit: limitNum, pages: Math.ceil(total / limitNum) }
     });
   } catch (error) {
