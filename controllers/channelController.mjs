@@ -1,5 +1,6 @@
 import Channel from '../models/Channel.mjs';
 import Comment from '../models/Comment.mjs';
+import User from '../models/User.mjs';
 import logger from '../utils/logger.mjs';
 import { initiateAuth as initiateOAuth } from './youtubeController.mjs';
 
@@ -9,8 +10,10 @@ import { initiateAuth as initiateOAuth } from './youtubeController.mjs';
  */
 export const getConnectedChannels = async (req, res) => {
   try {
-    const filter = { userId: req.user.id };
-    
+    const filter = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+
     const channels = await Channel.find(filter)
       .select('title channelId customUrl description thumbnailUrl statistics status apiKey reconnectRequired reconnectReason createdAt')
       .lean();
@@ -24,6 +27,7 @@ export const getConnectedChannels = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch connected channels' });
   }
 };
+
 
 /**
  * POST /api/channels/connect
