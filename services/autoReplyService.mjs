@@ -76,9 +76,21 @@ export const generateAndPostAutoReply = async ({
   commentId,
   videoId,
   userId,
-  userKey = null
+  userKey = null,
+  publishedAt = null
 }) => {
   logger.info(`[Auto-Reply Service] Initiating auto-reply flow for comment: "${commentText}" (ID: ${commentId})`);
+
+  // 0. Age check: Skip comments published > 15 minutes ago
+  if (publishedAt) {
+    const publishedTime = new Date(publishedAt).getTime();
+    const commentAgeMs = publishedTime > 0 ? (Date.now() - publishedTime) : Infinity;
+    const MAX_REPLY_AGE_MS = 15 * 60 * 1000; // 15 minutes max threshold
+    if (!publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_REPLY_AGE_MS) {
+      logger.info(`[Auto-Reply Service] Skipping auto-reply for comment ${commentId} because it was published ${Math.round(commentAgeMs / 60000)} minutes ago (older than 15-minute threshold).`);
+      return { success: false, reason: 'Comment is too old for auto-reply (must be published within last 15 minutes)' };
+    }
+  }
 
   // 1. Idempotency check: Verify if we have already posted a reply to this comment ID
   try {

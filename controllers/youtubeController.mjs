@@ -44,7 +44,8 @@ const getFrontendUrl = (req) => {
     }
   }
   const isProduction = process.env.NODE_ENV === 'production';
-  return process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || (isProduction ? 'https://channelbot.in' : 'http://localhost:5173');
+  const base = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || (isProduction ? 'https://channelbot.in' : 'http://localhost:5173');
+  return base.replace(/\/dashboard\/?$/, '').replace(/\/+$/, '');
 };
 
 

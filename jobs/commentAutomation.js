@@ -168,6 +168,19 @@ export const runCommentAutomation = async () => {
             continue;
           }
 
+          // 3. Skip old comments (published > 15 mins ago or before channel connection date)
+          const publishedAt = topLevelComment.snippet?.publishedAt;
+          const publishedTime = publishedAt ? new Date(publishedAt).getTime() : 0;
+          const commentAgeMs = publishedTime > 0 ? (Date.now() - publishedTime) : Infinity;
+          const MAX_REPLY_AGE_MS = 15 * 60 * 1000; // 15 minutes max threshold for auto-replying to new comments
+          const channelCreatedTime = channel.createdAt ? new Date(channel.createdAt).getTime() : 0;
+          const isTooOldForReply = !publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_REPLY_AGE_MS || (channelCreatedTime > 0 && publishedTime < channelCreatedTime);
+
+          if (isTooOldForReply) {
+            logger.info(`[Comment Automation] Skipping auto-reply for comment ${commentId} because it is an old comment (published at: ${publishedAt}).`);
+            continue;
+          }
+
           logger.info(`[Comment Automation] Processing new comment thread: ${commentId} by ${commenterName}`);
 
           let category = 'normal';
@@ -227,7 +240,8 @@ export const runCommentAutomation = async () => {
                   commentText,
                   commentId,
                   videoId,
-                  userId: channel.userId
+                  userId: channel.userId,
+                  publishedAt
                 });
 
                 if (replyResult.success) {

@@ -915,9 +915,11 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let replyText = null;
     let replyError = null;
 
-    const commentAgeMs = Date.now() - new Date(commentDoc.publishedAt).getTime();
-    const MAX_REPLY_AGE_MS = 15 * 60 * 1000; // 15 minutes
-    const isTooOldForReply = commentAgeMs > MAX_REPLY_AGE_MS;
+    const publishedTime = commentDoc.publishedAt ? new Date(commentDoc.publishedAt).getTime() : 0;
+    const commentAgeMs = publishedTime > 0 ? (Date.now() - publishedTime) : Infinity;
+    const MAX_REPLY_AGE_MS = 15 * 60 * 1000; // 15 minutes max threshold for auto-replying to new comments
+    const channelCreatedTime = channel.createdAt ? new Date(channel.createdAt).getTime() : 0;
+    const isTooOldForReply = !publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_REPLY_AGE_MS || (channelCreatedTime > 0 && publishedTime < channelCreatedTime);
 
     const rules = await AutoReplyRule.find({
       channelId: channel.channelId,
