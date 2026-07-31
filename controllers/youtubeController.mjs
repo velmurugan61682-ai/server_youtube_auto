@@ -462,6 +462,20 @@ export const handleCallback = async (req, res) => {
     logger.info(`Channel saved to MongoDB: ${channel.title} (ID: ${channel.channelId}, Google User ID: ${channel.googleUserId})`);
     logger.info('Channel connected');
 
+    // Sync organizationId and userId on existing Videos and Comments for this channel
+    try {
+      await Video.updateMany(
+        { channelId: channelData.id },
+        { $set: { userId: channel.userId, organizationId: channel.organizationId } }
+      );
+      await Comment.updateMany(
+        { channelId: channelData.id },
+        { $set: { userId: channel.userId, organizationId: channel.organizationId } }
+      );
+    } catch (syncErr) {
+      logger.error(`Failed to sync videos/comments organizationId for channel ${channelData.id}: ${syncErr.message}`);
+    }
+
     // Trigger initial background process (processComments expects raw/decrypted tokens)
     const io = req.app.get('io');
     processComments(channel, tokens, null, io).catch(err =>
@@ -553,7 +567,11 @@ export const getVideos = async (req, res) => {
     const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
 
-    const channel = await Channel.findOne({ userId: req.user.id, channelId }).lean();
+    const filterChannel = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
+
+    const channel = await Channel.findOne(filterChannel).lean();
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
 
     // Sync community posts
@@ -563,9 +581,16 @@ export const getVideos = async (req, res) => {
       logger.error(`Failed to sync community posts: ${postSyncErr.message}`);
     }
 
-    const userIds = [req.user.id];
+    const filterUser = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const users = await User.find(filterUser).select('_id').lean();
+    const userIds = users.map(u => u._id);
 
-    let videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
+    let videos = await Video.find({
+      channelId,
+      $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
+    }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
     const refreshCandidates = videos.filter(v => (
@@ -631,7 +656,10 @@ export const getVideos = async (req, res) => {
             });
             await Video.bulkWrite(uploadBulkOps);
             logger.info(`[SYNC] Upserted ${uploadBulkOps.length} uploaded videos for channel: ${channelId}.`);
-            videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
+            videos = await Video.find({
+              channelId,
+              $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
+            }).sort({ publishedAt: -1 }).lean();
           }
 
           const videosToRefresh = videos.filter(v => (
@@ -705,7 +733,10 @@ export const getVideos = async (req, res) => {
           }
 
           // Re-fetch updated list
-          videos = await Video.find({ userId: { $in: userIds }, channelId }).sort({ publishedAt: -1 }).lean();
+          videos = await Video.find({
+            channelId,
+            $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
+          }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {
