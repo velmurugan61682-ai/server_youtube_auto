@@ -636,7 +636,8 @@ export const getVideos = async (req, res) => {
                 titleUpper.includes('WAS LIVE');
 
               const setData = {
-                userId: req.user.id,
+                userId: channel.userId || req.user.id,
+                organizationId: channel.organizationId || null,
                 channelId: channel.channelId,
                 videoId: v.videoId,
                 title: v.title,
@@ -652,7 +653,7 @@ export const getVideos = async (req, res) => {
 
               return {
                 updateOne: {
-                  filter: { userId: req.user.id, videoId: v.videoId },
+                  filter: { channelId: channel.channelId, videoId: v.videoId },
                   update: { $set: setData },
                   upsert: true
                 }

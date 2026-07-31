@@ -1665,9 +1665,10 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
 
         for (const v of allVideos) {
           await Video.findOneAndUpdate(
-            { userId: channel.userId, videoId: v.videoId },
+            { channelId: channel.channelId, videoId: v.videoId },
             {
               userId: channel.userId,
+              organizationId: channel.organizationId || null,
               channelId: channel.channelId,
               videoId: v.videoId,
               title: v.title,
@@ -1693,12 +1694,13 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         try {
           const fetchedVideos = await fetchVideos(youtube, channel.channelId, channel.uploadsPlaylistId);
           for (const v of fetchedVideos) {
-            const existingVideo = await Video.findOne({ userId: channel.userId, videoId: v.videoId });
+            const existingVideo = await Video.findOne({ channelId: channel.channelId, videoId: v.videoId });
             if (!existingVideo) {
               logger.info(`[SYNC] New video detected: ${v.title} (ID: ${v.videoId})`);
               const analysisResult = await analyzeVideo(v.title, v.description, [], '', userKey);
               const newVideo = new Video({
                 userId: channel.userId,
+                organizationId: channel.organizationId || null,
                 channelId: channel.channelId,
                 videoId: v.videoId,
                 title: v.title,
