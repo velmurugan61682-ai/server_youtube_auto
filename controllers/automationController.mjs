@@ -87,7 +87,10 @@ export const updateAutomationSettings = async (req, res) => {
 export const triggerSync = async (req, res) => {
   try {
     const Channel = (await import('../models/Channel.mjs')).default;
-    const channel = await Channel.findOne({ userId: req.user.id, status: 'connected' }).lean();
+    const channelFilter = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], status: 'connected' }
+      : { userId: req.user.id, status: 'connected' };
+    const channel = await Channel.findOne(channelFilter).lean();
 
     if (!channel) {
       return res.status(404).json({

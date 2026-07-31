@@ -15,8 +15,12 @@ export const getAnalytics = async (req, res) => {
   try {
     const { channelId, startDate, endDate } = req.query;
 
-    // Strict Per-User Data Isolation
-    const userIds = [req.user.id];
+    // Organization-Aware Data Isolation
+    const filterUser = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+      : { _id: req.user.id };
+    const orgUsers = await User.find(filterUser).select('_id').lean();
+    const userIds = orgUsers.map(u => u._id.toString());
 
     const userObjectIds = userIds.map(id => {
       try {
@@ -27,9 +31,11 @@ export const getAnalytics = async (req, res) => {
     });
     const userMatchFilter = { $in: [...userIds, ...userObjectIds] };
 
-    // Resolve user channels
-    const filter = { userId: { $in: userIds } };
-    const channels = await Channel.find(filter).select('channelId').lean();
+    // Resolve organization channels
+    const filterChannel = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    const channels = await Channel.find(filterChannel).select('channelId').lean();
     const channelIds = channels.map(c => c.channelId);
 
     // Parse date filters
@@ -173,9 +179,11 @@ export const getAnalytics = async (req, res) => {
     let liveViewers = 0;
 
     // Find the currently active connected channel
-    const activeChannel = channelId 
-      ? await Channel.findOne({ userId: req.user.id, channelId })
-      : await Channel.findOne({ userId: req.user.id });
+    const activeChannelFilter = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+    if (channelId) activeChannelFilter.channelId = channelId;
+    const activeChannel = await Channel.findOne(activeChannelFilter);
 
     if (activeChannel && !activeChannel.apiKey) {
       try {

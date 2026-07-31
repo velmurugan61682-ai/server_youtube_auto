@@ -26,7 +26,10 @@ export const getModerationRules = async (req, res) => {
     
     let targetChannelId = channelId;
     if (!targetChannelId) {
-      const activeChannel = await Channel.findOne({ userId: req.user.id }).lean();
+      const activeChannelFilter = organizationId
+        ? { $or: [{ organizationId }, { userId: req.user.id }] }
+        : { userId: req.user.id };
+      const activeChannel = await Channel.findOne(activeChannelFilter).lean();
       if (activeChannel) {
         targetChannelId = activeChannel.channelId;
       }
@@ -111,7 +114,10 @@ export const updateModerationRules = async (req, res) => {
 
     let targetChannelId = channelId;
     if (!targetChannelId) {
-      const activeChannel = await Channel.findOne({ userId: req.user.id }).lean();
+      const activeChannelFilter = organizationId
+        ? { $or: [{ organizationId }, { userId: req.user.id }] }
+        : { userId: req.user.id };
+      const activeChannel = await Channel.findOne(activeChannelFilter).lean();
       if (activeChannel) {
         targetChannelId = activeChannel.channelId;
       }
@@ -170,19 +176,15 @@ export const getModeratedComments = async (req, res) => {
     }
 
     const organizationId = req.user.organizationId;
-    if (!organizationId) {
-      return res.status(400).json({ error: 'User is not assigned to an organization' });
-    }
 
     const hasAccess = await verifyChannelAccess(organizationId, req.user.id, channelId);
     if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied to the specified channel' });
     }
 
-    const query = {
-      organizationId,
-      channelId
-    };
+    const query = organizationId
+      ? { $or: [{ organizationId }, { userId: req.user.id }], channelId }
+      : { userId: req.user.id, channelId };
 
     if (statusFilter && ['deleted', 'flagged'].includes(statusFilter)) {
       query.status = statusFilter;

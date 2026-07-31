@@ -17,24 +17,37 @@ import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 import { debouncedEmit } from '../utils/socketDebouncer.mjs';
 import logger from '../utils/logger.mjs';
 
-// Helper to get allowed channel IDs for a user
+// Helper to get allowed channel IDs for a user (organization-aware)
 const getUserChannelIds = async (user) => {
-  const channels = await Channel.find({ userId: user.id }).select('channelId').lean();
+  const filter = user.organizationId
+    ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
+    : { userId: user.id };
+  const channels = await Channel.find(filter).select('channelId').lean();
   return channels.map(c => c.channelId);
+};
+
+// Helper to get allowed userIds for a user (organization-aware)
+const getOrgUserIds = async (user) => {
+  const filterUser = user.organizationId
+    ? { $or: [{ organizationId: user.organizationId }, { _id: user.id }] }
+    : { _id: user.id };
+  const users = await User.find(filterUser).select('_id').lean();
+  return users.map(u => u._id);
 };
 
 export const getComments = async (req, res) => {
   try {
     const { status, sentiment, autoLiked, videoId, channelId, page = 1, limit = 50 } = req.query;
     
-    // Resolve user channels
+    // Resolve organization channels
     const allowedChannelIds = await getUserChannelIds(req.user);
     
-    const userIds = [req.user.id];
+    // Resolve organization userIds
+    const userIds = await getOrgUserIds(req.user);
     
     const query = { 
       channelId: { $in: allowedChannelIds },
-      userId: { $in: userIds }
+      $or: [{ userId: { $in: userIds } }, { channelId: { $in: allowedChannelIds } }]
     };
     
     if (videoId) {
