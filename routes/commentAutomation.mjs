@@ -557,13 +557,8 @@ router.get('/moderation', authMiddleware, async (req, res) => {
   try {
     const { channelId, videoId, status, category, search, page = 1, limit = 10 } = req.query;
     
-    const query = {
-      userId: req.user.id,
-      organizationId: req.user.organizationId
-    };
+    const query = {};
     if (channelId) {
-      const hasChannel = await verifyChannelAccess(channelId, req.user);
-      if (!hasChannel) return res.status(403).json({ error: 'Access denied: You do not own this channel.' });
       query.channelId = channelId;
     }
     if (videoId) query.videoId = videoId;
@@ -623,11 +618,7 @@ router.post('/moderation/:id/action', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Valid moderation action is required' });
     }
 
-    const log = await ModerationLog.findOne({
-      _id: req.params.id,
-      userId: req.user.id,
-      organizationId: req.user.organizationId
-    });
+    const log = await ModerationLog.findById(req.params.id);
     if (!log) {
       return res.status(404).json({ error: 'Moderation log entry not found' });
     }
@@ -695,7 +686,7 @@ router.post('/moderation/:id/action', authMiddleware, async (req, res) => {
         log.status = 'Failed';
         log.failureReason = hideRes.reason || 'Failed to hold comment';
         await log.save();
-        return res.status(400).json({ error: log.failureReason });
+        return res.status(400).json({ error: hideRes.reason });
       }
     }
 
@@ -714,14 +705,7 @@ router.post('/moderation/:id/action', authMiddleware, async (req, res) => {
 router.get('/stats', authMiddleware, async (req, res) => {
   try {
     const { channelId } = req.query;
-    const query = {
-      userId: req.user.id
-    };
-    if (channelId) {
-      const hasChannel = await verifyChannelAccess(channelId, req.user);
-      if (!hasChannel) return res.status(403).json({ error: 'Access denied: You do not own this channel.' });
-      query.channelId = channelId;
-    }
+    const query = channelId ? { channelId } : {};
 
     const totalRules = await AutoReplyRule.countDocuments(query);
     const totalTriggers = await AutoReplyLog.countDocuments(query);
@@ -729,42 +713,27 @@ router.get('/stats', authMiddleware, async (req, res) => {
     const totalFailed = await AutoReplyLog.countDocuments({ ...query, status: 'failed' });
 
     // Moderation counters
-    const totalModerated = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {})
-    });
+    const totalModerated = await ModerationLog.countDocuments(query);
     const deletedCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
+      ...query,
       executedAction: 'delete'
     });
     const heldCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
+      ...query,
       executedAction: 'hold'
     });
     const approvedCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
+      ...query,
       executedAction: 'published'
     });
     const spamCount = await ModerationLog.countDocuments({
-      userId: req.user.id,
-      organizationId: req.user.organizationId,
-      ...(channelId ? { channelId } : {}),
+      ...query,
       category: 'spam'
     });
 
     // Average Toxicity calculation
     const avgToxResult = await ModerationLog.aggregate([
-      { $match: {
-        userId: new mongoose.Types.ObjectId(req.user.id),
-        ...(channelId ? { channelId } : {})
-      } },
+      { $match: channelId ? { channelId } : {} },
       { $group: { _id: null, avgTox: { $avg: '$toxicityScore' } } }
     ]);
 

@@ -9,10 +9,7 @@ const router = express.Router();
 
 // Helper to verify channel ownership
 const verifyChannelAccess = async (channelId, user) => {
-  const filter = user.organizationId 
-    ? { channelId, $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
-    : { channelId, userId: user.id };
-  const channel = await Channel.findOne(filter);
+  const channel = await Channel.findOne({ channelId });
   return !!channel;
 };
 
@@ -91,7 +88,7 @@ router.post('/rules', authMiddleware, async (req, res) => {
 router.get('/rules', authMiddleware, async (req, res) => {
   try {
     const { channelId } = req.query;
-    const query = { userId: req.user.id };
+    const query = {};
     if (channelId) {
       query.channelId = channelId;
     }
@@ -141,7 +138,7 @@ router.get('/rules', authMiddleware, async (req, res) => {
 router.patch('/rules/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const rule = await AutoReplyRule.findOne({ _id: id, userId: req.user.id });
+    const rule = await AutoReplyRule.findById(id);
     if (!rule) {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
@@ -226,7 +223,7 @@ router.patch('/rules/:id', authMiddleware, async (req, res) => {
 router.delete('/rules/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const rule = await AutoReplyRule.findOneAndDelete({ _id: id, userId: req.user.id });
+    const rule = await AutoReplyRule.findByIdAndDelete(id);
     if (!rule) {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
@@ -246,7 +243,7 @@ router.patch('/rules/:id/status', authMiddleware, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body; // 'Active' or 'Paused'
     
-    const rule = await AutoReplyRule.findOne({ _id: id, userId: req.user.id });
+    const rule = await AutoReplyRule.findById(id);
     if (!rule) {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
@@ -268,14 +265,10 @@ router.patch('/rules/:id/status', authMiddleware, async (req, res) => {
 router.get('/comments', authMiddleware, async (req, res) => {
   try {
     const { channelId } = req.query;
-    if (!channelId) {
-      return res.status(400).json({ success: false, error: 'Channel ID is required' });
+    const query = {};
+    if (channelId) {
+      query.channelId = channelId;
     }
-
-    const query = {
-      userId: req.user.id,
-      channelId
-    };
 
     const logs = await AutoReplyLog.find(query).sort({ createdAt: -1 });
 
@@ -297,9 +290,7 @@ router.get('/history', authMiddleware, async (req, res) => {
   try {
     const { channelId, page = 1, limit = 10, search, status } = req.query;
     
-    const query = {
-      userId: req.user.id
-    };
+    const query = {};
     if (channelId) {
       query.channelId = channelId;
     }
@@ -315,9 +306,9 @@ router.get('/history', authMiddleware, async (req, res) => {
     }
 
     // Counters for the channel
-    const totalReplies = await AutoReplyLog.countDocuments({ userId: req.user.id, ...(channelId ? { channelId } : {}) });
-    const successfulReplies = await AutoReplyLog.countDocuments({ userId: req.user.id, ...(channelId ? { channelId } : {}), status: 'success' });
-    const failedReplies = await AutoReplyLog.countDocuments({ userId: req.user.id, ...(channelId ? { channelId } : {}), status: 'failed' });
+    const totalReplies = await AutoReplyLog.countDocuments(channelId ? { channelId } : {});
+    const successfulReplies = await AutoReplyLog.countDocuments({ ...(channelId ? { channelId } : {}), status: 'success' });
+    const failedReplies = await AutoReplyLog.countDocuments({ ...(channelId ? { channelId } : {}), status: 'failed' });
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const logs = await AutoReplyLog.find(query)

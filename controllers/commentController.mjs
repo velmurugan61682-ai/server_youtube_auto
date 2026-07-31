@@ -468,13 +468,9 @@ export const getRules = async (req, res) => {
     const { channelId } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
 
-    const query = {
-      channelId: { $in: allowedChannelIds }
-    };
-    if (req.user.organizationId) {
-      query.organizationId = req.user.organizationId;
-    } else if (req.user.id) {
-      query.userId = req.user.id;
+    const query = {};
+    if (allowedChannelIds.length > 0) {
+      query.channelId = { $in: allowedChannelIds };
     }
 
     if (channelId && allowedChannelIds.includes(channelId)) {
@@ -672,13 +668,9 @@ export const getCommentHistory = async (req, res) => {
     const { page = 1, limit = 20, channelId, status, sentiment } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
 
-    const query = {
-      channelId: { $in: allowedChannelIds }
-    };
-    if (req.user.organizationId) {
-      query.organizationId = req.user.organizationId;
-    } else {
-      query.userId = req.user.id;
+    const query = {};
+    if (allowedChannelIds.length > 0) {
+      query.channelId = { $in: allowedChannelIds };
     }
 
     if (channelId && allowedChannelIds.includes(channelId)) {
