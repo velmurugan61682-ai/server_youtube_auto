@@ -924,7 +924,7 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
     
     let videoIds = [];
 
-    // Use liveBroadcasts.list only (free, real-time) — search.list costs 100 units/call which drains quota fast
+    // Use liveBroadcasts.list (free, real-time)
     if (auth && auth.credentials && auth.credentials.access_token) {
       try {
         const broadcastRes = await youtube.liveBroadcasts.list({
@@ -939,10 +939,53 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
       } catch (broadcastErr) {
         logger.warn(`liveBroadcasts.list failed: ${broadcastErr.message}`);
       }
+
+      // Fallback: check mine: true for broadcasts currently live or testing
+      if (videoIds.length === 0) {
+        try {
+          const mineRes = await youtube.liveBroadcasts.list({
+            part: 'snippet,status,contentDetails',
+            mine: true,
+            maxResults: 10
+          });
+          if (mineRes.data.items && mineRes.data.items.length > 0) {
+            const activeItems = mineRes.data.items.filter(i => 
+              i.status?.lifeCycleStatus === 'live' || 
+              i.status?.lifeCycleStatus === 'testing' ||
+              i.snippet?.liveBroadcastContent === 'live'
+            );
+            videoIds = activeItems.map(item => item.id).filter(Boolean);
+            if (videoIds.length > 0) {
+              logger.info(`[YOUTUBE API] liveBroadcasts.list (mine: true) found ${videoIds.length} active live stream(s).`);
+            }
+          }
+        } catch (mineErr) {
+          logger.warn(`liveBroadcasts.list mine:true failed: ${mineErr.message}`);
+        }
+      }
     }
 
-    // NOTE: We do NOT fallback to search.list — it costs 100 quota units per call.
-    // If liveBroadcasts.list returns nothing, return empty array.
+    // Fallback 2: search.list for live streams on channelId (works for OAuth & API key)
+    if (videoIds.length === 0 && channelId) {
+      try {
+        const searchRes = await youtube.search.list({
+          part: 'snippet',
+          channelId,
+          type: 'video',
+          eventType: 'live',
+          maxResults: 5
+        });
+        if (searchRes.data.items && searchRes.data.items.length > 0) {
+          videoIds = searchRes.data.items.map(item => item.id?.videoId).filter(Boolean);
+          if (videoIds.length > 0) {
+            logger.info(`[YOUTUBE API] search.list found ${videoIds.length} active live stream(s).`);
+          }
+        }
+      } catch (searchErr) {
+        logger.warn(`search.list eventType:live failed: ${searchErr.message}`);
+      }
+    }
+
     if (videoIds.length === 0) {
       return [];
     }

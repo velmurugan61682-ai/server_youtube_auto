@@ -735,7 +735,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     const commentAgeMs = publishedTime > 0 ? (Date.now() - publishedTime) : Infinity;
     const MAX_COMMENT_AGE_MS = 15 * 60 * 1000; // 15 minutes max threshold for auto-actions
     const channelCreatedTime = channel.createdAt ? new Date(channel.createdAt).getTime() : 0;
-    const isTooOldForAutomation = !publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_COMMENT_AGE_MS || (channelCreatedTime > 0 && publishedTime < channelCreatedTime);
+    const isTooOldForAutomation = commentDoc.isLiveChat
+      ? false
+      : (!publishedTime || isNaN(publishedTime) || commentAgeMs > MAX_COMMENT_AGE_MS || (channelCreatedTime > 0 && publishedTime < channelCreatedTime));
 
     const needsManualReview = !isUnsafe && !isConfident && (aiResult.isToxic === true || matchedCategory !== 'safe');
 
