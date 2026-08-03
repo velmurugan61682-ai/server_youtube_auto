@@ -893,7 +893,15 @@ export const postLiveChatMessage = async (youtube, liveChatId, messageText) => {
   const auth = getAuthFromClient(youtube);
   try {
     await ensureAuthToken(auth, auth?.channelDbId);
-    logger.info(`[YOUTUBE API] Request: liveChatMessages.insert into ${liveChatId}: "${messageText}"`);
+
+    // YouTube Live Chat limits textMessageDetails.messageText to 200 characters per item
+    // Strictly send 1 single reply per comment (truncated to 200 characters max)
+    const MAX_LEN = 200;
+    const singleMsgText = messageText.length > MAX_LEN 
+      ? messageText.substring(0, MAX_LEN - 3) + '...'
+      : messageText;
+
+    logger.info(`[YOUTUBE API] Request: liveChatMessages.insert into ${liveChatId}: "${singleMsgText}"`);
     const res = await youtube.liveChatMessages.insert({
       part: 'snippet',
       resource: {
@@ -901,7 +909,7 @@ export const postLiveChatMessage = async (youtube, liveChatId, messageText) => {
           liveChatId,
           type: 'textMessageEvent',
           textMessageDetails: {
-            messageText
+            messageText: singleMsgText
           }
         }
       }

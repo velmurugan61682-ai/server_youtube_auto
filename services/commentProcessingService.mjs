@@ -933,8 +933,11 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     const isTooOldForReply = isTooOldForAutomation;
 
     const rules = await AutoReplyRule.find({
-      channelId: channel.channelId,
-      userId: channel.userId,
+      $or: [
+        { channelId: channel.channelId, userId: channel.userId },
+        { userId: channel.userId },
+        { organizationId: channel.organizationId }
+      ],
       isActive: true
     });
 
@@ -942,24 +945,43 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     let matchedKeyword = null;
 
     for (const rule of rules) {
-      // Filter by videoIds if specified (empty array or 'all' contentType means channel-wide)
-      const videoMatch = rule.contentType === 'all' || (rule.videoIds && rule.videoIds.includes(commentDoc.videoId));
+      // Filter by videoIds if specified
+      const videoMatch = rule.contentType === 'all' 
+        || commentDoc.isLiveChat
+        || !rule.videoIds 
+        || rule.videoIds.length === 0 
+        || rule.videoIds.includes(commentDoc.videoId);
       if (!videoMatch) continue;
 
       const textLower = commentDoc.text.toLowerCase().trim();
       let matched = false;
 
-      if (rule.matchType === 'any_comment' || rule.triggerKeywords.includes('*')) {
+      // Check if triggerKeywords contain 'ANY', 'any', '*', 'all'
+      const hasAnyKw = rule.triggerKeywords && rule.triggerKeywords.some(kw => {
+        const k = kw.toLowerCase().trim();
+        return k === '*' || k === 'any' || k === 'all' || k === 'any_comment';
+      });
+
+      if (rule.matchType === 'any_comment' || hasAnyKw) {
         matched = true;
-        matchedKeyword = '*';
-      } else if (rule.matchType === 'contains_any') {
-        matchedKeyword = rule.triggerKeywords.find(kw => textLower.includes(kw.toLowerCase().trim()));
+        matchedKeyword = 'ANY';
+      } else if (rule.matchType === 'contains_any' || !rule.matchType) {
+        matchedKeyword = rule.triggerKeywords.find(kw => {
+          const k = kw.toLowerCase().trim();
+          return k === 'any' || k === '*' || textLower.includes(k);
+        });
         matched = !!matchedKeyword;
       } else if (rule.matchType === 'contains_all') {
-        matched = rule.triggerKeywords.every(kw => textLower.includes(kw.toLowerCase().trim()));
+        matched = rule.triggerKeywords.every(kw => {
+          const k = kw.toLowerCase().trim();
+          return k === 'any' || k === '*' || textLower.includes(k);
+        });
         if (matched) matchedKeyword = rule.triggerKeywords.join(', ');
       } else if (rule.matchType === 'exact_match') {
-        matchedKeyword = rule.triggerKeywords.find(kw => textLower === kw.toLowerCase().trim());
+        matchedKeyword = rule.triggerKeywords.find(kw => {
+          const k = kw.toLowerCase().trim();
+          return k === 'any' || k === '*' || textLower === k;
+        });
         matched = !!matchedKeyword;
       }
 
@@ -970,20 +992,26 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
     }
 
     if (matchedRule) {
-      // Generate context-aware human-like reply using DeepSeek
-      const ruleBaseText = matchedRule.replyText || matchedRule.dmContent || 'Thank you for your comment!';
-      replyText = await generateDeepseekHumanReply(commentDoc.text, ruleBaseText, userKey);
-
+      const baseText = matchedRule.replyText || matchedRule.dmContent || 'Thank you for your comment!';
+      
       if (matchedRule.replyType === 'Carousel' && matchedRule.carouselCards && matchedRule.carouselCards.length > 0) {
         const cardsFormatted = matchedRule.carouselCards.map(card => {
           const title = card.title ? `🌟 *${card.title}*\n` : '';
           const desc = card.description ? `${card.description}\n` : '';
-          const link = card.link || card.buttonUrl;
-          const btn = link ? `👉 *${card.btnLabel || card.buttonText || 'View Detail'}*: ${link}\n` : '';
-          const img = card.imageUrl ? `🖼️ Image: ${card.imageUrl}\n` : '';
+          const link = card.link || card.buttonUrl || card.buttonLink;
+          const btnLabel = card.btnLabel || card.buttonText || 'View Detail';
+          const btn = link ? `👉 *${btnLabel}*: ${link}\n` : '';
+          const img = card.imageUrl ? `🖼️ ${card.imageUrl}\n` : '';
           return `${title}${desc}${btn}${img}`.trim();
-        }).filter(Boolean).join('\n\n───────────────────\n\n');
-        replyText = cardsFormatted;
+        }).filter(Boolean).join('\n---\n');
+        
+        replyText = baseText ? `${baseText}\n\n${cardsFormatted}` : cardsFormatted;
+      } else {
+        if (tenantSettings.smartAiReply) {
+          replyText = await generateDeepseekHumanReply(commentDoc.text, baseText, userKey);
+        } else {
+          replyText = baseText;
+        }
       }
 
       if (replyText && !channel.apiKey) {
@@ -992,8 +1020,11 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           replyStatus = 'none';
         } else {
           // Post reply on YouTube
+          const liveReplyText = (commentDoc.isLiveChat && commentDoc.author && !replyText.startsWith('@'))
+            ? `@${commentDoc.author.trim()} ${replyText}`
+            : replyText;
           const repRes = commentDoc.isLiveChat
-            ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, replyText)
+            ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, liveReplyText)
             : await replyToComment(youtube, commentDoc.youtubeId, replyText);
           if (repRes.success) {
             replyStatus = 'sent';
@@ -1135,8 +1166,11 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         replyStatus = 'none';
       } else {
         // Post reply on YouTube
+        const liveReplyText = (commentDoc.isLiveChat && commentDoc.author && !replyText.startsWith('@'))
+          ? `@${commentDoc.author.trim()} ${replyText}`
+          : replyText;
         const repRes = commentDoc.isLiveChat
-          ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, replyText)
+          ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, liveReplyText)
           : await replyToComment(youtube, commentDoc.youtubeId, replyText);
       if (repRes.success) {
         replyStatus = 'sent';
