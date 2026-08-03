@@ -144,7 +144,7 @@ export const runYouTubeCommentWorker = async (io) => {
                     videoId: stream.videoId,
                     title: stream.title,
                     description: stream.description,
-                    thumbnail: stream.thumbnail,
+                    thumbnail: (stream.thumbnail || '').replace(/_live\.jpg$/i, '.jpg'),
                     isLive: true,
                     liveBroadcastContent: 'live',
                     liveChatId: stream.liveChatId,

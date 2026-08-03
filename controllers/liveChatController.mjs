@@ -79,7 +79,7 @@ export const getLiveStreams = async (req, res) => {
               videoId: s.videoId,
               title: s.title,
               description: s.description,
-              thumbnail: s.thumbnail,
+              thumbnail: (s.thumbnail || '').replace(/_live\.jpg$/i, '.jpg'),
               isLive: true,
               liveBroadcastContent: 'live',
               liveChatId: s.liveChatId || '',
