@@ -41,23 +41,16 @@ export const getComments = async (req, res) => {
     
     // Resolve organization channels
     const allowedChannelIds = await getUserChannelIds(req.user);
-    
-    // Resolve organization userIds
-    const userIds = await getOrgUserIds(req.user);
+    if (!allowedChannelIds || allowedChannelIds.length === 0) {
+      return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
+    }
     
     const query = { 
-      channelId: { $in: allowedChannelIds },
-      $or: [{ userId: { $in: userIds } }, { channelId: { $in: allowedChannelIds } }]
+      channelId: { $in: allowedChannelIds }
     };
     
     if (videoId) {
-      // Find the video and verify it belongs to allowed channelIds and userIds to prevent cross-channel/cross-user leakages
-      const videoDoc = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds }, userId: { $in: userIds } }).lean();
-      if (!videoDoc) {
-        return res.json({ comments: [], pagination: { total: 0, pages: 0, currentPage: 1, limit: parseInt(limit) } });
-      }
       query.videoId = videoId;
-      query.channelId = videoDoc.channelId; // Load comments strictly belonging to this video's channel
     } else if (channelId) {
       if (allowedChannelIds.includes(channelId)) {
         query.channelId = channelId;
@@ -240,10 +233,26 @@ export const reanalyzeComments = async (req, res) => {
 export const manualSync = async (req, res) => {
   try {
     const { videoId } = req.params;
-    const { channelId } = req.query;
-    const filter = req.user.organizationId 
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
-      : { userId: req.user.id, channelId };
+    let { channelId } = req.query;
+    const allowedChannelIds = await getUserChannelIds(req.user);
+
+    if (!channelId) {
+      const foundVideo = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds } }).lean();
+      if (foundVideo) {
+        channelId = foundVideo.channelId;
+      } else {
+        const foundComment = await Comment.findOne({ videoId, channelId: { $in: allowedChannelIds } }).lean();
+        if (foundComment) {
+          channelId = foundComment.channelId;
+        } else if (allowedChannelIds.length > 0) {
+          channelId = allowedChannelIds[0];
+        }
+      }
+    }
+
+    const filter = { channelId: { $in: allowedChannelIds } };
+    if (channelId) filter.channelId = channelId;
+
     const channel = await Channel.findOne(filter).lean();
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 

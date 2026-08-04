@@ -1,0 +1,23 @@
+{
+  "watch": [
+    "index.mjs",
+    "routes",
+    "controllers",
+    "models",
+    "services",
+    "middleware",
+    "config",
+    "jobs",
+    "utils"
+  ],
+  "ext": "mjs,js,json",
+  "ignore": [
+    "logs/*",
+    "scratch/*",
+    "scripts/*",
+    "node_modules/*",
+    ".git/*",
+    "*.log"
+  ],
+  "delay": 1000
+}

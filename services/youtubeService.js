@@ -38,9 +38,17 @@ export const getOAuth2Client = () => {
  */
 export const isQuotaError = (error) => {
   if (!error) return false;
-  const msg = error.response?.data?.error?.message || error.message || '';
-  const reason = error.response?.data?.error?.errors?.[0]?.reason || '';
-  return msg.includes('quotaExceeded') || msg.includes('exceeded your quota') || reason === 'quotaExceeded';
+  const msg = String(error.response?.data?.error?.message || error.message || '').toLowerCase();
+  const reason = String(error.response?.data?.error?.errors?.[0]?.reason || '').toLowerCase();
+  const domain = String(error.response?.data?.error?.errors?.[0]?.domain || '').toLowerCase();
+
+  return (
+    msg.includes('quota') ||
+    reason.includes('quota') ||
+    reason === 'dailylimitexceeded' ||
+    reason === 'userratelimitexceeded' ||
+    domain === 'usage limits'
+  );
 };
 
 /**
