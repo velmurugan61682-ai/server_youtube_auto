@@ -20,8 +20,14 @@ export const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create dedicated organization workspace for tenant isolation
+    let orgName = `${name}'s Workspace`;
+    const existingOrg = await Organization.findOne({ name: orgName }).lean();
+    if (existingOrg) {
+      orgName = `${name}'s Workspace (${Math.floor(1000 + Math.random() * 9000)})`;
+    }
+
     const newOrg = new Organization({
-      name: `${name}'s Workspace`,
+      name: orgName,
       status: 'active',
       planType: 'free'
     });

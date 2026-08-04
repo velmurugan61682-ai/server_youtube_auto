@@ -11,6 +11,16 @@ export const isQuotaError = (error) => {
   return msg.includes('quotaExceeded') || msg.includes('exceeded your quota') || reason === 'quotaExceeded';
 };
 
+export const isLiveDisabledError = (error) => {
+  if (!error) return false;
+  const msg = error.response?.data?.error?.message || error.message || '';
+  const reason = error.response?.data?.error?.errors?.[0]?.reason || '';
+  return msg.includes('not enabled for live streaming') || reason === 'liveStreamingNotEnabled';
+};
+
+const disabledLiveChannels = new Map();
+
+
 export const isUnauthorizedClientError = (error) => {
   if (!error) return false;
   if (isQuotaError(error)) return false;
@@ -924,7 +934,16 @@ export const postLiveChatMessage = async (youtube, liveChatId, messageText) => {
   }
 };
 
-export const fetchChannelLiveStreams = async (youtube, channelId) => {
+export const fetchChannelLiveStreams = async (youtube, channelId, options = {}) => {
+  const { allowSearchFallback = false } = options;
+
+  if (channelId) {
+    const disabledUntil = disabledLiveChannels.get(channelId);
+    if (disabledUntil && Date.now() < disabledUntil) {
+      return [];
+    }
+  }
+
   const auth = getAuthFromClient(youtube);
   try {
     await ensureAuthToken(auth, auth?.channelDbId);
@@ -945,6 +964,15 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
           logger.info(`[YOUTUBE API] liveBroadcasts.list found ${videoIds.length} active live stream(s).`);
         }
       } catch (broadcastErr) {
+        if (isLiveDisabledError(broadcastErr)) {
+          logger.info(`[YOUTUBE API] Channel ${channelId} is not enabled for live streaming. Caching status for 1 hour.`);
+          disabledLiveChannels.set(channelId, Date.now() + 60 * 60 * 1000);
+          return [];
+        }
+        if (isQuotaError(broadcastErr)) {
+          logger.warn(`[YOUTUBE API] Quota exceeded on liveBroadcasts.list for channel ${channelId}.`);
+          return [];
+        }
         logger.warn(`liveBroadcasts.list failed: ${broadcastErr.message}`);
       }
 
@@ -968,13 +996,22 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
             }
           }
         } catch (mineErr) {
+          if (isLiveDisabledError(mineErr)) {
+            logger.info(`[YOUTUBE API] Channel ${channelId} is not enabled for live streaming. Caching status for 1 hour.`);
+            disabledLiveChannels.set(channelId, Date.now() + 60 * 60 * 1000);
+            return [];
+          }
+          if (isQuotaError(mineErr)) {
+            logger.warn(`[YOUTUBE API] Quota exceeded on liveBroadcasts.list (mine: true) for channel ${channelId}.`);
+            return [];
+          }
           logger.warn(`liveBroadcasts.list mine:true failed: ${mineErr.message}`);
         }
       }
     }
 
-    // Fallback 2: search.list for live streams on channelId (works for OAuth & API key)
-    if (videoIds.length === 0 && channelId) {
+    // Fallback 2: search.list for live streams on channelId (only if explicitly allowed to preserve API quota)
+    if (videoIds.length === 0 && channelId && allowSearchFallback) {
       try {
         const searchRes = await youtube.search.list({
           part: 'snippet',
@@ -990,6 +1027,10 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
           }
         }
       } catch (searchErr) {
+        if (isQuotaError(searchErr)) {
+          logger.warn(`[YOUTUBE API] Quota exceeded on search.list eventType:live for channel ${channelId}.`);
+          return [];
+        }
         logger.warn(`search.list eventType:live failed: ${searchErr.message}`);
       }
     }
@@ -1019,7 +1060,15 @@ export const fetchChannelLiveStreams = async (youtube, channelId) => {
 
     return liveStreams;
   } catch (error) {
-    if (isQuotaError(error)) throw error;
+    if (isLiveDisabledError(error)) {
+      logger.info(`[YOUTUBE API] Channel ${channelId} is not enabled for live streaming. Caching status for 1 hour.`);
+      if (channelId) disabledLiveChannels.set(channelId, Date.now() + 60 * 60 * 1000);
+      return [];
+    }
+    if (isQuotaError(error)) {
+      logger.warn(`[YOUTUBE API] Quota exceeded during live stream check for channel ${channelId}.`);
+      return [];
+    }
     const errorMsg = error.response?.data?.error?.message || error.message;
     logger.error(`[YOUTUBE API] Error fetching live streams for channel ${channelId}: ${errorMsg}`);
     return [];

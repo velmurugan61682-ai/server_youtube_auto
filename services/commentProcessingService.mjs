@@ -1730,7 +1730,12 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         try {
           const fetchedVideos = await fetchVideos(youtube, channel.channelId, channel.uploadsPlaylistId);
           for (const v of fetchedVideos) {
-            const existingVideo = await Video.findOne({ channelId: channel.channelId, videoId: v.videoId });
+            const existingVideo = await Video.findOne({
+              $or: [
+                { channelId: channel.channelId, videoId: v.videoId },
+                { userId: channel.userId, videoId: v.videoId }
+              ]
+            });
             if (!existingVideo) {
               logger.info(`[SYNC] New video detected: ${v.title} (ID: ${v.videoId})`);
               const analysisResult = await analyzeVideo(v.title, v.description, [], '', userKey);
@@ -1756,8 +1761,16 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
                   analyzedAt: new Date()
                 }
               });
-              await newVideo.save();
-              await logAutomation(channel.userId, 'video_analysis', `Analyzed new video: ${v.title}`, { videoId: v.videoId });
+              try {
+                await newVideo.save();
+                await logAutomation(channel.userId, 'video_analysis', `Analyzed new video: ${v.title}`, { videoId: v.videoId });
+              } catch (saveErr) {
+                if (saveErr.code === 11000 || saveErr.name === 'MongoServerError') {
+                  logger.warn(`[SYNC] Video ${v.videoId} already exists in DB (duplicate key caught): ${saveErr.message}`);
+                } else {
+                  throw saveErr;
+                }
+              }
             }
           }
         } catch (err) {

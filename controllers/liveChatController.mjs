@@ -62,7 +62,7 @@ export const getLiveStreams = async (req, res) => {
 
     let streams = [];
     try {
-      streams = await fetchChannelLiveStreams(youtube, channelId);
+      streams = await fetchChannelLiveStreams(youtube, channelId, { allowSearchFallback: true });
     } catch (err) {
       logger.warn(`Could not fetch live streams directly from YT API: ${err.message}`);
     }
