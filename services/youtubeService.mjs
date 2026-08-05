@@ -57,8 +57,8 @@ export const isUnauthorizedClientError = (error) => {
     errorString.includes('invalid_request') ||
     errorString.includes('deleted_client') ||
     errorString.includes('access_denied') ||
-    statusCode === 401 ||
-    statusCode === 403
+    errorString.includes('token_revoked') ||
+    statusCode === 401
   );
 };
 
@@ -71,7 +71,6 @@ export const markChannelAsReconnectRequired = async (channelDbId, reason) => {
         reconnectRequired: true,
         reconnectReason: reason,
         accessToken: '',
-        refreshToken: '',
         expiryDate: 0
       }
     }, { returnDocument: 'after' });
@@ -558,7 +557,7 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
         videoId: item.contentDetails.videoId,
         title: item.snippet.title,
         description: item.snippet.description,
-        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace('_live.jpg', '.jpg'),
+        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace(/_live/gi, ''),
         publishedAt: item.snippet.publishedAt
       }));
       allVideos = allVideos.concat(items);
@@ -612,7 +611,7 @@ export const fetchAllVideos = async (youtube, channelId) => {
         videoId: item.contentDetails.videoId,
         title: item.snippet.title,
         description: item.snippet.description,
-        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace('_live.jpg', '.jpg'),
+        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace(/_live/gi, ''),
         publishedAt: item.snippet.publishedAt
       }));
       allVideos = allVideos.concat(items);
@@ -1056,7 +1055,7 @@ export const fetchChannelLiveStreams = async (youtube, channelId, options = {}) 
       videoId: v.id,
       title: v.snippet?.title || 'YouTube Live Stream',
       description: v.snippet?.description || '',
-      thumbnail: (v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || '').replace(/_live\.jpg$/i, '.jpg'),
+      thumbnail: (v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || '').replace(/_live/gi, ''),
       liveChatId: v.liveStreamingDetails?.activeLiveChatId || null,
       concurrentViewers: parseInt(v.liveStreamingDetails?.concurrentViewers || 0, 10),
       likeCount: parseInt(v.statistics?.likeCount || 0, 10),

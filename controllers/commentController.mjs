@@ -309,18 +309,30 @@ export const manualSync = async (req, res) => {
       return res.json({ success: true, simulated: true, comment: commentDoc });
     }
 
+    if (channel.reconnectRequired) {
+      return res.status(400).json({ error: 'Channel requires reconnection. Please reconnect your YouTube account in settings.' });
+    }
+
     if (channel.apiKey) {
       await processComments(channel, null, decrypt(channel.apiKey), io, videoId);
     } else {
+      const refreshToken = channel.refreshToken ? decrypt(channel.refreshToken) : '';
+      const accessToken = channel.accessToken ? decrypt(channel.accessToken) : '';
+
+      if (!refreshToken && !accessToken) {
+        return res.status(400).json({ error: 'Channel access token is missing. Please reconnect your account.' });
+      }
+
       await processComments(channel, {
-        access_token: decrypt(channel.accessToken),
-        refresh_token: decrypt(channel.refreshToken),
+        access_token: accessToken,
+        refresh_token: refreshToken,
         expiry_date: channel.expiryDate,
       }, null, io, videoId);
     }
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    logger.error(`[Manual Sync Error] ${error.message}`);
+    res.status(500).json({ error: error.message || 'Failed to sync comments for video' });
   }
 };
 

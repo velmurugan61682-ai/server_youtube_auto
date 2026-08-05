@@ -185,7 +185,7 @@ export const getAnalytics = async (req, res) => {
     if (channelId) activeChannelFilter.channelId = channelId;
     const activeChannel = await Channel.findOne(activeChannelFilter);
 
-    if (activeChannel && !activeChannel.apiKey) {
+    if (activeChannel && !activeChannel.apiKey && !activeChannel.reconnectRequired && activeChannel.accessToken) {
       try {
         const decryptedTokens = {
           access_token: decrypt(activeChannel.accessToken),

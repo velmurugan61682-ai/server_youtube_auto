@@ -604,10 +604,13 @@ export const getVideos = async (req, res) => {
     const needsStatsRefresh = refreshCandidates.length > 0 || videos.length === 0;
 
     if (needsStatsRefresh) {
-      const refreshKey = `${req.user.id}_${channelId}`;
-      if (activeRefreshes.has(refreshKey)) {
-        logger.info(`[SYNC] Refresh already in progress for channel: ${channelId} (User: ${req.user.id}). Returning cached DB videos.`);
+      if (channel.reconnectRequired || (!channel.accessToken && !channel.apiKey)) {
+        logger.info(`[SYNC] Skipping reconnect-required channel: ${channel.title || channelId}`);
       } else {
+        const refreshKey = `${req.user.id}_${channelId}`;
+        if (activeRefreshes.has(refreshKey)) {
+          logger.info(`[SYNC] Refresh already in progress for channel: ${channelId} (User: ${req.user.id}). Returning cached DB videos.`);
+        } else {
         activeRefreshes.add(refreshKey);
         logger.info(`Missing uploads/duration/statistics detected for channel: ${channelId}. Syncing Video Library from YouTube Data API...`);
         try {
@@ -748,6 +751,7 @@ export const getVideos = async (req, res) => {
           activeRefreshes.delete(refreshKey);
         }
       }
+    }
     }
     // Deduplicate videos and posts to guarantee uniqueness
     const uniqueVideos = [];

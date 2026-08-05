@@ -48,6 +48,11 @@ export const getLiveStreams = async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Channel not authorized' });
     }
 
+    if (channel.reconnectRequired || (!channel.accessToken && !channel.apiKey)) {
+      logger.info(`[LIVE STREAM] Skipping live streams fetch for reconnect-required channel: ${channel.title || channelId}`);
+      return res.json([]);
+    }
+
     let youtube;
     if (channel.apiKey) {
       youtube = getYouTubeClient({ access_token: '' }, null, channel._id);
