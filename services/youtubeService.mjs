@@ -557,7 +557,7 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
         videoId: item.contentDetails.videoId,
         title: item.snippet.title,
         description: item.snippet.description,
-        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace(/_live/gi, ''),
+        thumbnail: (item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace(/_live/gi, '').replace(/\/mqdefault/g, '/hqdefault'),
         publishedAt: item.snippet.publishedAt
       }));
       allVideos = allVideos.concat(items);
@@ -611,7 +611,7 @@ export const fetchAllVideos = async (youtube, channelId) => {
         videoId: item.contentDetails.videoId,
         title: item.snippet.title,
         description: item.snippet.description,
-        thumbnail: (item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace(/_live/gi, ''),
+        thumbnail: (item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '').replace(/_live/gi, '').replace(/\/mqdefault/g, '/hqdefault'),
         publishedAt: item.snippet.publishedAt
       }));
       allVideos = allVideos.concat(items);
@@ -1055,7 +1055,7 @@ export const fetchChannelLiveStreams = async (youtube, channelId, options = {}) 
       videoId: v.id,
       title: v.snippet?.title || 'YouTube Live Stream',
       description: v.snippet?.description || '',
-      thumbnail: (v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || '').replace(/_live/gi, ''),
+      thumbnail: (v.snippet?.thumbnails?.high?.url || v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.default?.url || '').replace(/_live/gi, '').replace(/\/mqdefault/g, '/hqdefault'),
       liveChatId: v.liveStreamingDetails?.activeLiveChatId || null,
       concurrentViewers: parseInt(v.liveStreamingDetails?.concurrentViewers || 0, 10),
       likeCount: parseInt(v.statistics?.likeCount || 0, 10),

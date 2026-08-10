@@ -15,12 +15,21 @@ export const getAnalytics = async (req, res) => {
   try {
     const { channelId, startDate, endDate } = req.query;
 
-    // Organization-Aware Data Isolation
+    // Organization-Aware Data Isolation - Resolve users and channels concurrently
     const filterUser = req.user.organizationId
       ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
       : { _id: req.user.id };
-    const orgUsers = await User.find(filterUser).select('_id').lean();
+    const filterChannel = req.user.organizationId
+      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+      : { userId: req.user.id };
+
+    const [orgUsers, channels] = await Promise.all([
+      User.find(filterUser).select('_id').lean(),
+      Channel.find(filterChannel).select('channelId').lean()
+    ]);
+
     const userIds = orgUsers.map(u => u._id.toString());
+    const channelIds = channels.map(c => c.channelId);
 
     const userObjectIds = userIds.map(id => {
       try {
@@ -30,13 +39,6 @@ export const getAnalytics = async (req, res) => {
       }
     });
     const userMatchFilter = { $in: [...userIds, ...userObjectIds] };
-
-    // Resolve organization channels
-    const filterChannel = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
-      : { userId: req.user.id };
-    const channels = await Channel.find(filterChannel).select('channelId').lean();
-    const channelIds = channels.map(c => c.channelId);
 
     // Parse date filters
     const now = new Date();
@@ -59,111 +61,112 @@ export const getAnalytics = async (req, res) => {
     });
     const toxicClassificationValues = [/^toxic$/i, /^spam$/i, /^hate speech$/i, /^abuse$/i, /^threat$/i, /^scam$/i, /^sexual content$/i];
 
-    // 1. Engagement Card: total tracked user comments + moderated logs in the date range.
-    const commentDocCount = await Comment.countDocuments(commentBaseQuery());
-    const modLogCount = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      createdAt: { $gte: start, $lte: end }
-    });
-    const totalComments = commentDocCount + modLogCount;
-
-    // 2. Positive Card: sentiment/classification can come from old or new analyzer rows.
-    const totalPositive = await Comment.countDocuments(commentBaseQuery({
-      $or: [
-        { sentiment: /^positive$/i },
-        { classification: /^positive$/i }
-      ]
-    }));
-
-    // 3. Toxic Card: include unsafe sentiment in Comment DB + ModerationLog toxic/deleted entries.
-    const commentToxicCount = await Comment.countDocuments(commentBaseQuery({
-      $or: [
-        { sentiment: /^toxic$/i },
-        { classification: { $in: toxicClassificationValues } },
-        { moderationStatus: { $in: ['deleted', 'heldForReview'] } },
-        { status: 'deleted' }
-      ]
-    }));
-    const modToxicCount = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      $or: [
-        { action: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
-        { executedAction: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
-        { category: { $in: [/toxic/i, /spam/i, /abuse/i, /hate/i] } }
-      ],
-      createdAt: { $gte: start, $lte: end }
-    });
-    const totalToxic = Math.max(commentToxicCount, modToxicCount);
-
-    // 4. Moderate Card: AI moderate sentiment + held/flagged comments.
-    const commentModCount = await Comment.countDocuments(commentBaseQuery({
-      $or: [
-        { sentiment: /^moderate$/i },
-        { status: { $in: ['moderate', 'flagged'] } },
-        { moderationStatus: { $in: ['needsReview', 'heldForReview'] } }
-      ]
-    }));
-    const modReviewCount = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      $or: [
-        { action: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
-        { executedAction: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
-        { status: { $in: ['needsReview', 'heldForReview', 'flagged'] } }
-      ],
-      createdAt: { $gte: start, $lte: end }
-    });
-    const totalModerate = Math.max(commentModCount, modReviewCount);
-
-    // Sentiment 'neutral' count for charts
-    const totalNeutral = await Comment.countDocuments(commentBaseQuery({
-      $or: [
-        { sentiment: /^neutral$/i },
-        { classification: /^neutral$/i }
-      ]
-    }));
-
-    // 5. Auto Shield Card: Total automatic deletes/holds from ModerationLog
-    const toxicDeleted = await ModerationLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      status: { $in: ['Success', 'success'] },
-      $or: [
-        { executedAction: { $in: ['delete', 'hold', 'deleted', 'hidden'] } },
-        { action: { $in: ['delete', 'hold', 'deleted', 'hidden'] } }
-      ],
-      createdAt: { $gte: start, $lte: end }
-    });
-
-    // 6. Auto Likes Card: Total successful auto likes
-    const positiveLiked = await AutoLikeLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      autoLiked: true,
-      createdAt: { $gte: start, $lte: end }
-    });
-
-    // 7. Auto Reply Card (Auto DM): Total successful replies from AutoReplyLog
-    const totalAutoDms = await AutoReplyLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      status: { $in: ['success', 'Success'] },
-      createdAt: { $gte: start, $lte: end }
-    });
-
-    // Calculate percentage change for Auto Replies (last 30 days comparison)
+    // Calculate dates for percentage comparison
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
     const previousStart = new Date(start.getTime() - thirtyDays);
     const previousEnd = start;
 
-    const previousAutoReplies = await AutoReplyLog.countDocuments({
-      userId: { $in: userIds },
-      channelId: channelFilter,
-      status: 'success',
-      createdAt: { $gte: previousStart, $lt: previousEnd }
-    });
+    // Execute ALL analytics count queries concurrently in parallel
+    const [
+      commentDocCount,
+      modLogCount,
+      totalPositive,
+      commentToxicCount,
+      modToxicCount,
+      commentModCount,
+      modReviewCount,
+      totalNeutral,
+      toxicDeleted,
+      positiveLiked,
+      totalAutoDms,
+      previousAutoReplies
+    ] = await Promise.all([
+      Comment.countDocuments(commentBaseQuery()),
+      ModerationLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        createdAt: { $gte: start, $lte: end }
+      }),
+      Comment.countDocuments(commentBaseQuery({
+        $or: [
+          { sentiment: /^positive$/i },
+          { classification: /^positive$/i }
+        ]
+      })),
+      Comment.countDocuments(commentBaseQuery({
+        $or: [
+          { sentiment: /^toxic$/i },
+          { classification: { $in: toxicClassificationValues } },
+          { moderationStatus: { $in: ['deleted', 'heldForReview'] } },
+          { status: 'deleted' }
+        ]
+      })),
+      ModerationLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        $or: [
+          { action: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
+          { executedAction: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
+          { category: { $in: [/toxic/i, /spam/i, /abuse/i, /hate/i] } }
+        ],
+        createdAt: { $gte: start, $lte: end }
+      }),
+      Comment.countDocuments(commentBaseQuery({
+        $or: [
+          { sentiment: /^moderate$/i },
+          { status: { $in: ['moderate', 'flagged'] } },
+          { moderationStatus: { $in: ['needsReview', 'heldForReview'] } }
+        ]
+      })),
+      ModerationLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        $or: [
+          { action: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
+          { executedAction: { $in: ['hold', 'review', 'needsReview', 'flagged'] } },
+          { status: { $in: ['needsReview', 'heldForReview', 'flagged'] } }
+        ],
+        createdAt: { $gte: start, $lte: end }
+      }),
+      Comment.countDocuments(commentBaseQuery({
+        $or: [
+          { sentiment: /^neutral$/i },
+          { classification: /^neutral$/i }
+        ]
+      })),
+      ModerationLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        status: { $in: ['Success', 'success'] },
+        $or: [
+          { executedAction: { $in: ['delete', 'hold', 'deleted', 'hidden'] } },
+          { action: { $in: ['delete', 'hold', 'deleted', 'hidden'] } }
+        ],
+        createdAt: { $gte: start, $lte: end }
+      }),
+      AutoLikeLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        autoLiked: true,
+        createdAt: { $gte: start, $lte: end }
+      }),
+      AutoReplyLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        status: { $in: ['success', 'Success'] },
+        createdAt: { $gte: start, $lte: end }
+      }),
+      AutoReplyLog.countDocuments({
+        userId: { $in: userIds },
+        channelId: channelFilter,
+        status: 'success',
+        createdAt: { $gte: previousStart, $lt: previousEnd }
+      })
+    ]);
+
+    const totalComments = commentDocCount + modLogCount;
+    const totalToxic = Math.max(commentToxicCount, modToxicCount);
+    const totalModerate = Math.max(commentModCount, modReviewCount);
 
     let changePercentage = 0;
     if (previousAutoReplies > 0) {

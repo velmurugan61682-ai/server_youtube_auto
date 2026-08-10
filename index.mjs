@@ -345,7 +345,16 @@ async function watchDatabaseChanges(io) {
 }
 
 // ── Middleware ───────────────────────────────────────────────
-app.use(compression());
+app.use(compression({
+  level: 6,
+  threshold: 512,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
 
 // Auto-sanitize requested URLs: strip trailing newlines (%0A, \n, \r) or whitespace to prevent 404s from copy-pasting
 app.use((req, res, next) => {
