@@ -59,14 +59,14 @@ export const getAnalytics = async (req, res) => {
       isBotReply: { $ne: true },
       $and: [commentDateWindow, ...conditions]
     });
-    const toxicClassificationValues = [/^toxic$/i, /^spam$/i, /^hate speech$/i, /^abuse$/i, /^threat$/i, /^scam$/i, /^sexual content$/i];
+    const toxicClassificationValues = ['toxic', 'Toxic', 'TOXIC', 'spam', 'Spam', 'SPAM', 'hate speech', 'Hate Speech', 'abuse', 'Abuse', 'threat', 'scam', 'sexual content'];
 
     // Calculate dates for percentage comparison
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
     const previousStart = new Date(start.getTime() - thirtyDays);
     const previousEnd = start;
 
-    // Execute ALL analytics count queries concurrently in parallel
+    // Execute ALL analytics count queries concurrently in parallel using indexed exact matches
     const [
       commentDocCount,
       modLogCount,
@@ -89,13 +89,13 @@ export const getAnalytics = async (req, res) => {
       }),
       Comment.countDocuments(commentBaseQuery({
         $or: [
-          { sentiment: /^positive$/i },
-          { classification: /^positive$/i }
+          { sentiment: { $in: ['positive', 'Positive', 'POSITIVE'] } },
+          { classification: { $in: ['positive', 'Positive', 'POSITIVE'] } }
         ]
       })),
       Comment.countDocuments(commentBaseQuery({
         $or: [
-          { sentiment: /^toxic$/i },
+          { sentiment: { $in: ['toxic', 'Toxic', 'TOXIC'] } },
           { classification: { $in: toxicClassificationValues } },
           { moderationStatus: { $in: ['deleted', 'heldForReview'] } },
           { status: 'deleted' }
@@ -107,13 +107,13 @@ export const getAnalytics = async (req, res) => {
         $or: [
           { action: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
           { executedAction: { $in: ['delete', 'deleted', 'hold', 'hidden'] } },
-          { category: { $in: [/toxic/i, /spam/i, /abuse/i, /hate/i] } }
+          { category: { $in: ['toxic', 'Toxic', 'spam', 'Spam', 'abuse', 'Abuse', 'hate', 'Hate'] } }
         ],
         createdAt: { $gte: start, $lte: end }
       }),
       Comment.countDocuments(commentBaseQuery({
         $or: [
-          { sentiment: /^moderate$/i },
+          { sentiment: { $in: ['moderate', 'Moderate', 'MODERATE'] } },
           { status: { $in: ['moderate', 'flagged'] } },
           { moderationStatus: { $in: ['needsReview', 'heldForReview'] } }
         ]
@@ -130,8 +130,8 @@ export const getAnalytics = async (req, res) => {
       }),
       Comment.countDocuments(commentBaseQuery({
         $or: [
-          { sentiment: /^neutral$/i },
-          { classification: /^neutral$/i }
+          { sentiment: { $in: ['neutral', 'Neutral', 'NEUTRAL'] } },
+          { classification: { $in: ['neutral', 'Neutral', 'NEUTRAL'] } }
         ]
       })),
       ModerationLog.countDocuments({
@@ -176,7 +176,7 @@ export const getAnalytics = async (req, res) => {
     }
 
     // ──────────────────────────────────────────────────────────
-    // YOUTUBE CHANNEL SUMMARY CARD DATA
+    // YOUTUBE CHANNEL SUMMARY CARD DATA (Instant DB response)
     // ──────────────────────────────────────────────────────────
     let channelSummary = null;
     let liveViewers = 0;
@@ -186,124 +186,48 @@ export const getAnalytics = async (req, res) => {
       ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
       : { userId: req.user.id };
     if (channelId) activeChannelFilter.channelId = channelId;
-    const activeChannel = await Channel.findOne(activeChannelFilter);
+    const activeChannel = await Channel.findOne(activeChannelFilter).lean();
 
-    if (activeChannel && !activeChannel.apiKey && !activeChannel.reconnectRequired && activeChannel.accessToken) {
-      try {
-        const decryptedTokens = {
-          access_token: decrypt(activeChannel.accessToken),
-          refresh_token: activeChannel.refreshToken ? decrypt(activeChannel.refreshToken) : undefined,
-          expiry_date: activeChannel.expiryDate
-        };
-
-        const youtube = getYouTubeClient(decryptedTokens, async (newTokens) => {
-          logger.info(`[Analytics] Tokens refreshed for channel ${activeChannel.channelId}`);
-          await Channel.findOneAndUpdate(
-            { userId: activeChannel.userId, channelId: activeChannel.channelId },
-            {
-              $set: {
-                accessToken: encrypt(newTokens.access_token),
-                refreshToken: encrypt(newTokens.refresh_token || decrypt(activeChannel.refreshToken)),
-                expiryDate: newTokens.expiry_date
-              }
-            }
-          );
-        }, activeChannel._id);
-
-        // Fetch channel info
-        const channelRes = await youtube.channels.list({ part: 'snippet,statistics', mine: true });
-        const channelItem = channelRes.data?.items?.[0];
-
-        if (channelItem) {
-          // Fetch active live stream and its viewers
-          try {
-            const broadcastsRes = await youtube.liveBroadcasts.list({
-              part: 'id',
-              broadcastStatus: 'active',
-              maxResults: 1
-            });
-            const activeBroadcast = broadcastsRes.data?.items?.[0];
-            if (activeBroadcast) {
-              const videoRes = await youtube.videos.list({
-                part: 'liveStreamingDetails',
-                id: activeBroadcast.id
-              });
-              const videoItem = videoRes.data?.items?.[0];
-              if (videoItem && videoItem.liveStreamingDetails) {
-                liveViewers = parseInt(videoItem.liveStreamingDetails.concurrentViewers || '0', 10);
-              }
-            }
-          } catch (liveErr) {
-            // Live streaming may not be enabled or channel may not be live — fallback safely to 0 live viewers
-            if (!liveErr.message?.includes('live streaming')) {
-              logger.debug(`Failed to fetch active live viewers in analytics: ${liveErr.message}`);
-            }
-          }
-
-          // Fetch subscriptions
-          let subscriptionCount = 0;
-          let nextPageToken = null;
-          let permissionError = false;
-
-          try {
-            do {
-              const subRes = await youtube.subscriptions.list({
-                part: 'id',
-                mine: true,
-                maxResults: 50,
-                ...(nextPageToken && { pageToken: nextPageToken })
-              });
-              const items = subRes.data?.items || [];
-              subscriptionCount += items.length;
-              nextPageToken = subRes.data?.nextPageToken;
-            } while (nextPageToken);
-          } catch (subErr) {
-            logger.error(`Failed to fetch subscriptions: ${subErr.message}`);
-            permissionError = true;
-          }
-
-          channelSummary = {
-            title: channelItem.snippet.title,
-            thumbnailUrl: channelItem.snippet.thumbnails?.high?.url || channelItem.snippet.thumbnails?.default?.url,
-            videoCount: channelItem.statistics?.videoCount || '0',
-            subscriberCount: channelItem.statistics?.subscriberCount || '0',
-            subscriptionCount: permissionError ? '—' : subscriptionCount.toString()
-          };
-
-          // Update existing channel statistics in DB to keep it updated (NO duplicates inserted)
-          await Channel.updateOne(
-            { userId: activeChannel.userId, channelId: activeChannel.channelId },
-            {
-              $set: {
-                title: channelItem.snippet.title,
-                thumbnailUrl: channelItem.snippet.thumbnails?.default?.url || '',
-                'statistics.subscriberCount': channelItem.statistics?.subscriberCount || '0',
-                'statistics.videoCount': channelItem.statistics?.videoCount || '0',
-                'statistics.viewCount': channelItem.statistics?.viewCount || '0'
-              }
-            }
-          );
-        }
-      } catch (ytErr) {
-        logger.error(`Failed to fetch real YouTube statistics in analytics endpoint: ${ytErr.message}`);
-        // Fallback to DB stored data if API fails (e.g. quota, network)
-        channelSummary = {
-          title: activeChannel.title,
-          thumbnailUrl: activeChannel.thumbnailUrl,
-          videoCount: activeChannel.statistics?.videoCount || '0',
-          subscriberCount: activeChannel.statistics?.subscriberCount || '0',
-          subscriptionCount: '—'
-        };
-      }
-    } else if (activeChannel && activeChannel.apiKey) {
-      // API Key channel doesn't support Google OAuth calls, so use stored info
+    if (activeChannel) {
       channelSummary = {
-        title: activeChannel.title,
-        thumbnailUrl: activeChannel.thumbnailUrl,
+        title: activeChannel.title || 'YouTube Channel',
+        thumbnailUrl: activeChannel.thumbnailUrl || '',
         videoCount: activeChannel.statistics?.videoCount || '0',
         subscriberCount: activeChannel.statistics?.subscriberCount || '0',
         subscriptionCount: '—'
       };
+
+      // Non-blocking background YouTube refresh (executes after res.json to avoid blocking HTTP response)
+      if (!activeChannel.apiKey && !activeChannel.reconnectRequired && activeChannel.accessToken) {
+        setImmediate(async () => {
+          try {
+            const decryptedTokens = {
+              access_token: decrypt(activeChannel.accessToken),
+              refresh_token: activeChannel.refreshToken ? decrypt(activeChannel.refreshToken) : undefined,
+              expiry_date: activeChannel.expiryDate
+            };
+            const youtube = getYouTubeClient(decryptedTokens, null, activeChannel._id);
+            const channelRes = await youtube.channels.list({ part: 'snippet,statistics', mine: true });
+            const channelItem = channelRes.data?.items?.[0];
+            if (channelItem) {
+              await Channel.updateOne(
+                { userId: activeChannel.userId, channelId: activeChannel.channelId },
+                {
+                  $set: {
+                    title: channelItem.snippet.title,
+                    thumbnailUrl: channelItem.snippet.thumbnails?.default?.url || '',
+                    'statistics.subscriberCount': channelItem.statistics?.subscriberCount || '0',
+                    'statistics.videoCount': channelItem.statistics?.videoCount || '0',
+                    'statistics.viewCount': channelItem.statistics?.viewCount || '0'
+                  }
+                }
+              );
+            }
+          } catch (e) {
+            // Background refresh error ignored — DB copy remains available
+          }
+        });
+      }
     }
 
     // 8. Total Leads: Count from Lead collection (real MongoDB data)
@@ -473,9 +397,9 @@ export const getAnalyticsOverview = async (req, res) => {
     const filter = { userId, channelId: { $in: channelIds } };
 
     const totalComments = await Comment.countDocuments(filter);
-    const positiveComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^positive$/i }, { classification: /^positive$/i }] });
-    const negativeComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^negative$/i }, { classification: /^negative$/i }] });
-    const toxicComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^toxic$/i }, { classification: /^toxic$/i }] });
+    const positiveComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['positive', 'Positive', 'POSITIVE'] } }, { classification: { $in: ['positive', 'Positive', 'POSITIVE'] } }] });
+    const negativeComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['negative', 'Negative', 'NEGATIVE'] } }, { classification: { $in: ['negative', 'Negative', 'NEGATIVE'] } }] });
+    const toxicComments = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['toxic', 'Toxic', 'TOXIC'] } }, { classification: { $in: ['toxic', 'Toxic', 'TOXIC'] } }] });
     const autoReplies = await AutoReplyLog.countDocuments({ userId, channelId: { $in: channelIds } });
     const moderatedComments = await ModerationLog.countDocuments({ userId, channelId: { $in: channelIds } });
     const leads = await Lead.countDocuments({ userId, channelId: { $in: channelIds } });
@@ -510,10 +434,10 @@ export const getSentimentBreakdown = async (req, res) => {
 
     const filter = { userId, channelId: { $in: channelIds } };
 
-    const positive = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^positive$/i }, { classification: /^positive$/i }] });
-    const neutral = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^neutral$/i }, { classification: /^neutral$/i }] });
-    const negative = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^negative$/i }, { classification: /^negative$/i }] });
-    const toxic = await Comment.countDocuments({ ...filter, $or: [{ sentiment: /^toxic$/i }, { classification: /^toxic$/i }] });
+    const positive = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['positive', 'Positive', 'POSITIVE'] } }, { classification: { $in: ['positive', 'Positive', 'POSITIVE'] } }] });
+    const neutral = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['neutral', 'Neutral', 'NEUTRAL'] } }, { classification: { $in: ['neutral', 'Neutral', 'NEUTRAL'] } }] });
+    const negative = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['negative', 'Negative', 'NEGATIVE'] } }, { classification: { $in: ['negative', 'Negative', 'NEGATIVE'] } }] });
+    const toxic = await Comment.countDocuments({ ...filter, $or: [{ sentiment: { $in: ['toxic', 'Toxic', 'TOXIC'] } }, { classification: { $in: ['toxic', 'Toxic', 'TOXIC'] } }] });
 
     return res.json({
       success: true,
