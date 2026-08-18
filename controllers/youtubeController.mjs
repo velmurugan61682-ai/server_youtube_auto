@@ -571,9 +571,12 @@ export const getVideos = async (req, res) => {
     const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
 
-    const filterChannel = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
-      : { userId: req.user.id, channelId };
+    const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
+    const filterChannel = isAdmin
+      ? { channelId }
+      : (req.user.organizationId
+          ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], channelId }
+          : { userId: req.user.id, channelId });
 
     const channel = await Channel.findOne(filterChannel).lean();
     if (!channel) return res.status(404).json({ error: 'Channel not found' });
@@ -585,16 +588,7 @@ export const getVideos = async (req, res) => {
       logger.error(`Failed to sync community posts: ${postSyncErr.message}`);
     }
 
-    const filterUser = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
-      : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id').lean();
-    const userIds = users.map(u => u._id);
-
-    let videos = await Video.find({
-      channelId,
-      $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
-    }).sort({ publishedAt: -1 }).lean();
+    let videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
 
     const staleTime = Date.now() - 15 * 60000; // 15 minutes TTL cache
     const refreshCandidates = videos.filter(v => (
@@ -777,22 +771,32 @@ export const getVideos = async (req, res) => {
 export const getVideoAnalytics = async (req, res) => {
   try {
     const { id } = req.params;
+    const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
 
-    // Resolve organization users
-    const filterUser = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
-      : { _id: req.user.id };
-    const users = await User.find(filterUser).select('_id').lean();
-    const userIds = users.map(u => u._id);
+    let video;
+    if (isAdmin) {
+      video = await Video.findOne({ videoId: id }).lean();
+    } else {
+      const filterUser = req.user.organizationId
+        ? { $or: [{ organizationId: req.user.organizationId }, { _id: req.user.id }] }
+        : { _id: req.user.id };
+      const users = await User.find(filterUser).select('_id').lean();
+      const userIds = users.map(u => u._id);
 
-    // Resolve tenant channels to avoid cross-channel leakage
-    const filterChannel = req.user.organizationId
-      ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
-      : { userId: req.user.id };
-    const channels = await Channel.find(filterChannel).select('channelId').lean();
-    const channelIds = channels.map(c => c.channelId);
+      const filterChannel = req.user.organizationId
+        ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+        : { userId: req.user.id };
+      const channels = await Channel.find(filterChannel).select('channelId').lean();
+      const channelIds = channels.map(c => c.channelId);
 
-    const video = await Video.findOne({ userId: { $in: userIds }, channelId: { $in: channelIds }, videoId: id }).lean();
+      video = await Video.findOne({
+        videoId: id,
+        $or: [
+          { userId: { $in: userIds } },
+          { channelId: { $in: channelIds } }
+        ]
+      }).lean();
+    }
     if (!video) {
       return res.json({
         video: {

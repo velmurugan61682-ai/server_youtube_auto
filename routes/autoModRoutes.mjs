@@ -9,6 +9,7 @@ const router = express.Router();
 
 // Helper to verify channel ownership
 const verifyChannelAccess = async (channelId, user) => {
+  if (user && (user.role === 'admin' || user.isAdmin)) return true;
   const filter = user.organizationId 
     ? { channelId, $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
     : { channelId, userId: user.id };

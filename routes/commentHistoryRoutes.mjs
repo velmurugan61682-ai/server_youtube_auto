@@ -32,14 +32,16 @@ router.get('/', authMiddleware, async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
     // ── 1. Resolve channels the user/org owns ──────────────────────────────
-    let channelFilter = organizationId
-      ? { $or: [{ organizationId }, { userId }] }
-      : { userId };
-
-    if (channelId) {
-      channelFilter = organizationId
+    const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
+    let channelFilter = {};
+    if (isAdmin) {
+      channelFilter = channelId ? { channelId } : {};
+    } else if (organizationId) {
+      channelFilter = channelId
         ? { $and: [{ $or: [{ organizationId }, { userId }] }, { channelId }] }
-        : { userId, channelId };
+        : { $or: [{ organizationId }, { userId }] };
+    } else {
+      channelFilter = channelId ? { userId, channelId } : { userId };
     }
 
     const ownedChannels = await Channel.find(channelFilter).select('channelId').lean();

@@ -27,8 +27,13 @@ export const authMiddleware = (req, res, next) => {
   try {
     // First try the regular client JWT_SECRET
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    req.isAdminJwt = !!decoded.isAdminToken;
+    req.user = {
+      ...decoded,
+      id: decoded.id || decoded._id,
+      role: decoded.role || (decoded.isAdmin ? 'admin' : 'client'),
+      isAdmin: decoded.role === 'admin' || !!decoded.isAdmin || !!decoded.isAdminToken
+    };
+    req.isAdminJwt = !!decoded.isAdminToken || req.user.isAdmin;
     logger.info('✓ JWT verified');
     next();
   } catch (err) {
@@ -36,7 +41,12 @@ export const authMiddleware = (req, res, next) => {
     if (ADMIN_JWT_SECRET && ADMIN_JWT_SECRET !== JWT_SECRET) {
       try {
         const decoded = jwt.verify(token, ADMIN_JWT_SECRET);
-        req.user = decoded;
+        req.user = {
+          ...decoded,
+          id: decoded.id || decoded._id,
+          role: decoded.role || 'admin',
+          isAdmin: true
+        };
         req.isAdminJwt = true;
         logger.info('✓ Admin JWT verified');
         return next();

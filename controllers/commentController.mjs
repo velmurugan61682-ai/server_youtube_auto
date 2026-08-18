@@ -19,6 +19,10 @@ import logger from '../utils/logger.mjs';
 
 // Helper to get allowed channel IDs for a user (organization-aware)
 const getUserChannelIds = async (user) => {
+  if (user && (user.role === 'admin' || user.isAdmin)) {
+    const channels = await Channel.find({}).select('channelId').lean();
+    return channels.map(c => c.channelId);
+  }
   const filter = user.organizationId
     ? { $or: [{ organizationId: user.organizationId }, { userId: user.id }] }
     : { userId: user.id };

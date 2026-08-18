@@ -7,7 +7,10 @@ import logger from '../utils/logger.mjs';
 /**
  * Helper to verify user channel ownership / access under tenant organization
  */
-const verifyChannelAccess = async (organizationId, userId, channelId) => {
+const verifyChannelAccess = async (organizationId, userId, channelId, user = null) => {
+  if (user && (user.role === 'admin' || user.isAdmin)) {
+    return true;
+  }
   const filter = organizationId 
     ? { channelId, $or: [{ organizationId }, { userId }] }
     : { channelId, userId };
@@ -177,7 +180,7 @@ export const getModeratedComments = async (req, res) => {
 
     const organizationId = req.user.organizationId;
 
-    const hasAccess = await verifyChannelAccess(organizationId, req.user.id, channelId);
+    const hasAccess = await verifyChannelAccess(organizationId, req.user.id, channelId, req.user);
     if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied to the specified channel' });
     }

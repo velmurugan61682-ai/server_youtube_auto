@@ -23,7 +23,10 @@ import { processSingleComment } from '../services/commentProcessingService.mjs';
 /**
  * Helper to verify channel ownership / tenant access
  */
-const verifyChannelAccess = async (organizationId, userId, channelId) => {
+const verifyChannelAccess = async (organizationId, userId, channelId, user = null) => {
+  if (user && (user.role === 'admin' || user.isAdmin)) {
+    return await Channel.findOne({ channelId }).lean();
+  }
   const filter = organizationId 
     ? { channelId, $or: [{ organizationId }, { userId }] }
     : { channelId, userId };
@@ -43,7 +46,7 @@ export const getLiveStreams = async (req, res) => {
     }
 
     const organizationId = req.user.organizationId;
-    const channel = await verifyChannelAccess(organizationId, req.user.id, channelId);
+    const channel = await verifyChannelAccess(organizationId, req.user.id, channelId, req.user);
     if (!channel) {
       return res.status(403).json({ error: 'Access denied: Channel not authorized' });
     }
