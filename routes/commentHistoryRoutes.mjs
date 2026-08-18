@@ -66,8 +66,8 @@ router.get('/', authMiddleware, async (req, res) => {
     // ── 2. Build search regex ───────────────────────────────────────────────
     const searchRegex = search ? new RegExp(search, 'i') : null;
 
-    // ── 3. Fetch AutoReplyLog (type = replied) ──────────────────────────────
-    let replyQuery = { channelId: { $in: allowedChannelIds }, $or: [{ userId: { $in: orgUserIds } }, { channelId: { $in: allowedChannelIds } }] };
+    // ── 3. Fetch AutoReplyLog, ModerationLog, and Comment records ────────────
+    let replyQuery = { channelId: { $in: allowedChannelIds } };
     if (channelId) replyQuery.channelId = channelId;
     if (searchRegex) {
       replyQuery.$or = [
@@ -77,8 +77,7 @@ router.get('/', authMiddleware, async (req, res) => {
       ];
     }
 
-    // ── 4. Fetch ModerationLog (type = deleted | hidden) ────────────────────
-    let modQuery = { channelId: { $in: allowedChannelIds }, $or: [{ userId: { $in: orgUserIds } }, { channelId: { $in: allowedChannelIds } }, ...(organizationId ? [{ organizationId }] : [])] };
+    let modQuery = { channelId: { $in: allowedChannelIds } };
     if (channelId) modQuery.channelId = channelId;
     if (searchRegex) {
       modQuery.$or = [
@@ -87,20 +86,35 @@ router.get('/', authMiddleware, async (req, res) => {
       ];
     }
 
+    const CommentModel = (await import('../models/Comment.mjs')).default;
+    let commentQuery = {
+      channelId: { $in: allowedChannelIds },
+      $or: [
+        { replyText: { $exists: true, $ne: '' } },
+        { aiReply: { $exists: true, $ne: '' } },
+        { status: { $in: ['deleted', 'hidden', 'flagged', 'replied'] } }
+      ]
+    };
+    if (channelId) commentQuery.channelId = channelId;
+
     // Pull all records (we merge in-memory then paginate)
-    const [allReplies, allMods] = await Promise.all([
+    const [allReplies, allMods, allComments] = await Promise.all([
       (type === 'all' || type === 'replied' || type === 'failed')
         ? AutoReplyLog.find(replyQuery).sort({ createdAt: -1 }).lean()
         : Promise.resolve([]),
       (type === 'all' || type === 'deleted' || type === 'hidden' || type === 'failed')
         ? ModerationLog.find(modQuery).sort({ createdAt: -1 }).lean()
+        : Promise.resolve([]),
+      (type === 'all' || type === 'replied' || type === 'deleted' || type === 'hidden')
+        ? CommentModel.find(commentQuery).sort({ publishedAt: -1, createdAt: -1 }).lean()
         : Promise.resolve([])
     ]);
 
     // ── 5. Resolve video titles ─────────────────────────────────────────────
     const allVideoIds = [
       ...allReplies.map(r => r.videoId),
-      ...allMods.map(m => m.videoId)
+      ...allMods.map(m => m.videoId),
+      ...allComments.map(c => c.videoId)
     ].filter(Boolean);
 
     const uniqueVideoIds = [...new Set(allVideoIds)];
@@ -145,8 +159,27 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     });
 
-    // ── 8. Merge + deduplicate by authorName + commentText ──
-    const mergedRaw = [...modItems, ...replyItems];
+    // ── 7b. Normalize Comment records ───────────────────────────────────────
+    const commentItems = allComments.map(c => {
+      const isDeleted = c.status === 'deleted' || c.status === 'hidden';
+      return {
+        id: c._id.toString(),
+        type: isDeleted ? (c.status === 'deleted' ? 'deleted' : 'hidden') : 'replied',
+        status: 'success',
+        authorName: c.author || c.authorName || c.username || 'Anonymous',
+        commentText: c.text || c.commentText || '',
+        replyText: c.replyText || c.aiReply || '',
+        category: c.sentiment || null,
+        confidence: null,
+        reason: null,
+        videoTitle: videoMap[c.videoId] || 'Unknown Video',
+        triggerKeyword: null,
+        actionDate: c.publishedAt || c.createdAt || new Date()
+      };
+    });
+
+    // ── 8. Merge + deduplicate by authorName + commentText ──────────────────
+    const mergedRaw = [...modItems, ...replyItems, ...commentItems];
     const seenHistoryKeys = new Set();
     let merged = [];
     for (const item of mergedRaw) {
@@ -169,12 +202,12 @@ router.get('/', authMiddleware, async (req, res) => {
     merged.sort((a, b) => new Date(b.actionDate) - new Date(a.actionDate));
 
     // ── 11. Compute summary counts from full datasets ───────────────────────
-    const totalReplied  = replyItems.filter(i => i.status === 'success').length;
-    const totalDeleted  = modItems.filter(i => i.type === 'deleted' && i.status === 'success').length;
-    const totalHidden   = modItems.filter(i => i.type === 'hidden' && i.status === 'success').length;
+    const totalReplied  = merged.filter(i => i.type === 'replied' && i.status === 'success').length;
+    const totalDeleted  = merged.filter(i => i.type === 'deleted' && i.status === 'success').length;
+    const totalHidden   = merged.filter(i => i.type === 'hidden' && i.status === 'success').length;
     const totalFailed   = merged.filter(i => i.status === 'failed').length;
-    const totalAll      = replyItems.length + modItems.length;
-    const totalSuccess  = replyItems.filter(i => i.status === 'success').length + modItems.filter(i => i.status === 'success').length;
+    const totalAll      = merged.length;
+    const totalSuccess  = merged.filter(i => i.status === 'success').length;
     const successRate   = totalAll > 0 ? Math.round((totalSuccess / totalAll) * 100) : 0;
 
     // ── 12. Paginate ────────────────────────────────────────────────────────
