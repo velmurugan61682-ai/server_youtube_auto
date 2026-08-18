@@ -145,9 +145,19 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     });
 
-    // ── 8. Merge + deduplicate by commentId (prefer moderation over reply) ──
-    // We use a Set keyed on mongo _id (which is already unique per collection)
-    let merged = [...modItems, ...replyItems];
+    // ── 8. Merge + deduplicate by authorName + commentText ──
+    const mergedRaw = [...modItems, ...replyItems];
+    const seenHistoryKeys = new Set();
+    let merged = [];
+    for (const item of mergedRaw) {
+      const authorClean = (item.authorName || '').trim().toLowerCase();
+      const commentClean = (item.commentText || '').trim().toLowerCase();
+      const key = `${authorClean}:${commentClean}`;
+      if (commentClean && !seenHistoryKeys.has(key)) {
+        seenHistoryKeys.add(key);
+        merged.push(item);
+      }
+    }
 
     // ── 9. Apply type filter ────────────────────────────────────────────────
     if (type === 'replied')  merged = merged.filter(i => i.type === 'replied');

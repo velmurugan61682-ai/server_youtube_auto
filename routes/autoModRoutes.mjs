@@ -4,6 +4,7 @@ import AutoReplyRule from '../models/AutoReplyRule.mjs';
 import AutoReplyLog from '../models/AutoReplyLog.mjs';
 import Channel from '../models/Channel.mjs';
 import Video from '../models/Video.mjs';
+import Comment from '../models/Comment.mjs';
 
 const router = express.Router();
 
@@ -92,10 +93,12 @@ router.post('/rules', authMiddleware, async (req, res) => {
 router.get('/rules', authMiddleware, async (req, res) => {
   try {
     const { channelId } = req.query;
-    const query = { userId: req.user.id };
-    if (channelId) {
-      query.channelId = channelId;
-    }
+    const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
+    const query = isAdmin
+      ? (channelId ? { channelId } : {})
+      : (req.user.organizationId
+          ? { $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }], ...(channelId ? { channelId } : {}) }
+          : { userId: req.user.id, ...(channelId ? { channelId } : {}) });
     const rules = await AutoReplyRule.find(query).sort({ createdAt: -1 });
     
     // Map database properties back to frontend properties
@@ -142,7 +145,14 @@ router.get('/rules', authMiddleware, async (req, res) => {
 router.patch('/rules/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const rule = await AutoReplyRule.findOne({ _id: id, userId: req.user.id });
+    const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
+    const filterRule = isAdmin
+      ? { _id: id }
+      : (req.user.organizationId
+          ? { _id: id, $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+          : { _id: id, userId: req.user.id });
+
+    const rule = await AutoReplyRule.findOne(filterRule);
     if (!rule) {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
@@ -227,7 +237,14 @@ router.patch('/rules/:id', authMiddleware, async (req, res) => {
 router.delete('/rules/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const rule = await AutoReplyRule.findOneAndDelete({ _id: id, userId: req.user.id });
+    const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
+    const filterRule = isAdmin
+      ? { _id: id }
+      : (req.user.organizationId
+          ? { _id: id, $or: [{ organizationId: req.user.organizationId }, { userId: req.user.id }] }
+          : { _id: id, userId: req.user.id });
+
+    const rule = await AutoReplyRule.findOneAndDelete(filterRule);
     if (!rule) {
       return res.status(404).json({ success: false, error: 'Rule not found' });
     }
@@ -350,6 +367,72 @@ router.get('/history', authMiddleware, async (req, res) => {
       page: parseInt(page),
       data: logsWithVideoName
     });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * @route GET /api/auto-mod/comments
+ * @desc Get comments and auto reply logs for channel chat view (deduplicated)
+ * @access Private
+ */
+router.get('/comments', authMiddleware, async (req, res) => {
+  try {
+    const { channelId } = req.query;
+    if (!channelId) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const hasChannel = await verifyChannelAccess(channelId, req.user);
+    if (!hasChannel) {
+      return res.status(403).json({ success: false, error: 'Access denied: Channel not connected or unauthorized' });
+    }
+
+    const comments = await Comment.find({ channelId })
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .limit(300)
+      .lean();
+
+    const logs = await AutoReplyLog.find({ channelId })
+      .sort({ createdAt: -1 })
+      .limit(300)
+      .lean();
+
+    const mappedComments = comments.map(c => ({
+      _id: c._id ? c._id.toString() : c.id || c.youtubeId,
+      videoId: c.videoId,
+      channelId: c.channelId,
+      username: c.author || c.authorName || c.username || 'Anonymous',
+      commentText: c.text || c.commentText || '',
+      replyText: c.replyText || c.aiReply || '',
+      createdAt: c.publishedAt || c.createdAt || new Date()
+    }));
+
+    const mappedLogs = logs.map(l => ({
+      _id: l._id ? l._id.toString() : l.id,
+      videoId: l.videoId,
+      channelId: l.channelId,
+      username: l.username || l.authorName || 'Anonymous',
+      commentText: l.commentText || '',
+      replyText: l.replyText || l.aiReply || '',
+      createdAt: l.createdAt || new Date()
+    }));
+
+    // Merge and deduplicate strictly by lowercased username + commentText
+    const combined = [...mappedLogs, ...mappedComments];
+    const uniqueMap = new Map();
+    for (const item of combined) {
+      const userClean = (item.username || '').trim().toLowerCase();
+      const textClean = (item.commentText || '').trim().toLowerCase();
+      const key = `${userClean}:${textClean}`;
+      if (textClean && !uniqueMap.has(key)) {
+        uniqueMap.set(key, item);
+      }
+    }
+
+    const result = Array.from(uniqueMap.values());
+    return res.json({ success: true, data: result });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
