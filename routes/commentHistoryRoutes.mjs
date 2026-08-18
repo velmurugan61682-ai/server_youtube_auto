@@ -31,21 +31,29 @@ router.get('/', authMiddleware, async (req, res) => {
     const pageNum  = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
-    // ── 1. Resolve channels the user/org owns ──────────────────────────────
+    // ── 1. Resolve target channel IDs ───────────────────────────────────────
     const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
-    let channelFilter = {};
-    if (isAdmin) {
-      channelFilter = channelId ? { channelId } : {};
-    } else if (organizationId) {
-      channelFilter = channelId
-        ? { $and: [{ $or: [{ organizationId }, { userId }] }, { channelId }] }
-        : { $or: [{ organizationId }, { userId }] };
-    } else {
-      channelFilter = channelId ? { userId, channelId } : { userId };
+    let allowedChannelIds = [];
+
+    if (channelId) {
+      const targetChannel = await Channel.findOne({ channelId }).select('channelId').lean();
+      if (targetChannel) {
+        allowedChannelIds = [targetChannel.channelId];
+      }
     }
 
-    const ownedChannels = await Channel.find(channelFilter).select('channelId').lean();
-    const allowedChannelIds = ownedChannels.map(c => c.channelId);
+    if (allowedChannelIds.length === 0) {
+      let channelFilter = {};
+      if (isAdmin) {
+        channelFilter = {};
+      } else if (organizationId) {
+        channelFilter = { $or: [{ organizationId }, { userId }] };
+      } else {
+        channelFilter = { userId };
+      }
+      const ownedChannels = await Channel.find(channelFilter).select('channelId').lean();
+      allowedChannelIds = ownedChannels.map(c => c.channelId);
+    }
 
     if (allowedChannelIds.length === 0) {
       return res.json({
