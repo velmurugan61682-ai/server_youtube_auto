@@ -43,7 +43,11 @@ const scheduledUploadSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index to quickly find scheduled uploads sorted by scheduledTime
-scheduledUploadSchema.index({ scheduledTime: 1, status: 1 });
+// ✅ PERFORMANCE: All indexes defined here for fast query paths
+scheduledUploadSchema.index({ scheduledTime: 1, status: 1 });          // worker polling: pending/scheduled items due now
+scheduledUploadSchema.index({ channelId: 1 });                         // fast lookup by channel
+scheduledUploadSchema.index({ channelId: 1, status: 1, scheduledTime: 1 }); // compound for AutoSchedule.jsx queue fetch
+scheduledUploadSchema.index({ videoId: 1 });                           // fast lookup by video
+scheduledUploadSchema.index({ createdAt: -1 });                        // dashboard timeline ordering
 
 export default mongoose.model('ScheduledUpload', scheduledUploadSchema);

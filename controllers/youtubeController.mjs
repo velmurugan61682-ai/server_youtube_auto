@@ -596,7 +596,8 @@ export const deleteChannel = async (req, res) => {
 
 export const getVideos = async (req, res) => {
   try {
-    const { channelId } = req.query;
+    // page & limit are optional — omit both for full list (backward-compatible with VideosList.jsx)
+    const { channelId, page, limit } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
 
     const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
@@ -782,6 +783,25 @@ export const getVideos = async (req, res) => {
       }
     }
     videos = uniqueVideos;
+
+    // ✅ OPTIONAL PAGINATION: only applied when caller passes page + limit params.
+    // VideosList.jsx and Content Picker omit these params, so they still receive the full list.
+    const totalCount = videos.length;
+    if (page !== undefined && limit !== undefined) {
+      const pageNum = Math.max(1, parseInt(page, 10));
+      const limitNum = Math.min(500, Math.max(1, parseInt(limit, 10)));
+      const start = (pageNum - 1) * limitNum;
+      videos = videos.slice(start, start + limitNum);
+      return res.json({
+        videos,
+        pagination: {
+          total: totalCount,
+          pages: Math.ceil(totalCount / limitNum),
+          currentPage: pageNum,
+          limit: limitNum
+        }
+      });
+    }
 
     res.json({ videos });
   } catch (error) {
