@@ -348,13 +348,50 @@ export const getAdminUsers = async (req, res) => {
       .limit(limitNum)
       .lean();
 
-    const enrichedClients = await Promise.all(users.map(async (u) => {
-      const channel = await Channel.findOne({ userId: u._id }).sort({ createdAt: -1 }).lean();
-      const subDoc = await Subscription.findOne({ user: u._id }).sort({ createdAt: -1 }).lean();
+    const userIds = users.map(u => u._id);
 
-      const totalComments = await Comment.countDocuments({ userId: u._id });
-      const totalAiReplies = await Comment.countDocuments({ userId: u._id, autoReplied: true });
-      const totalLeads = await Lead.countDocuments({ userId: u._id });
+    // Bulk fetch channels, subscriptions, comment counts, and lead counts
+    const [channelsList, subsList, commentCounts, aiReplyCounts, leadCounts] = await Promise.all([
+      Channel.find({ userId: { $in: userIds } }).sort({ createdAt: -1 }).lean(),
+      Subscription.find({ $or: [{ user: { $in: userIds } }, { userId: { $in: userIds } }] }).sort({ createdAt: -1 }).lean(),
+      Comment.aggregate([
+        { $match: { userId: { $in: userIds } } },
+        { $group: { _id: "$userId", count: { $sum: 1 } } }
+      ]),
+      Comment.aggregate([
+        { $match: { userId: { $in: userIds }, autoReplied: true } },
+        { $group: { _id: "$userId", count: { $sum: 1 } } }
+      ]),
+      Lead.aggregate([
+        { $match: { userId: { $in: userIds } } },
+        { $group: { _id: "$userId", count: { $sum: 1 } } }
+      ])
+    ]);
+
+    const channelMap = new Map();
+    channelsList.forEach(c => {
+      const key = String(c.userId);
+      if (!channelMap.has(key)) channelMap.set(key, c);
+    });
+
+    const subMap = new Map();
+    subsList.forEach(s => {
+      const key = String(s.user || s.userId);
+      if (!subMap.has(key)) subMap.set(key, s);
+    });
+
+    const commentCountMap = new Map(commentCounts.map(c => [String(c._id), c.count]));
+    const aiReplyCountMap = new Map(aiReplyCounts.map(c => [String(c._id), c.count]));
+    const leadCountMap = new Map(leadCounts.map(l => [String(l._id), l.count]));
+
+    const enrichedClients = users.map((u) => {
+      const uIdStr = String(u._id);
+      const channel = channelMap.get(uIdStr);
+      const subDoc = subMap.get(uIdStr);
+
+      const totalComments = commentCountMap.get(uIdStr) || 0;
+      const totalAiReplies = aiReplyCountMap.get(uIdStr) || 0;
+      const totalLeads = leadCountMap.get(uIdStr) || 0;
 
       const currentPlan = subDoc?.plan || subDoc?.planId || u.subscription?.planId || 'free';
       const subStatus = subDoc?.status || u.subscription?.status || 'active';
@@ -382,7 +419,7 @@ export const getAdminUsers = async (req, res) => {
           totalLeads
         }
       };
-    }));
+    });
 
     const finalClients = plan && plan !== 'all'
       ? enrichedClients.filter(c => c.plan === plan)

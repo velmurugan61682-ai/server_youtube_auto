@@ -214,7 +214,35 @@ export const handleCallback = async (req, res) => {
 
   try {
     const client = getYouTubeAuth();
-    const tokenResponse = await client.getToken(code);
+
+    // ── DEBUG: Before token exchange ──
+    console.log(`[OAuth Debug] ── Token Exchange START ──`);
+    console.log(`[OAuth Debug] Authorization code (first 20 chars): ${code ? code.substring(0, 20) + '...' : 'MISSING'}`);
+    console.log(`[OAuth Debug] Redirect URI used by OAuth2 client: ${client.redirectUri || client._redirectUri || 'UNKNOWN'}`);
+    console.log(`[OAuth Debug] Client ID (last 10 chars): ...${(client._clientId || '').slice(-10)}`);
+
+    let tokenResponse;
+    try {
+      tokenResponse = await client.getToken(code);
+    } catch (tokenExchangeErr) {
+      console.error(`[OAuth Debug] ❌ Token exchange THREW an error:`);
+      console.error(`[OAuth Debug]   Error message: ${tokenExchangeErr.message}`);
+      console.error(`[OAuth Debug]   Error response data:`, tokenExchangeErr.response?.data || 'N/A');
+      console.error(`[OAuth Debug]   Error status:`, tokenExchangeErr.response?.status || 'N/A');
+      throw tokenExchangeErr; // re-throw so existing catch block handles it
+    }
+
+    // ── DEBUG: After token exchange ──
+    console.log(`[OAuth Debug] ── Token Exchange SUCCESS ──`);
+    console.log(`[OAuth Debug] tokenResponse keys: ${Object.keys(tokenResponse || {})}`);
+    console.log(`[OAuth Debug] tokenResponse.tokens keys: ${Object.keys(tokenResponse?.tokens || {})}`);
+    console.log(`[OAuth Debug] Has access_token: ${!!tokenResponse?.tokens?.access_token}`);
+    console.log(`[OAuth Debug] Has refresh_token: ${!!tokenResponse?.tokens?.refresh_token}`);
+    console.log(`[OAuth Debug] Has id_token: ${!!tokenResponse?.tokens?.id_token}`);
+    console.log(`[OAuth Debug] Token type: ${tokenResponse?.tokens?.token_type || 'MISSING'}`);
+    console.log(`[OAuth Debug] Expiry date: ${tokenResponse?.tokens?.expiry_date || 'MISSING'}`);
+    console.log(`[OAuth Debug] Scope: ${tokenResponse?.tokens?.scope || 'MISSING'}`);
+
     tokens = tokenResponse.tokens;
     client.setCredentials(tokens);
     logger.info('OAuth Token exchange successful');
