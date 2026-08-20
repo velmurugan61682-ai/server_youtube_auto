@@ -75,5 +75,7 @@ const googleAuthHandler = (req, res, next) => {
 router.all('/google', googleAuthHandler);
 router.all('/google/login', googleAuthHandler);
 router.get('/google/callback', handleCallback);
+router.get('/callback/google', handleCallback);
+router.get('/callback', handleCallback);
 
 export default router;
