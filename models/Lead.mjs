@@ -35,7 +35,5 @@ leadSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 leadSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, createdAt: -1 });
 leadSchema.index({ organizationId: 1, status: 1 });
-leadSchema.index({ videoId: 1 });                        // ✅ ADDED: fast lookup by videoId
-leadSchema.index({ channelId: 1, videoId: 1 });          // ✅ ADDED: per-video lead filtering
 
 export default mongoose.model('Lead', leadSchema);

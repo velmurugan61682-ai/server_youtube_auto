@@ -44,7 +44,7 @@ const getFrontendUrl = (req) => {
     }
   }
   const isProduction = process.env.NODE_ENV === 'production';
-  const base = process.env.CLIENT_URL || process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || (isProduction ? 'https://channelbot.in' : 'http://localhost:5173');
+  const base = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL || (isProduction ? 'https://channelbot.in' : 'http://localhost:5173');
   return base.replace(/\/dashboard\/?$/, '').replace(/\/+$/, '');
 };
 
@@ -324,7 +324,7 @@ export const handleCallback = async (req, res) => {
         maxAge: 7 * 24 * 60 * 60 * 1000
       });
 
-      const targetRedirect = `${frontendUrl}/oauth/callback?token=${encodeURIComponent(token)}&status=success`;
+      const targetRedirect = `${frontendUrl}/oauth/callback?token=${token}&status=success`;
       await OAuthState.updateOne({ state }, { $set: { redirectUrl: targetRedirect } });
       return res.redirect(targetRedirect);
     }
@@ -596,8 +596,7 @@ export const deleteChannel = async (req, res) => {
 
 export const getVideos = async (req, res) => {
   try {
-    // page & limit are optional — omit both for full list (backward-compatible with VideosList.jsx)
-    const { channelId, page, limit } = req.query;
+    const { channelId } = req.query;
     if (!channelId) return res.status(400).json({ error: 'channelId is required' });
 
     const isAdmin = req.user.role === 'admin' || req.user.isAdmin;
@@ -687,7 +686,10 @@ export const getVideos = async (req, res) => {
             });
             await Video.bulkWrite(uploadBulkOps);
             logger.info(`[SYNC] Upserted ${uploadBulkOps.length} uploaded videos for channel: ${channelId}.`);
-            videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
+            videos = await Video.find({
+              channelId,
+              $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
+            }).sort({ publishedAt: -1 }).lean();
           }
 
           const videosToRefresh = videos.filter(v => (
@@ -761,7 +763,10 @@ export const getVideos = async (req, res) => {
           }
 
           // Re-fetch updated list
-          videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
+          videos = await Video.find({
+            channelId,
+            $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
+          }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {
@@ -783,25 +788,6 @@ export const getVideos = async (req, res) => {
       }
     }
     videos = uniqueVideos;
-
-    // ✅ OPTIONAL PAGINATION: only applied when caller passes page + limit params.
-    // VideosList.jsx and Content Picker omit these params, so they still receive the full list.
-    const totalCount = videos.length;
-    if (page !== undefined && limit !== undefined) {
-      const pageNum = Math.max(1, parseInt(page, 10));
-      const limitNum = Math.min(500, Math.max(1, parseInt(limit, 10)));
-      const start = (pageNum - 1) * limitNum;
-      videos = videos.slice(start, start + limitNum);
-      return res.json({
-        videos,
-        pagination: {
-          total: totalCount,
-          pages: Math.ceil(totalCount / limitNum),
-          currentPage: pageNum,
-          limit: limitNum
-        }
-      });
-    }
 
     res.json({ videos });
   } catch (error) {

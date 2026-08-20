@@ -145,7 +145,6 @@ commentAutomationRuleSchema.index({ organizationId: 1 }); // was inline index:tr
 commentAutomationRuleSchema.index({ userId: 1 });
 commentAutomationRuleSchema.index({ channelId: 1 });
 commentAutomationRuleSchema.index({ status: 1 });
-commentAutomationRuleSchema.index({ channelId: 1, status: 1 });            // ✅ ADDED: auto-mod worker hot path
 commentAutomationRuleSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 commentAutomationRuleSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 

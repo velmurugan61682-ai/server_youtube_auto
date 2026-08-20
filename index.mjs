@@ -454,7 +454,7 @@ app.get('/auth', (_req, res) => {
   res.redirect(process.env.FRONTEND_URL || 'http://localhost:5173');
 });
 
-app.get(['/auth/google/callback', '/auth/callback/google', '/auth/callback'], (req, res) => {
+app.get('/auth/google/callback', (req, res) => {
   const query = new URLSearchParams(req.query).toString();
   res.redirect(`/api/youtube/callback?${query}`);
 });
