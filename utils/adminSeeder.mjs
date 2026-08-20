@@ -2,8 +2,8 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User.mjs';
 import logger from './logger.mjs';
 
-const SINGLE_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@channelbot.in').toLowerCase().trim();
-const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const SINGLE_ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@channelbot.ai').toLowerCase().trim();
+const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AdminPass@123';
 const LEGACY_ADMIN_EMAIL = 'admin@youtubeai.test';
 
 /**
@@ -36,10 +36,8 @@ export const seedSingleAdmin = async () => {
     }
 
     if (!primaryAdmin) {
-      if (!DEFAULT_ADMIN_PASSWORD) {
-        throw new Error('ADMIN_PASSWORD must be set before seeding the admin account.');
-      }
-      const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
+      const adminPassword = DEFAULT_ADMIN_PASSWORD || 'AdminPass@123';
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
       primaryAdmin = await User.create({
         name: 'ChannelBot Admin',
         email: SINGLE_ADMIN_EMAIL,
@@ -73,6 +71,6 @@ export const seedSingleAdmin = async () => {
       logger.warn(`[Admin Seeder] Admin account already exists for ${SINGLE_ADMIN_EMAIL}; startup remains idempotent.`);
       return;
     }
-    logger.error('[Admin Seeder] Enforcement failed:', error);
+    logger.error(`[Admin Seeder] Error during admin seeding: ${error.message}`);
   }
 };
