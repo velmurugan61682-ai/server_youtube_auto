@@ -686,10 +686,7 @@ export const getVideos = async (req, res) => {
             });
             await Video.bulkWrite(uploadBulkOps);
             logger.info(`[SYNC] Upserted ${uploadBulkOps.length} uploaded videos for channel: ${channelId}.`);
-            videos = await Video.find({
-              channelId,
-              $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
-            }).sort({ publishedAt: -1 }).lean();
+            videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
           }
 
           const videosToRefresh = videos.filter(v => (
@@ -763,10 +760,7 @@ export const getVideos = async (req, res) => {
           }
 
           // Re-fetch updated list
-          videos = await Video.find({
-            channelId,
-            $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
-          }).sort({ publishedAt: -1 }).lean();
+          videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
         } catch (apiErr) {
           logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
         } finally {
