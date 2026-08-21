@@ -243,6 +243,13 @@ router.get('/status', authMiddleware, async (req, res) => {
           subStatus = org.subscription.status || 'active';
           subPlanType = org.subscription.planType || 'free';
           subId = org.subscription.razorpaySubscriptionId || subId;
+          if (org.subscription.currentPeriodEnd) {
+            currentEnd = org.subscription.currentPeriodEnd;
+          }
+        }
+      }
+    }
+
     // Accurate Expiry Calculations
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
     const userCreatedTime = user.createdAt ? new Date(user.createdAt).getTime() : Date.now();
