@@ -3,6 +3,7 @@ import Comment from '../models/Comment.mjs';
 import Channel from '../models/Channel.mjs';
 import User from '../models/User.mjs';
 import Video from '../models/Video.mjs';
+import ModerationLog from '../models/ModerationLog.mjs';
 import CommentAutomationRule from '../models/CommentAutomationRule.mjs';
 import { 
   getYouTubeClient, 
@@ -141,17 +142,83 @@ export const takeAction = async (req, res) => {
       await likeComment(youtube, comment.youtubeId);
       comment.autoLiked = true;
     } else if (action === 'delete') {
-      if (channel.apiKey) {
-        return res.status(400).json({ error: 'OAuth required for deleting comments.' });
+      let ytReason = null;
+      if (!channel.apiKey && youtube) {
+        try {
+          const delRes = await deleteCommentFromYouTube(youtube, comment.youtubeId);
+          ytReason = delRes?.reason || null;
+        } catch (ytErr) {
+          logger.warn(`[takeAction] YouTube API delete failed for ${comment.youtubeId}: ${ytErr.message}`);
+          ytReason = ytErr.message;
+        }
       }
-      await deleteCommentFromYouTube(youtube, comment.youtubeId);
       comment.status = 'deleted';
-    } else if (action === 'hide') {
-      if (channel.apiKey) {
-        return res.status(400).json({ error: 'OAuth required for hiding comments.' });
+
+      // Always create/update ModerationLog so the delete action appears in Comment History -> Deleted
+      try {
+        await ModerationLog.findOneAndUpdate(
+          { commentId: comment.youtubeId || comment._id.toString() },
+          {
+            userId: comment.userId || req.user.id,
+            organizationId: comment.organizationId || req.user.organizationId || req.user.id,
+            channelId: comment.channelId,
+            videoId: comment.videoId,
+            commentId: comment.youtubeId || comment._id.toString(),
+            authorName: comment.author || comment.username || 'Anonymous',
+            commentText: comment.text || comment.commentText || '',
+            category: comment.sentiment || 'toxic',
+            type: comment.sentiment || 'toxic',
+            confidence: Math.round((comment.confidence || 0.9) * 100),
+            toxicityScore: comment.confidence || 0.9,
+            reason: ytReason || 'Manual deletion via Comments & Moderation',
+            executedAction: 'delete',
+            action: 'delete',
+            status: 'Success'
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (modErr) {
+        logger.error(`[takeAction] Failed to create ModerationLog on delete: ${modErr.message}`);
       }
-      await hideComment(youtube, comment.youtubeId);
+    } else if (action === 'hide') {
+      let ytReason = null;
+      if (!channel.apiKey && youtube) {
+        try {
+          const hideRes = await hideComment(youtube, comment.youtubeId);
+          ytReason = hideRes?.reason || null;
+        } catch (ytErr) {
+          logger.warn(`[takeAction] YouTube API hide failed for ${comment.youtubeId}: ${ytErr.message}`);
+          ytReason = ytErr.message;
+        }
+      }
       comment.status = 'hidden';
+
+      // Always create/update ModerationLog so the hide action appears in Comment History -> Hidden
+      try {
+        await ModerationLog.findOneAndUpdate(
+          { commentId: comment.youtubeId || comment._id.toString() },
+          {
+            userId: comment.userId || req.user.id,
+            organizationId: comment.organizationId || req.user.organizationId || req.user.id,
+            channelId: comment.channelId,
+            videoId: comment.videoId,
+            commentId: comment.youtubeId || comment._id.toString(),
+            authorName: comment.author || comment.username || 'Anonymous',
+            commentText: comment.text || comment.commentText || '',
+            category: comment.sentiment || 'toxic',
+            type: comment.sentiment || 'toxic',
+            confidence: Math.round((comment.confidence || 0.9) * 100),
+            toxicityScore: comment.confidence || 0.9,
+            reason: ytReason || 'Manual hide via Comments & Moderation',
+            executedAction: 'hide',
+            action: 'hide',
+            status: 'Success'
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      } catch (modErr) {
+        logger.error(`[takeAction] Failed to create ModerationLog on hide: ${modErr.message}`);
+      }
     } else if (action === 'reply') {
       if (!replyText) return res.status(400).json({ error: 'Reply text is required' });
       if (channel.apiKey) {
@@ -485,6 +552,33 @@ export const deleteCommentApi = async (req, res) => {
 
     comment.status = 'deleted';
     await comment.save();
+
+    // Persist ModerationLog so it is visible in Comment History -> Deleted
+    try {
+      await ModerationLog.findOneAndUpdate(
+        { commentId: comment.youtubeId || comment._id.toString() },
+        {
+          userId: comment.userId || req.user.id,
+          organizationId: comment.organizationId || req.user.organizationId || req.user.id,
+          channelId: comment.channelId,
+          videoId: comment.videoId,
+          commentId: comment.youtubeId || comment._id.toString(),
+          authorName: comment.author || comment.username || 'Anonymous',
+          commentText: comment.text || comment.commentText || '',
+          category: comment.sentiment || 'toxic',
+          type: comment.sentiment || 'toxic',
+          confidence: Math.round((comment.confidence || 0.9) * 100),
+          toxicityScore: comment.confidence || 0.9,
+          reason: 'Manual deletion',
+          executedAction: 'delete',
+          action: 'delete',
+          status: 'Success'
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } catch (modErr) {
+      logger.error(`[deleteCommentApi] Failed to save ModerationLog: ${modErr.message}`);
+    }
 
     return res.json({ success: true, message: 'Comment deleted successfully' });
   } catch (error) {

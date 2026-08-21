@@ -105,17 +105,11 @@ router.get('/', authMiddleware, async (req, res) => {
     };
     if (channelId) commentQuery.channelId = channelId;
 
-    // Pull all records (we merge in-memory then paginate)
+    // Pull all records across all collections (summary is computed on the complete dataset)
     const [allReplies, allMods, allComments] = await Promise.all([
-      (type === 'all' || type === 'replied' || type === 'failed')
-        ? AutoReplyLog.find(replyQuery).sort({ createdAt: -1 }).lean()
-        : Promise.resolve([]),
-      (type === 'all' || type === 'deleted' || type === 'hidden' || type === 'failed')
-        ? ModerationLog.find(modQuery).sort({ createdAt: -1 }).lean()
-        : Promise.resolve([]),
-      (type === 'all' || type === 'replied' || type === 'deleted' || type === 'hidden')
-        ? CommentModel.find(commentQuery).sort({ publishedAt: -1, createdAt: -1 }).lean()
-        : Promise.resolve([])
+      AutoReplyLog.find(replyQuery).sort({ createdAt: -1 }).lean(),
+      ModerationLog.find(modQuery).sort({ createdAt: -1 }).lean(),
+      CommentModel.find(commentQuery).sort({ publishedAt: -1, createdAt: -1 }).lean()
     ]);
 
     // ── 5. Resolve video titles ─────────────────────────────────────────────
@@ -182,12 +176,15 @@ router.get('/', authMiddleware, async (req, res) => {
         reason: null,
         videoTitle: videoMap[c.videoId] || 'Unknown Video',
         triggerKeyword: null,
-        actionDate: c.publishedAt || c.createdAt || new Date()
+        actionDate: c.updatedAt || c.publishedAt || c.createdAt || new Date()
       };
     });
 
     // ── 8. Merge + deduplicate by authorName + commentText ──────────────────
-    const mergedRaw = [...modItems, ...replyItems, ...commentItems];
+    // Prioritize explicit ModerationLog records and deleted/hidden comments over reply items
+    const deletedOrHiddenComments = commentItems.filter(c => c.type === 'deleted' || c.type === 'hidden');
+    const replyComments = commentItems.filter(c => c.type === 'replied');
+    const mergedRaw = [...modItems, ...deletedOrHiddenComments, ...replyItems, ...replyComments];
     const seenHistoryKeys = new Set();
     let merged = [];
     for (const item of mergedRaw) {
@@ -200,16 +197,10 @@ router.get('/', authMiddleware, async (req, res) => {
       }
     }
 
-    // ── 9. Apply type filter ────────────────────────────────────────────────
-    if (type === 'replied')  merged = merged.filter(i => i.type === 'replied');
-    if (type === 'deleted')  merged = merged.filter(i => i.type === 'deleted');
-    if (type === 'hidden')   merged = merged.filter(i => i.type === 'hidden');
-    if (type === 'failed')   merged = merged.filter(i => i.status === 'failed');
-
-    // ── 10. Sort newest-first ───────────────────────────────────────────────
+    // ── 9. Sort newest-first ───────────────────────────────────────────────
     merged.sort((a, b) => new Date(b.actionDate) - new Date(a.actionDate));
 
-    // ── 11. Compute summary counts from full datasets ───────────────────────
+    // ── 10. Compute summary counts from FULL UNFILTERED dataset ─────────────
     const totalReplied  = merged.filter(i => i.type === 'replied' && i.status === 'success').length;
     const totalDeleted  = merged.filter(i => i.type === 'deleted' && i.status === 'success').length;
     const totalHidden   = merged.filter(i => i.type === 'hidden' && i.status === 'success').length;
@@ -218,11 +209,18 @@ router.get('/', authMiddleware, async (req, res) => {
     const totalSuccess  = merged.filter(i => i.status === 'success').length;
     const successRate   = totalAll > 0 ? Math.round((totalSuccess / totalAll) * 100) : 0;
 
-    // ── 12. Paginate ────────────────────────────────────────────────────────
-    const totalFiltered = merged.length;
+    // ── 11. Apply type filter ONLY for paginated item list ──────────────────
+    let filtered = merged;
+    if (type === 'replied')  filtered = filtered.filter(i => i.type === 'replied');
+    if (type === 'deleted')  filtered = filtered.filter(i => i.type === 'deleted');
+    if (type === 'hidden')   filtered = filtered.filter(i => i.type === 'hidden');
+    if (type === 'failed')   filtered = filtered.filter(i => i.status === 'failed');
+
+    // ── 12. Paginate filtered items ─────────────────────────────────────────
+    const totalFiltered = filtered.length;
     const totalPages    = Math.max(1, Math.ceil(totalFiltered / limitNum));
     const offset        = (pageNum - 1) * limitNum;
-    const pageItems     = merged.slice(offset, offset + limitNum);
+    const pageItems     = filtered.slice(offset, offset + limitNum);
 
     return res.json({
       items: pageItems,
