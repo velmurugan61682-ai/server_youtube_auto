@@ -47,10 +47,16 @@ export const getAnalytics = async (req, res) => {
     const end = endDate ? new Date(endDate) : now;
 
     const channelFilter = channelId && channelIds.includes(channelId) ? channelId : { $in: channelIds };
-    const commentDateWindow = {
+    const commentDateWindow = startDate ? {
       $or: [
         { publishedAt: { $gte: start, $lte: end } },
         { createdAt: { $gte: start, $lte: end } }
+      ]
+    } : {
+      $or: [
+        { publishedAt: { $lte: end } },
+        { createdAt: { $lte: end } },
+        { publishedAt: { $exists: true } }
       ]
     };
     const commentBaseQuery = (...conditions) => ({

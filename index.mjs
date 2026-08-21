@@ -195,10 +195,18 @@ logger.info('🚀 Socket.IO Server Initialized with Custom Ping/Pong (10s/5s) & 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 io.use((socket, next) => {
-  const token =
+  let token =
     socket.handshake.auth?.token ||
     (socket.handshake.headers?.authorization ? socket.handshake.headers.authorization.replace(/^Bearer\s+/i, '') : null) ||
     socket.handshake.query?.token;
+
+  if ((!token || token === 'null' || token === 'undefined') && socket.handshake.headers?.cookie) {
+    const rawCookie = socket.handshake.headers.cookie;
+    const match = rawCookie.match(/(?:^|;\s*)token=([^;]*)/);
+    if (match) {
+      token = decodeURIComponent(match[1]);
+    }
+  }
 
   if (!token || token === 'null' || token === 'undefined') {
     logger.warn(`🔑 [Socket Auth Failure] Connection rejected: No valid auth token provided. Socket ID: ${socket.id}`);
