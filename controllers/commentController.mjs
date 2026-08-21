@@ -703,7 +703,7 @@ export const deleteRule = async (req, res) => {
  */
 export const getCommentHistory = async (req, res) => {
   try {
-    const { page = 1, limit = 20, channelId, status, sentiment } = req.query;
+    const { page = 1, limit = 20, channelId, status, sentiment, type, search } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
 
     const query = {
@@ -718,8 +718,82 @@ export const getCommentHistory = async (req, res) => {
     if (channelId && allowedChannelIds.includes(channelId)) {
       query.channelId = channelId;
     }
+
     if (status) query.status = status;
     if (sentiment) query.sentiment = sentiment;
+
+    if (search) {
+      query.$or = [
+        { text: { $regex: search, $options: 'i' } },
+        { commentText: { $regex: search, $options: 'i' } },
+        { author: { $regex: search, $options: 'i' } },
+        { username: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Filter by type from ModerationPage
+    if (type === 'deleted') {
+      query.$or = [
+        { status: 'deleted' },
+        { moderationAction: 'delete' },
+        { moderationAction: 'deleted' }
+      ];
+    } else if (type === 'replied') {
+      query.$or = [
+        { hasReplied: true },
+        { replyStatus: 'sent' },
+        { replyText: { $exists: true, $ne: '' } }
+      ];
+    } else if (type === 'hidden') {
+      query.$or = [
+        { status: 'flagged' },
+        { moderationAction: 'hold' },
+        { moderationAction: 'hidden' }
+      ];
+    } else if (type === 'failed') {
+      query.$or = [
+        { replyStatus: 'failed' },
+        { deleteFailed: true },
+        { likeStatus: 'failed' }
+      ];
+    }
+
+    // Calculate Summary counts concurrently
+    const baseChannelQuery = { channelId: { $in: allowedChannelIds } };
+    if (req.user.organizationId) baseChannelQuery.organizationId = req.user.organizationId;
+    else baseChannelQuery.userId = req.user.id;
+    if (channelId && allowedChannelIds.includes(channelId)) baseChannelQuery.channelId = channelId;
+
+    const [totalActions, repliedCount, deletedCount, hiddenCount, failedCount] = await Promise.all([
+      Comment.countDocuments({
+        ...baseChannelQuery,
+        $or: [
+          { status: { $in: ['deleted', 'flagged', 'approved'] } },
+          { hasReplied: true },
+          { isModerated: true },
+          { autoLiked: true }
+        ]
+      }),
+      Comment.countDocuments({
+        ...baseChannelQuery,
+        $or: [{ hasReplied: true }, { replyStatus: 'sent' }, { replyText: { $exists: true, $ne: '' } }]
+      }),
+      Comment.countDocuments({
+        ...baseChannelQuery,
+        $or: [{ status: 'deleted' }, { moderationAction: 'delete' }, { moderationAction: 'deleted' }]
+      }),
+      Comment.countDocuments({
+        ...baseChannelQuery,
+        $or: [{ status: 'flagged' }, { moderationAction: 'hold' }, { moderationAction: 'hidden' }]
+      }),
+      Comment.countDocuments({
+        ...baseChannelQuery,
+        $or: [{ replyStatus: 'failed' }, { deleteFailed: true }, { likeStatus: 'failed' }]
+      })
+    ]);
+
+    const successCount = repliedCount + deletedCount + hiddenCount;
+    const successRate = totalActions > 0 ? Math.round((successCount / totalActions) * 100) : 100;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const comments = await Comment.find(query)
@@ -730,9 +804,39 @@ export const getCommentHistory = async (req, res) => {
 
     const total = await Comment.countDocuments(query);
 
+    const items = comments.map(c => ({
+      _id: c._id ? c._id.toString() : c.id || c.youtubeId,
+      id: c.youtubeId || c._id,
+      commentId: c.youtubeId || c._id,
+      videoId: c.videoId,
+      channelId: c.channelId,
+      username: c.author || c.username || 'Anonymous',
+      author: c.author || c.username || 'Anonymous',
+      authorProfileImageUrl: c.authorProfileImageUrl || '',
+      commentText: c.text || c.commentText || '',
+      userComment: c.text || c.commentText || '',
+      text: c.text || c.commentText || '',
+      replyText: c.replyText || c.suggestedReply || '',
+      status: c.status || 'pending',
+      sentiment: c.sentiment || c.classification || 'neutral',
+      publishedAt: c.publishedAt || c.createdAt,
+      createdAt: c.createdAt || c.publishedAt,
+      type: c.status === 'deleted' ? 'deleted' : (c.hasReplied ? 'replied' : (c.status === 'flagged' ? 'hidden' : 'other')),
+      actionDate: c.updatedAt || c.createdAt
+    }));
+
     return res.json({
       success: true,
-      data: comments,
+      data: items,
+      items,
+      summary: {
+        total: totalActions,
+        replied: repliedCount,
+        deleted: deletedCount,
+        hidden: hiddenCount,
+        failed: failedCount,
+        successRate
+      },
       pagination: {
         total,
         page: parseInt(page),
@@ -741,6 +845,7 @@ export const getCommentHistory = async (req, res) => {
       }
     });
   } catch (error) {
+    logger.error('Error in getCommentHistory:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
