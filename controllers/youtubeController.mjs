@@ -781,140 +781,11 @@ export const getVideos = async (req, res) => {
 
     if (videos.length > 0) {
       setImmediate(triggerBackgroundVideoSync);
-      return res.json(videos);
+    } else {
+      await triggerBackgroundVideoSync();
+      videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
     }
 
-    await triggerBackgroundVideoSync();
-    videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
-    return res.json(videos);
-
-          const uploadedVideos = await fetchAllVideos(youtube, channel.channelId);
-          if (uploadedVideos.length > 0) {
-            const uploadBulkOps = uploadedVideos.map(v => {
-              const titleUpper = String(v.title || '').trim().toUpperCase();
-              const isLiveTitle = titleUpper.startsWith('LIVE |') ||
-                titleUpper.startsWith('LIVE:') ||
-                titleUpper.startsWith('[LIVE]') ||
-                titleUpper.startsWith('LIVE -') ||
-                titleUpper.includes('LIVE STREAM') ||
-                titleUpper.includes('STREAMED LIVE') ||
-                titleUpper.includes('WAS LIVE');
-
-              const setData = {
-                userId: channel.userId || req.user.id,
-                organizationId: channel.organizationId || null,
-                channelId: channel.channelId,
-                videoId: v.videoId,
-                title: v.title,
-                description: v.description,
-                thumbnail: v.thumbnail,
-                publishedAt: v.publishedAt
-              };
-
-              if (isLiveTitle) {
-                setData.isLive = true;
-                setData.liveBroadcastContent = 'completed';
-              }
-
-              return {
-                updateOne: {
-                  filter: { channelId: channel.channelId, videoId: v.videoId },
-                  update: { $set: setData },
-                  upsert: true
-                }
-              };
-            });
-            await Video.bulkWrite(uploadBulkOps);
-            logger.info(`[SYNC] Upserted ${uploadBulkOps.length} uploaded videos for channel: ${channelId}.`);
-            videos = await Video.find({
-              channelId,
-              $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
-            }).sort({ publishedAt: -1 }).lean();
-          }
-
-          const videosToRefresh = videos.filter(v => (
-            !v.isPost &&
-            (!v.duration || !v.lastFetchedAt || !v.statistics || typeof v.statistics.viewCount !== 'number' || v.lastFetchedAt.getTime() < staleTime)
-          ));
-
-          // videos.list returns duration/contentDetails, which is required to classify Shorts correctly.
-          const videoIds = [...new Set(videosToRefresh.map(v => v.videoId).filter(Boolean))];
-          const apiStatsItems = videoIds.length > 0 ? await fetchVideoStatisticsBatch(youtube, videoIds) : [];
-
-          const todayStr = new Date().toISOString().split('T')[0];
-          const videosById = new Map();
-          for (const v of videos) {
-            if (!videosById.has(v.videoId)) {
-              videosById.set(v.videoId, []);
-            }
-            videosById.get(v.videoId).push(v);
-          }
-          const bulkOps = [];
-
-          for (const item of apiStatsItems) {
-            const viewCount = parseInt(item.statistics?.viewCount || 0);
-            const likeCount = parseInt(item.statistics?.likeCount || 0);
-            const commentCount = parseInt(item.statistics?.commentCount || 0);
-            const engagementRate = viewCount > 0 ? parseFloat((((likeCount + commentCount) / viewCount) * 100).toFixed(2)) : 0;
-
-            const matchedVideos = videosById.get(item.id) || [];
-            for (const video of matchedVideos) {
-              let history = video.likesHistory || [];
-              if (history.length > 0) {
-                const lastEntry = history[history.length - 1];
-                const lastEntryDateStr = new Date(lastEntry.date).toISOString().split('T')[0];
-                if (lastEntryDateStr === todayStr) {
-                  lastEntry.likeCount = likeCount;
-                } else {
-                  history.push({ date: new Date(), likeCount });
-                }
-              } else {
-                const yesterday = new Date();
-                yesterday.setDate(yesterday.getDate() - 1);
-                history = [
-                  { date: yesterday, likeCount: Math.max(0, likeCount - Math.floor(Math.random() * 5)) },
-                  { date: new Date(), likeCount }
-                ];
-              }
-              if (history.length > 30) history.shift();
-
-              const duration = item.contentDetails?.duration || video.duration || '';
-              bulkOps.push({
-                updateOne: {
-                  filter: { _id: video._id },
-                  update: {
-                    $set: {
-                      statistics: { viewCount, likeCount, commentCount },
-                      duration,
-                      engagementRate,
-                      likesHistory: history,
-                      lastFetchedAt: new Date()
-                    }
-                  }
-                }
-              });
-            }
-          }
-
-          if (bulkOps.length > 0) {
-            logger.info(`[SYNC] Executing bulk write of ${bulkOps.length} video statistics/durations...`);
-            await Video.bulkWrite(bulkOps);
-            logger.info(`[SYNC] Bulk write completed.`);
-          }
-
-          // Re-fetch updated list
-          videos = await Video.find({
-            channelId,
-            $or: [{ userId: { $in: userIds } }, { organizationId: channel.organizationId }]
-          }).sort({ publishedAt: -1 }).lean();
-        } catch (apiErr) {
-          logger.error(`YouTube API refresh failed, returning stale MongoDB videos: ${apiErr.message}`);
-        } finally {
-          activeRefreshes.delete(refreshKey);
-        }
-      }
-    }
-    }
     // Deduplicate videos and posts to guarantee uniqueness
     const uniqueVideos = [];
     const seenVideoKeys = new Set();
@@ -927,9 +798,7 @@ export const getVideos = async (req, res) => {
         uniqueVideos.push(v);
       }
     }
-    videos = uniqueVideos;
-
-    res.json({ videos });
+    return res.json(uniqueVideos);
   } catch (error) {
     logger.error(`Error in getVideos: ${error.message}`);
     res.status(500).json({ error: error.message });
