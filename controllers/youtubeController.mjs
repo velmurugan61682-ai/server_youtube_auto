@@ -162,6 +162,10 @@ export const handleCallback = async (req, res) => {
   const frontendUrl = getFrontendUrl(req);
   const { code, state, error: oauthError } = req.query;
 
+  // ── DIAGNOSTIC: always log resolved frontendUrl so it appears in Render logs ──
+  console.log(`[OAuth Callback] Resolved frontendUrl: "${frontendUrl}"`);
+  console.log(`[OAuth Callback] Referer header: "${req.get('referer') || 'none'}", Origin: "${req.get('origin') || 'none'}"`);
+
   // OAuth callback logging without credentials
   console.log(`[OAuth State Ver] Callback received:`);
   console.log(`  - State: ${state}`);
@@ -309,12 +313,25 @@ export const handleCallback = async (req, res) => {
       }
 
       const jwtSecret = process.env.JWT_SECRET;
+
+      // ── GUARD: explicit JWT_SECRET validation before signing ──
+      if (!jwtSecret || jwtSecret.trim() === '') {
+        console.error('[OAuth Login] CRITICAL: JWT_SECRET is missing or empty. Cannot sign token.');
+        return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Server configuration error: authentication signing key is not set. Please contact support.')}`);
+      }
+
       const token = jwt.sign({
         id: guestUser._id,
         email: guestUser.email,
         role: guestUser.role || 'client',
         organizationId: guestUser.organizationId
       }, jwtSecret, { expiresIn: '7d' });
+
+      // ── GUARD: ensure token was actually produced ──
+      if (!token) {
+        console.error('[OAuth Login] CRITICAL: jwt.sign() returned a falsy value. JWT_SECRET may be invalid.');
+        return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Server error: failed to generate authentication token. Please try again.')}`);
+      }
 
       const isProd = process.env.NODE_ENV === 'production';
       res.cookie('token', token, {
@@ -325,6 +342,10 @@ export const handleCallback = async (req, res) => {
       });
 
       const targetRedirect = `${frontendUrl}/oauth/callback?token=${token}&status=success`;
+
+      // ── DIAGNOSTIC: log the exact final redirect URL so it appears in Render logs ──
+      console.log(`[OAuth Login] ✅ Redirecting to: ${frontendUrl}/oauth/callback?token=<jwt_redacted>&status=success`);
+
       await OAuthState.updateOne({ state }, { $set: { redirectUrl: targetRedirect } });
       return res.redirect(targetRedirect);
     }
