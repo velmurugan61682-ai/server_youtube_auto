@@ -26,6 +26,12 @@ import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 const activeRefreshes = new Set();
+// Safety garbage collection to prevent memory leaks and stuck locks
+setInterval(() => {
+  if (activeRefreshes.size > 0) {
+    activeRefreshes.clear();
+  }
+}, 5 * 60 * 1000);
 
 // Select FRONTEND_URL dynamically based on request origin/referer or process.env
 const getFrontendUrl = (req) => {
@@ -779,12 +785,51 @@ export const getVideos = async (req, res) => {
       }
     };
 
-    if (videos.length > 0) {
-      setImmediate(triggerBackgroundVideoSync);
-    } else {
-      await triggerBackgroundVideoSync();
-      videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
+    if (videos.length === 0 && !channel.reconnectRequired && (channel.accessToken || channel.apiKey)) {
+      try {
+        let youtube;
+        if (channel.apiKey) {
+          youtube = getYouTubeClientWithApiKey(decrypt(channel.apiKey));
+        } else {
+          const decryptedTokens = {
+            access_token: decrypt(channel.accessToken),
+            refresh_token: channel.refreshToken ? decrypt(channel.refreshToken) : undefined,
+            expiry_date: channel.expiryDate
+          };
+          youtube = getYouTubeClient(decryptedTokens, null, channel._id);
+        }
+
+        // Fast initial 1-page fetch (max 50 videos) so new client gets instant response in <500ms
+        const initialVideos = await fetchVideos(youtube, channel.channelId, channel.uploadsPlaylistId, 1);
+        if (initialVideos.length > 0) {
+          const uploadBulkOps = initialVideos.map(v => ({
+            updateOne: {
+              filter: { channelId: channel.channelId, videoId: v.videoId },
+              update: {
+                $set: {
+                  userId: channel.userId || req.user.id,
+                  organizationId: channel.organizationId || null,
+                  channelId: channel.channelId,
+                  videoId: v.videoId,
+                  title: v.title,
+                  description: v.description,
+                  thumbnail: v.thumbnail,
+                  publishedAt: v.publishedAt
+                }
+              },
+              upsert: true
+            }
+          }));
+          await Video.bulkWrite(uploadBulkOps, { ordered: false });
+          videos = await Video.find({ channelId }).sort({ publishedAt: -1 }).lean();
+        }
+      } catch (fastErr) {
+        logger.warn(`Fast initial video fetch error for ${channelId}: ${fastErr.message}`);
+      }
     }
+
+    // Always run full historical sync and community posts in non-blocking background
+    setImmediate(triggerBackgroundVideoSync);
 
     // Deduplicate videos and posts to guarantee uniqueness
     const uniqueVideos = [];

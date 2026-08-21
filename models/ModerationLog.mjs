@@ -87,6 +87,7 @@ const moderationLogSchema = new mongoose.Schema({
 moderationLogSchema.index({ organizationId: 1 }); // was inline index:true — moved here
 moderationLogSchema.index({ userId: 1 });
 moderationLogSchema.index({ channelId: 1 });
+moderationLogSchema.index({ channelId: 1, createdAt: -1 });
 moderationLogSchema.index({ videoId: 1 });
 moderationLogSchema.index({ status: 1 });
 moderationLogSchema.index({ createdAt: 1 });

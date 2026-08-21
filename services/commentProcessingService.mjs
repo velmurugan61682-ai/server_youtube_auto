@@ -1699,21 +1699,29 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
         const allVideos = await fetchAllVideos(youtube, channel.channelId);
         logger.info(`[INITIAL SYNC] Fetched ${allVideos.length} videos from YouTube for channel ${channel.title}`);
 
-        for (const v of allVideos) {
-          await Video.findOneAndUpdate(
-            { channelId: channel.channelId, videoId: v.videoId },
-            {
-              userId: channel.userId,
-              organizationId: channel.organizationId || null,
-              channelId: channel.channelId,
-              videoId: v.videoId,
-              title: v.title,
-              description: v.description,
-              thumbnail: v.thumbnail,
-              publishedAt: v.publishedAt
-            },
-            { upsert: true }
-          );
+        if (allVideos.length > 0) {
+          const bulkOps = allVideos.map(v => ({
+            updateOne: {
+              filter: { channelId: channel.channelId, videoId: v.videoId },
+              update: {
+                $set: {
+                  userId: channel.userId,
+                  organizationId: channel.organizationId || null,
+                  channelId: channel.channelId,
+                  videoId: v.videoId,
+                  title: v.title,
+                  description: v.description,
+                  thumbnail: v.thumbnail,
+                  publishedAt: v.publishedAt
+                }
+              },
+              upsert: true
+            }
+          }));
+
+          for (let i = 0; i < bulkOps.length; i += 200) {
+            await Video.bulkWrite(bulkOps.slice(i, i + 200), { ordered: false });
+          }
         }
 
         logger.info(`[INITIAL SYNC] Skipped importing historical comments to avoid storing old comments.`);

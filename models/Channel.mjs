@@ -34,5 +34,8 @@ const channelSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 channelSchema.index({ userId: 1, channelId: 1 }, { unique: true });
+channelSchema.index({ organizationId: 1 });
+channelSchema.index({ userId: 1 });
+channelSchema.index({ organizationId: 1, userId: 1 });
 
 export default mongoose.model('Channel', channelSchema);

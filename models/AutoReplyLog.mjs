@@ -82,6 +82,7 @@ autoReplyLogSchema.index({ commentId: 1 }, { unique: true });
 autoReplyLogSchema.index({ userId: 1 });
 autoReplyLogSchema.index({ userId: 1, organizationId: 1 });
 autoReplyLogSchema.index({ channelId: 1 });
+autoReplyLogSchema.index({ channelId: 1, createdAt: -1 });
 autoReplyLogSchema.index({ userId: 1, channelId: 1, status: 1, createdAt: -1 });
 autoReplyLogSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 

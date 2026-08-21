@@ -45,6 +45,8 @@ const videoSchema = new mongoose.Schema({
 
 videoSchema.index({ channelId: 1, videoId: 1 }, { unique: true });
 videoSchema.index({ userId: 1, videoId: 1 });
+videoSchema.index({ channelId: 1, publishedAt: -1 });
+videoSchema.index({ channelId: 1, lastFetchedAt: 1 });
 videoSchema.index({ userId: 1, channelId: 1, publishedAt: -1 }); // Compound index for channel video queries
 videoSchema.index({ channelId: 1, isLive: 1 });
 

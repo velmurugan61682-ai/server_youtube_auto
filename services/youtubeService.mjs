@@ -522,7 +522,7 @@ export const replyToComment = async (youtube, parentId, text) => {
   }
 };
 
-export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) => {
+export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null, maxPages = 1) => {
   const auth = getAuthFromClient(youtube);
   try {
     await ensureAuthToken(auth, auth?.channelDbId);
@@ -534,7 +534,7 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
     });
     logger.info(`[YOUTUBE API] Response: channels.list succeeded for ${channelId} with status ${channelRes.status}`);
     
-    const targetPlaylistId = channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    const targetPlaylistId = uploadsPlaylistId || channelRes.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
     if (!targetPlaylistId) {
       logger.warn(`[YOUTUBE API] No uploads playlist found for channel ID: ${channelId}`);
       return [];
@@ -542,9 +542,11 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
 
     let allVideos = [];
     let nextPageToken = null;
+    let pageCount = 0;
 
     do {
-      logger.info(`[YOUTUBE API] Request: playlistItems.list for uploads playlist: ${targetPlaylistId} (Token: ${nextPageToken || 'first page'})`);
+      pageCount++;
+      logger.info(`[YOUTUBE API] Request: playlistItems.list for uploads playlist: ${targetPlaylistId} (Page ${pageCount}, Token: ${nextPageToken || 'first page'})`);
       const playlistRes = await youtube.playlistItems.list({
         part: 'snippet,contentDetails',
         playlistId: targetPlaylistId,
@@ -562,7 +564,7 @@ export const fetchVideos = async (youtube, channelId, uploadsPlaylistId = null) 
       }));
       allVideos = allVideos.concat(items);
       nextPageToken = playlistRes.data.nextPageToken;
-    } while (nextPageToken);
+    } while (nextPageToken && pageCount < maxPages);
 
     return allVideos;
   } catch (error) {
