@@ -243,11 +243,17 @@ router.get('/status', authMiddleware, async (req, res) => {
           subStatus = org.subscription.status || 'active';
           subPlanType = org.subscription.planType || 'free';
           subId = org.subscription.razorpaySubscriptionId || subId;
-          if (org.subscription.currentPeriodEnd) {
-            currentEnd = org.subscription.currentPeriodEnd;
-          }
-        }
-      }
+    // Accurate Expiry Calculations
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const userCreatedTime = user.createdAt ? new Date(user.createdAt).getTime() : Date.now();
+    const trialEndDate = new Date(userCreatedTime + thirtyDaysMs);
+    const isFreePlan = subPlanType === 'free' || !subPlanType;
+    const trialExpired = isFreePlan && (Date.now() > trialEndDate.getTime());
+    const paidExpired = !isFreePlan && currentEnd && (new Date() > new Date(currentEnd));
+    const isExpired = trialExpired || paidExpired;
+
+    if (isExpired) {
+      subStatus = 'expired';
     }
 
     res.json({
@@ -256,11 +262,14 @@ router.get('/status', authMiddleware, async (req, res) => {
         id: subId,
         status: subStatus,
         planType: subPlanType,
-        currentEnd
+        currentEnd: isFreePlan ? trialEndDate : currentEnd,
+        isExpired,
+        trialExpired: isExpired
       },
       role: user.role,
       organizationName,
-      trialExpired: false
+      trialExpired: isExpired,
+      isExpired
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
