@@ -7,12 +7,16 @@ export const authMiddleware = (req, res, next) => {
 
   const authHeader = req.headers.authorization || req.headers.Authorization;
   let token = null;
+
   if (authHeader && typeof authHeader === 'string') {
-    token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const trimmedHeader = authHeader.trim();
+    if (/^Bearer\s+/i.test(trimmedHeader)) {
+      token = trimmedHeader.replace(/^Bearer\s+/i, '').trim();
+    }
   }
 
   // Fallback to cookie if Bearer token is missing
-  if (!token && req.cookies) {
+  if (!token && req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
 
