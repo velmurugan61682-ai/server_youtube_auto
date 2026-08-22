@@ -20,6 +20,10 @@ const oauthStateSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  frontendUrl: {
+    type: String,
+    default: null
+  },
   lastToken: {
     type: String,
     default: null

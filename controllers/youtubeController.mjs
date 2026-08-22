@@ -128,10 +128,11 @@ export const initiateAuth = async (req, res) => {
     console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId || 'guest'} (isLoginFlow: ${isLoginFlow})`);
     console.log(`[OAuth State Gen] TTL: 5 minutes`);
 
+    const originFrontendUrl = getFrontendUrl(req);
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
-      { state, userId: userId || null, isLoginFlow },
+      { state, userId: userId || null, isLoginFlow, frontendUrl: originFrontendUrl },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -165,11 +166,22 @@ export const initiateAuth = async (req, res) => {
 };
 
 export const handleCallback = async (req, res) => {
-  const frontendUrl = getFrontendUrl(req);
   const { code, state, error: oauthError } = req.query;
 
+  // Look up state mapping early to resolve original frontendUrl (mobile/desktop compatible)
+  let stateRecord = null;
+  if (state) {
+    try {
+      stateRecord = await OAuthState.findOne({ state });
+    } catch (dbErr) {
+      logger.error(`[OAuth Error] Database error during state lookup: ${dbErr.message}`);
+    }
+  }
+
+  const frontendUrl = stateRecord?.frontendUrl || getFrontendUrl(req);
+
   // ── DIAGNOSTIC: always log resolved frontendUrl so it appears in Render logs ──
-  console.log(`[OAuth Callback] Resolved frontendUrl: "${frontendUrl}"`);
+  console.log(`[OAuth Callback] Resolved frontendUrl: "${frontendUrl}" (saved in state: ${!!stateRecord?.frontendUrl})`);
   console.log(`[OAuth Callback] Referer header: "${req.get('referer') || 'none'}", Origin: "${req.get('origin') || 'none'}"`);
 
   // OAuth callback logging without credentials
@@ -193,27 +205,19 @@ export const handleCallback = async (req, res) => {
     return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Missing authorization code')}`);
   }
 
-  // Look up state mapping (with duplicate request protection)
-  let stateRecord = null;
-  try {
-    stateRecord = await OAuthState.findOne({ state });
-    if (!stateRecord) {
-      console.log(`[OAuth State Ver] State record NOT found for state: ${state}`);
-      logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
-      return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
-    }
-
-    // Handle duplicate callback requests gracefully (e.g. Chrome pre-fetch or double redirects)
-    if (stateRecord.redirectUrl) {
-      console.log(`[OAuth State Ver] Reusing cached redirect URL for duplicate state request: ${state}`);
-      return res.redirect(stateRecord.redirectUrl);
-    }
-
-    console.log(`[OAuth State Ver] ✅ State verified successfully for user: ${stateRecord.userId || 'guest'}`);
-  } catch (dbErr) {
-    logger.error(`[OAuth Error] Database error during state verification: ${dbErr.message}`);
-    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Database error during verification')}`);
+  if (!stateRecord) {
+    console.log(`[OAuth State Ver] State record NOT found for state: ${state}`);
+    logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
+    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
   }
+
+  // Handle duplicate callback requests gracefully (e.g. Chrome pre-fetch or double redirects)
+  if (stateRecord.redirectUrl) {
+    console.log(`[OAuth State Ver] Reusing cached redirect URL for duplicate state request: ${state}`);
+    return res.redirect(stateRecord.redirectUrl);
+  }
+
+  console.log(`[OAuth State Ver] ✅ State verified successfully for user: ${stateRecord.userId || 'guest'}`);
 
   const userId = stateRecord.userId;
   const isLoginFlow = stateRecord.isLoginFlow || !userId;
