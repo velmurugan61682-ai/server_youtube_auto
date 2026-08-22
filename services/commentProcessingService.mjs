@@ -827,14 +827,15 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
         try {
           const modLogData = {
             userId: channel.userId,
-            organizationId: channel.organizationId,
+            organizationId: channel.organizationId || channel.userId,
             channelId: channel.channelId,
             videoId: commentDoc.videoId,
             commentId: commentDoc.youtubeId,
             authorName: commentDoc.author || 'Anonymous',
             commentText: commentDoc.text || '',
             category: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
-            confidence: aiResult.confidence || 0.85,
+            type: matchedCategory !== 'safe' ? matchedCategory : 'toxic',
+            confidence: Math.round((aiResult.confidence || 0.85) * 100),
             toxicityScore: aiResult.toxicityScore || 0,
             reason: `Auto-detected: ${matchedCategory}`,
             action: loggedAction,
@@ -845,9 +846,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
             liveChatId: commentDoc.liveChatId || null
           };
           await ModerationLog.findOneAndUpdate(
-            { commentId: commentDoc.youtubeId, userId: channel.userId },
+            { commentId: commentDoc.youtubeId },
             { $set: modLogData },
-            { upsert: true }
+            { upsert: true, returnDocument: 'after' }
           );
           if (!deleteFailed) {
             await logAutomation(
@@ -1674,6 +1675,36 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
             fc.actionTaken = delRes.action;
             fc.moderationStatus = delRes.action === 'hide' ? 'hidden' : 'deleted';
             await fc.save();
+
+            try {
+              const execAct = delRes.action === 'delete' ? 'deleted' : 'hidden';
+              await ModerationLog.findOneAndUpdate(
+                { commentId: fc.youtubeId },
+                {
+                  $set: {
+                    userId: fc.userId,
+                    organizationId: fc.organizationId || fc.userId,
+                    channelId: fc.channelId,
+                    videoId: fc.videoId,
+                    commentId: fc.youtubeId,
+                    authorName: fc.author || fc.username || 'Anonymous',
+                    commentText: fc.text || fc.commentText || '',
+                    category: fc.sentiment || 'toxic',
+                    type: fc.sentiment || 'toxic',
+                    confidence: Math.round((fc.confidence || 0.9) * 100),
+                    toxicityScore: fc.toxicityScore || 0.9,
+                    reason: `Retry auto-${execAct}`,
+                    action: execAct,
+                    executedAction: execAct,
+                    status: 'Success',
+                    failureReason: null
+                  }
+                },
+                { upsert: true, returnDocument: 'after' }
+              );
+            } catch (modRetryErr) {
+              logger.warn(`[RETRY] Failed to update ModerationLog for ${fc.youtubeId}: ${modRetryErr.message}`);
+            }
           }
         }
       }

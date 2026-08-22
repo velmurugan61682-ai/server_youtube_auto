@@ -127,6 +127,7 @@ router.get('/', authMiddleware, async (req, res) => {
     // ── 6. Normalize AutoReplyLog records ───────────────────────────────────
     const replyItems = allReplies.map(r => ({
       id: r._id.toString(),
+      commentId: r.commentId,
       type: 'replied',
       status: r.status === 'success' ? 'success' : 'failed',
       authorName: r.username || 'Anonymous',
@@ -147,6 +148,7 @@ router.get('/', authMiddleware, async (req, res) => {
       const isSuccess = m.status === 'Success' || m.status === 'success';
       return {
         id: m._id.toString(),
+        commentId: m.commentId,
         type: historyType,
         status: isSuccess ? 'success' : 'failed',
         authorName: m.authorName || 'Anonymous',
@@ -166,6 +168,7 @@ router.get('/', authMiddleware, async (req, res) => {
       const isDeleted = c.status === 'deleted' || c.status === 'hidden';
       return {
         id: c._id.toString(),
+        commentId: c.youtubeId || c.commentId,
         type: isDeleted ? (c.status === 'deleted' ? 'deleted' : 'hidden') : 'replied',
         status: 'success',
         authorName: c.author || c.authorName || c.username || 'Anonymous',
@@ -182,23 +185,19 @@ router.get('/', authMiddleware, async (req, res) => {
 
     // ── 8. Merge + deduplicate ───────────────────────────────────────────────
     // Priority order: ModerationLog (deleted/hidden) → Comment deleted/hidden → AutoReplyLog replies → Comment replies
-    // Deduplicate using each record's own ID so records from different sources are never dropped.
     const deletedOrHiddenComments = commentItems.filter(c => c.type === 'deleted' || c.type === 'hidden');
     const replyComments = commentItems.filter(c => c.type === 'replied');
     const mergedRaw = [...modItems, ...deletedOrHiddenComments, ...replyItems, ...replyComments];
 
-    // First pass: deduplicate same-source duplicates by comment text per type
     const seenHistoryKeys = new Set();
     let merged = [];
     for (const item of mergedRaw) {
-      // Use item id for primary dedup — this ensures records from different collections
-      // with the same comment text are not wrongly collapsed.
-      const idKey = item.id;
-      if (idKey && !seenHistoryKeys.has(idKey)) {
-        seenHistoryKeys.add(idKey);
+      const dedupKey = item.commentId ? `${item.commentId}_${item.type}` : item.id;
+      if (dedupKey && !seenHistoryKeys.has(dedupKey)) {
+        seenHistoryKeys.add(dedupKey);
         merged.push(item);
-      } else if (!idKey) {
-        // Fallback for items without id — skip empty
+      } else if (!dedupKey) {
+        merged.push(item);
       }
     }
 
