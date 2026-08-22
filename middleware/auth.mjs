@@ -13,9 +13,16 @@ export const authMiddleware = (req, res, next) => {
     token = req.cookies.token;
   }
 
-  // Sanitize malformed token strings
-  if (token === 'null' || token === 'undefined') {
-    token = null;
+  // Sanitize malformed token strings, quotes, and URL encoding
+  if (typeof token === 'string') {
+    token = token.trim().replace(/^["']|["']$/g, '');
+    try {
+      token = decodeURIComponent(token);
+    } catch (_) {}
+    token = token.trim().replace(/^["']|["']$/g, '');
+    if (token === 'null' || token === 'undefined' || token === '') {
+      token = null;
+    }
   }
 
   logger.debug(`[Auth] ${req.method} ${req.path}`);
