@@ -217,17 +217,9 @@ router.post('/cancel', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const org = await Organization.findById(user.organizationId);
-    if (!org) return res.status(404).json({ error: 'Organization not found' });
-
-    org.subscription.status = 'cancelled';
-    org.subscription.planType = 'free';
-    await org.save();
-
-    user.subscription.status = 'cancelled';
-    await user.save();
-
-    res.json({ success: true, status: 'cancelled', message: 'Subscription cancelled successfully.' });
+    return res.status(400).json({
+      error: 'Pro Plan subscriptions are active for 1 full month and cannot be cancelled early.'
+    });
   } catch (err) {
     logger.error('Subscription cancellation failure:', err);
     res.status(500).json({ error: err.message });
