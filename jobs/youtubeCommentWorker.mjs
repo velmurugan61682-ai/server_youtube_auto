@@ -237,11 +237,12 @@ export const runYouTubeCommentWorker = async (io) => {
 export const initYouTubeCommentWorker = (io) => {
   logger.info('[YouTube Comment Worker] Initializing scheduler...');
   
-  // Run every 30 seconds
-  cron.schedule('*/30 * * * * *', async () => {
-    logger.info('[YouTube Comment Worker] Running scheduled 30-second Auto Reply check...');
+  // Run every 15 minutes (to conserve YouTube API quota)
+  cron.schedule('*/15 * * * *', async () => {
+    logger.info('[YouTube Comment Worker] Running scheduled 15-minute Auto Reply check...');
     await runYouTubeCommentWorker(io);
   });
   
-  logger.info('[YouTube Comment Worker] Scheduled checking job initialized successfully (Every 30s)');
+  logger.info('[YouTube Comment Worker] Scheduled checking job initialized successfully (Every 15m)');
 };
+

@@ -101,8 +101,8 @@ export const initCommentJob = (io) => {
   // Trigger recovery/sync immediately on server startup
   runRecoveryAndSync(io);
 
-  // Schedule the scan to run every 2 minutes
-  cron.schedule('*/2 * * * *', async () => {
+  // Schedule the scan to run every 15 minutes (to conserve YouTube API quota)
+  cron.schedule('*/15 * * * *', async () => {
     const lockKey = 'comment_job_cron_sync';
     const hasLock = await acquireLock(lockKey, 180000); // 3 minutes lock
     if (!hasLock) {
@@ -111,13 +111,13 @@ export const initCommentJob = (io) => {
     }
     try {
       logger.info('Running scheduled channel sync (fetching channels due for sync)...');
-      const twoMinutesAgo = new Date(Date.now() - 120000);
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
       const channels = await Channel.find({
         status: 'connected',
         $or: [
           { lastSyncedAt: { $exists: false } },
           { lastSyncedAt: null },
-          { lastSyncedAt: { $lt: twoMinutesAgo } }
+          { lastSyncedAt: { $lt: fifteenMinutesAgo } }
         ]
       });
       for (const channel of channels) {
@@ -146,5 +146,5 @@ export const initCommentJob = (io) => {
       await releaseLock(lockKey);
     }
   });
-  logger.info('Scheduled comment analysis job initialized (Every 30s)');
+  logger.info('Scheduled comment analysis job initialized (Every 15m)');
 };

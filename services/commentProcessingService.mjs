@@ -1584,10 +1584,10 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
       return;
     }
 
-    // Cooldown check (30 seconds / 30,000 ms) - bypassed if videoId is provided (manual sync)
+    // Cooldown check (10 minutes / 600,000 ms) - bypassed if videoId is provided (manual sync)
     if (!videoId && latestChannel.lastSyncedAt) {
       const timeSinceLastSync = Date.now() - latestChannel.lastSyncedAt.getTime();
-      if (timeSinceLastSync < 30000) {
+      if (timeSinceLastSync < 600000) {
         logger.info(`[SYNC] Skipping channel ${latestChannel.title || latestChannel.channelId} - synced recently (${Math.round(timeSinceLastSync / 1000)}s ago).`);
         return;
       }
