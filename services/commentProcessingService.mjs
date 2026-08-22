@@ -992,6 +992,15 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
       }
     }
 
+    if (!matchedRule && (channel.settings?.autoReplyPositive || tenantSettings.smartAiReply) && classification === 'Positive') {
+      matchedRule = {
+        replyType: 'Text',
+        replyText: channel.settings?.autoReplyMessage || 'Thank you for your comment! Glad you enjoyed the video.',
+        triggerKeywords: ['*']
+      };
+      matchedKeyword = 'Positive Feedback (AI)';
+    }
+
     if (matchedRule) {
       const baseText = matchedRule.replyText || matchedRule.dmContent || 'Thank you for your comment!';
       
@@ -1813,8 +1822,7 @@ export const processComments = async (channel, tokens = null, apiKey = null, io 
             }
           }
         } catch (err) {
-          logger.error('Error syncing new videos:', err);
-          if (isQuotaError(err)) throw err;
+          logger.warn(`[SYNC] Video sync warning for channel ${channel.title || channel.channelId}: ${err.message}`);
         }
       }
 

@@ -101,8 +101,8 @@ export const initCommentJob = (io) => {
   // Trigger recovery/sync immediately on server startup
   runRecoveryAndSync(io);
 
-  // Schedule the scan to run every 30 seconds
-  cron.schedule('*/30 * * * * *', async () => {
+  // Schedule the scan to run every 2 minutes
+  cron.schedule('*/2 * * * *', async () => {
     const lockKey = 'comment_job_cron_sync';
     const hasLock = await acquireLock(lockKey, 180000); // 3 minutes lock
     if (!hasLock) {
@@ -110,14 +110,14 @@ export const initCommentJob = (io) => {
       return;
     }
     try {
-      logger.info('Running scheduled 30-second comment analysis (fetching channels due for sync)...');
-      const thirtySecondsAgo = new Date(Date.now() - 30000);
+      logger.info('Running scheduled channel sync (fetching channels due for sync)...');
+      const twoMinutesAgo = new Date(Date.now() - 120000);
       const channels = await Channel.find({
         status: 'connected',
         $or: [
           { lastSyncedAt: { $exists: false } },
           { lastSyncedAt: null },
-          { lastSyncedAt: { $lt: thirtySecondsAgo } }
+          { lastSyncedAt: { $lt: twoMinutesAgo } }
         ]
       });
       for (const channel of channels) {

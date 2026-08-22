@@ -257,19 +257,20 @@ export const getYouTubeClientWithApiKey = (apiKey) => {
 
 export const fetchLatestComments = async (youtube, channelId, maxResults = 50, videoId = null) => {
   const auth = getAuthFromClient(youtube);
+  const params = {
+    part: 'snippet,replies',
+    maxResults,
+    order: 'time'
+  };
+
+  if (videoId) {
+    params.videoId = videoId;
+  } else {
+    params.allThreadsRelatedToChannelId = channelId;
+  }
+
   try {
     await ensureAuthToken(auth, auth?.channelDbId);
-    const params = {
-      part: 'snippet,replies',
-      maxResults,
-      order: 'time'
-    };
-
-    if (videoId) {
-      params.videoId = videoId;
-    } else {
-      params.allThreadsRelatedToChannelId = channelId;
-    }
 
     logger.info(`[YOUTUBE API] Request: commentThreads.list with params: ${JSON.stringify(params)}`);
     const res = await youtube.commentThreads.list(params);
@@ -310,7 +311,51 @@ export const fetchLatestComments = async (youtube, channelId, maxResults = 50, v
     }
     return allComments;
   } catch (error) {
-    if (isQuotaError(error)) throw error;
+    if (isQuotaError(error)) {
+      if (process.env.YOUTUBE_API_KEY) {
+        try {
+          logger.info(`[YOUTUBE API] OAuth quota exceeded for commentThreads.list. Falling back to YOUTUBE_API_KEY...`);
+          const fallbackYoutube = getYouTubeClientWithApiKey(process.env.YOUTUBE_API_KEY);
+          const fallbackRes = await fallbackYoutube.commentThreads.list(params);
+          logger.info(`[YOUTUBE API] Fallback API key succeeded for commentThreads.list with status ${fallbackRes.status}. Found ${fallbackRes.data.items?.length || 0} comment threads.`);
+          let allComments = [];
+          for (const item of (fallbackRes.data.items || [])) {
+            const topLevelComment = item.snippet.topLevelComment;
+            allComments.push({
+              youtubeId: topLevelComment.id,
+              videoId: item.snippet.videoId,
+              text: topLevelComment.snippet.textDisplay,
+              author: topLevelComment.snippet.authorDisplayName,
+              authorProfileImageUrl: topLevelComment.snippet.authorProfileImageUrl,
+              authorChannelId: topLevelComment.snippet.authorChannelId?.value || null,
+              publishedAt: topLevelComment.snippet.publishedAt,
+              parentCommentId: null,
+              isReply: false
+            });
+            if (item.replies && item.replies.comments) {
+              for (const reply of item.replies.comments) {
+                allComments.push({
+                  youtubeId: reply.id,
+                  videoId: item.snippet.videoId,
+                  text: reply.snippet.textDisplay,
+                  author: reply.snippet.authorDisplayName,
+                  authorProfileImageUrl: reply.snippet.authorProfileImageUrl,
+                  authorChannelId: reply.snippet.authorChannelId?.value || null,
+                  publishedAt: reply.snippet.publishedAt,
+                  parentCommentId: topLevelComment.id,
+                  isReply: true
+                });
+              }
+            }
+          }
+          return allComments;
+        } catch (fallbackErr) {
+          logger.warn(`[YOUTUBE API] Fallback API key also failed: ${fallbackErr.message}`);
+          throw error;
+        }
+      }
+      throw error;
+    }
     const errorMsg = error.response?.data?.error?.message || error.message;
     logger.error(`[YOUTUBE API] Error: commentThreads.list failed: ${errorMsg}`);
     if (isUnauthorizedClientError(error) && auth?.channelDbId) {
