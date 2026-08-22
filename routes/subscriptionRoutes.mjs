@@ -10,6 +10,7 @@ import {
   createRazorpaySubscription,
   cancelRazorpaySubscription,
   verifyWebhookSignature,
+  verifySubscriptionSignature,
   getSubscriptionInvoices
 } from '../services/razorpayService.mjs';
 import logger from '../utils/logger.mjs';
@@ -55,7 +56,7 @@ router.post('/create', authMiddleware, async (req, res) => {
     }
 
     const org = await Organization.findById(user.organizationId);
-    if (!org) return res.status(404).json({ error: 'Organization not found' });
+    if (!org) return res.status(400).json({ error: 'Organization not found' });
 
     if (planType === 'free') {
       const durationMs = 30 * 24 * 60 * 60 * 1000;
@@ -80,63 +81,52 @@ router.post('/create', authMiddleware, async (req, res) => {
       return res.json({ success: true, planType: 'free', subscriptionId: subId });
     }
 
-    // Paid Plan - Create Razorpay Order
-    const { key_id: razorpayKeyId, key_secret: razorpayKeySecret } = getRazorpayConfig();
-
-    const Razorpay = (await import('razorpay')).default;
-    const razorpay = new Razorpay({ key_id: razorpayKeyId, key_secret: razorpayKeySecret });
-
-    const amountInPaise = 99900; // ₹999 for 1 Month
-
-    let order;
-    try {
-      order = await razorpay.orders.create({
-        amount: amountInPaise,
-        currency: 'INR',
-        receipt: `rcpt_${Date.now()}`,
-        notes: { planType, userId: user._id.toString(), email: user.email }
-      });
-      logger.info(`[Razorpay] Created order ${order.id} for user ${user.email} (${planType})`);
-    } catch (orderErr) {
-      logger.warn(`[Razorpay] Order creation failed with SDK: ${orderErr.message}`);
-      if (!process.env.RAZORPAY_KEY_ID || razorpayKeyId.startsWith('rzp_test_')) {
-        order = {
-          id: `order_mock_${Date.now()}`,
-          amount: amountInPaise,
-          currency: 'INR'
-        };
-      } else {
-        throw orderErr;
-      }
+    // Real Razorpay Subscription Creation (AutoPay ₹999/month)
+    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+    if (!razorpayKeyId) {
+      return res.status(500).json({ error: 'Razorpay configuration (RAZORPAY_KEY_ID) missing on server.' });
     }
+
+    const targetPlanId = process.env.RAZORPAY_PLAN_ID || 'plan_TSmDpAjzlWzqVp';
+    const subscription = await createRazorpaySubscription(targetPlanId, user.email);
+
+    logger.info(`[Razorpay] Created subscription ${subscription.id} for user ${user.email} (plan: pro)`);
 
     res.json({
       success: true,
-      orderId: order.id,
-      subscriptionId: order.id,
-      amount: order.amount,
-      currency: order.currency || 'INR',
-      razorpayKeyId
+      subscriptionId: subscription.id,
+      razorpayKeyId,
+      plan: 'pro'
     });
   } catch (err) {
     logger.error('Subscription initiate failure:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message || 'Failed to create subscription' });
   }
 });
 
 /**
- * Verify payment/signature manually (optional client-side backup)
+ * Verify payment/signature securely using Razorpay Key Secret
  */
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    const { planType: reqPlanType, razorpay_subscription_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature } = req.body;
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    if (!razorpay_subscription_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'Missing required Razorpay verification parameters.' });
+    }
+
+    // Verify HMAC SHA256 Signature
+    const isValid = verifySubscriptionSignature(razorpay_payment_id, razorpay_subscription_id, razorpay_signature);
+    if (!isValid) {
+      logger.warn(`[Subscription Verify] Invalid signature for payment ${razorpay_payment_id}`);
+      return res.status(400).json({ error: 'Invalid Razorpay payment signature. Verification failed.' });
+    }
+
     let org = null;
-    const targetPlanType = 'pro';
-    const subId = razorpay_subscription_id || razorpay_order_id || `sub_${targetPlanType}_${Date.now()}`;
-    const durationDays = 30; // 1 Month = 30 Days for ₹999
+    const subId = razorpay_subscription_id;
+    const durationDays = 30; // 1 Month
     const expiryDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
     if (user.organizationId) {
@@ -165,32 +155,36 @@ router.post('/verify', authMiddleware, async (req, res) => {
     await user.save();
 
     await Subscription.findOneAndUpdate(
-      { userId: user._id },
+      { razorpaySubscriptionId: subId },
       {
         userId: user._id,
         organizationId: org ? org._id : undefined,
+        provider: 'razorpay',
+        razorpayPlanId: process.env.RAZORPAY_PLAN_ID || 'plan_TSmDpAjzlWzqVp',
         razorpaySubscriptionId: subId,
-        planId: 'plan_pro',
+        razorpayPaymentId: razorpay_payment_id,
+        planId: 'pro',
         planType: 'pro',
+        subscriptionStatus: 'active',
         status: 'active',
         currentStart: new Date(),
-        currentEnd: expiryDate
+        currentEnd: expiryDate,
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       { upsert: true, returnDocument: 'after' }
     );
 
-    // Save Payment transaction log for auditing if payment ID present
     if (razorpay_payment_id) {
       try {
         await Payment.create({
           userId: user._id,
           organizationId: org ? org._id : undefined,
           razorpayPaymentId: razorpay_payment_id,
-          razorpayOrderId: razorpay_order_id || subId,
           razorpaySubscriptionId: subId,
           subscriptionId: subId,
-          razorpaySignature: razorpay_signature || '',
-          amount: (targetPlanType === 'quarterly' || targetPlanType === 'quarterly_pro') ? 99900 : 99900,
+          razorpaySignature: razorpay_signature,
+          amount: 99900,
           currency: 'INR',
           status: 'captured',
           paymentDate: new Date()
@@ -200,9 +194,9 @@ router.post('/verify', authMiddleware, async (req, res) => {
       }
     }
 
-    logger.info(`[Subscription] Activated ${targetPlanType} for user ${user.email}`);
+    logger.info(`[Subscription] Verified & activated Pro Plan for user ${user.email} (subId: ${subId})`);
 
-    res.json({ success: true, status: 'active', message: 'Payment verified and subscription activated.' });
+    res.json({ success: true, status: 'active', message: 'Payment verified and Pro Plan activated.' });
   } catch (err) {
     logger.error('Subscription verification failure:', err);
     res.status(500).json({ error: err.message });
