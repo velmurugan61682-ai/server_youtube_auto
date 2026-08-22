@@ -118,10 +118,12 @@ export const takeAction = async (req, res) => {
     const channel = await Channel.findOne(filter).lean();
     if (!channel) return res.status(404).json({ error: 'No channel connected' });
 
-    if (channel.apiKey && action !== 'approve') {
+    // For API key channels: approve/delete/hide are handled locally (no YouTube API call).
+    // like/reply still require OAuth.
+    if (channel.apiKey && (action === 'like' || action === 'reply')) {
       return res.status(400).json({
         success: false,
-        error: 'Action not supported for API key channels.'
+        error: 'OAuth is required for this action. API key channels only support approve, delete, and hide locally.'
       });
     }
 
@@ -159,23 +161,25 @@ export const takeAction = async (req, res) => {
         await ModerationLog.findOneAndUpdate(
           { commentId: comment.youtubeId || comment._id.toString() },
           {
-            userId: comment.userId || req.user.id,
-            organizationId: comment.organizationId || req.user.organizationId || req.user.id,
-            channelId: comment.channelId,
-            videoId: comment.videoId,
-            commentId: comment.youtubeId || comment._id.toString(),
-            authorName: comment.author || comment.username || 'Anonymous',
-            commentText: comment.text || comment.commentText || '',
-            category: comment.sentiment || 'toxic',
-            type: comment.sentiment || 'toxic',
-            confidence: Math.round((comment.confidence || 0.9) * 100),
-            toxicityScore: comment.confidence || 0.9,
-            reason: ytReason || 'Manual deletion via Comments & Moderation',
-            executedAction: 'delete',
-            action: 'delete',
-            status: 'Success'
+            $set: {
+              userId: comment.userId || req.user.id,
+              organizationId: comment.organizationId || req.user.organizationId || req.user.id,
+              channelId: comment.channelId,
+              videoId: comment.videoId,
+              commentId: comment.youtubeId || comment._id.toString(),
+              authorName: comment.author || comment.username || 'Anonymous',
+              commentText: comment.text || comment.commentText || '',
+              category: comment.sentiment || 'toxic',
+              type: comment.sentiment || 'toxic',
+              confidence: Math.round((comment.confidence || 0.9) * 100),
+              toxicityScore: comment.confidence || 0.9,
+              reason: ytReason || 'Manual deletion via Comments & Moderation',
+              executedAction: 'delete',
+              action: 'delete',
+              status: 'Success'
+            }
           },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
+          { upsert: true, new: true }
         );
       } catch (modErr) {
         logger.error(`[takeAction] Failed to create ModerationLog on delete: ${modErr.message}`);
@@ -198,23 +202,25 @@ export const takeAction = async (req, res) => {
         await ModerationLog.findOneAndUpdate(
           { commentId: comment.youtubeId || comment._id.toString() },
           {
-            userId: comment.userId || req.user.id,
-            organizationId: comment.organizationId || req.user.organizationId || req.user.id,
-            channelId: comment.channelId,
-            videoId: comment.videoId,
-            commentId: comment.youtubeId || comment._id.toString(),
-            authorName: comment.author || comment.username || 'Anonymous',
-            commentText: comment.text || comment.commentText || '',
-            category: comment.sentiment || 'toxic',
-            type: comment.sentiment || 'toxic',
-            confidence: Math.round((comment.confidence || 0.9) * 100),
-            toxicityScore: comment.confidence || 0.9,
-            reason: ytReason || 'Manual hide via Comments & Moderation',
-            executedAction: 'hide',
-            action: 'hide',
-            status: 'Success'
+            $set: {
+              userId: comment.userId || req.user.id,
+              organizationId: comment.organizationId || req.user.organizationId || req.user.id,
+              channelId: comment.channelId,
+              videoId: comment.videoId,
+              commentId: comment.youtubeId || comment._id.toString(),
+              authorName: comment.author || comment.username || 'Anonymous',
+              commentText: comment.text || comment.commentText || '',
+              category: comment.sentiment || 'toxic',
+              type: comment.sentiment || 'toxic',
+              confidence: Math.round((comment.confidence || 0.9) * 100),
+              toxicityScore: comment.confidence || 0.9,
+              reason: ytReason || 'Manual hide via Comments & Moderation',
+              executedAction: 'hide',
+              action: 'hide',
+              status: 'Success'
+            }
           },
-          { upsert: true, new: true, setDefaultsOnInsert: true }
+          { upsert: true, new: true }
         );
       } catch (modErr) {
         logger.error(`[takeAction] Failed to create ModerationLog on hide: ${modErr.message}`);
