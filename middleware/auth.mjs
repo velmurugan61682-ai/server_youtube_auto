@@ -5,8 +5,11 @@ export const authMiddleware = (req, res, next) => {
   const JWT_SECRET = process.env.JWT_SECRET;
   const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || JWT_SECRET;
 
-  const authHeader = req.headers.authorization;
-  let token = authHeader && authHeader.split(' ')[1];
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  let token = null;
+  if (authHeader && typeof authHeader === 'string') {
+    token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  }
 
   // Fallback to cookie if Bearer token is missing
   if (!token && req.cookies) {
