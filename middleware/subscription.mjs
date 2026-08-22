@@ -101,12 +101,12 @@ export const requireActiveSubscription = async (req, res, next) => {
 export const requireFeature = (featureName) => {
   return async (req, res, next) => {
     try {
-      const planType = req.planType || 'free';
-      const features = getPlanFeatures(planType);
+      const planType = req.planType || req.user?.plan || req.user?.subscription?.planId || 'free';
+      const allowed = hasFeatureAccess(planType, featureName);
 
-      if (!features[featureName]) {
+      if (!allowed) {
         return res.status(403).json({
-          error: `Feature "${featureName}" is not available on your current plan (${features.name}). Please upgrade to access this feature.`,
+          error: 'This feature is available only in the Pro Plan. Upgrade to ₹999/month to unlock it.',
           featureRequired: featureName,
           upgradeRequired: true
         });

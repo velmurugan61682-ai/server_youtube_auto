@@ -165,12 +165,22 @@ export const login = async (req, res) => {
 
 
 
+import { normalizePlanName } from '../config/planFeatures.mjs';
+
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password -passwordHash').lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json(user);
+    const rawPlan = user.subscription?.planId || user.subscription?.planType || user.plan || 'free';
+    const plan = normalizePlanName(rawPlan);
+    const subscriptionStatus = user.subscription?.status || user.subscriptionStatus || 'active';
+
+    res.json({
+      ...user,
+      plan,
+      subscriptionStatus
+    });
   } catch (error) {
     logger.error('getMe Error:', error);
     res.status(500).json({ error: 'Internal server error.' });

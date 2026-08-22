@@ -15,12 +15,13 @@ import {
 const router = express.Router();
 
 router.get('/streams', authMiddleware, requireActiveSubscription, getLiveStreams);
-router.post('/toggle-mode', authMiddleware, requireActiveSubscription, requireFeature('liveChatAutomation'), toggleMode);
+router.post('/toggle-mode', authMiddleware, requireActiveSubscription, requireFeature('liveStreamingCommentReply'), toggleMode);
 router.get('/messages', authMiddleware, requireActiveSubscription, getMessages);
-router.post('/send', authMiddleware, requireActiveSubscription, sendMessage);
-router.post('/sync', authMiddleware, requireActiveSubscription, syncLiveChat);
+router.post('/send', authMiddleware, requireActiveSubscription, requireFeature('liveStreamingCommentReply'), sendMessage);
+router.post('/sync', authMiddleware, requireActiveSubscription, requireFeature('liveStreamingCommentReply'), syncLiveChat);
 router.post('/delete', authMiddleware, requireActiveSubscription, deleteLiveMessage);
 router.post('/hide', authMiddleware, requireActiveSubscription, hideLiveMessage);
-router.post('/reply', authMiddleware, requireActiveSubscription, replyLiveMessage);
+router.post('/reply', authMiddleware, requireActiveSubscription, requireFeature('liveStreamingCommentReply'), replyLiveMessage);
 
 export default router;
+

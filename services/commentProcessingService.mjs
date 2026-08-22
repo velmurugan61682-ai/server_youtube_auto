@@ -85,6 +85,7 @@ import { detectWhatsAppNumber, createLead } from './leadService.mjs';
 import { sendWhatsAppMessage } from './gowhatsService.mjs';
 import { encrypt, decrypt } from '../utils/cryptoHelper.mjs';
 import { generateAndPostAutoReply } from './autoReplyService.mjs';
+import { hasFeatureAccess } from '../config/planFeatures.mjs';
 
 // Helper to log automation actions
 const logAutomation = async (userId, actionType, description, details = {}) => {
@@ -755,7 +756,15 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
 
     // 9. If unsafe: Delete or hold for review (ONLY FOR NEW COMMENTS)
     if (isUnsafe) {
-      if (isTooOldForAutomation) {
+      const canRemoveToxic = hasFeatureAccess(user, 'toxicCommentRemove');
+      if (!canRemoveToxic) {
+        logger.info(`[Pipeline] Skipping Toxic Comment Auto Remove for comment ${commentDoc.youtubeId} - Pro Plan feature required.`);
+        status = 'flagged';
+        moderationStatus = 'heldForReview';
+        executedAction = 'hold';
+        moderationActionTaken = false;
+        deleteReason = 'Toxic comment auto-remove disabled on Free Plan. Upgrade to Pro required.';
+      } else if (isTooOldForAutomation) {
         logger.info(`[Pipeline] Skipping auto-moderation/deletion for toxic comment ${commentDoc.youtubeId} because it is an old comment (${Math.round(commentAgeMs / 60000)} minutes old, older than 15-min threshold).`);
         status = 'approved';
         moderationStatus = 'safe';
@@ -1410,8 +1419,9 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           });
           leadStatus = isDuplicate ? 'duplicate' : 'pending';
 
-          // Only send WhatsApp DM if phone number detected AND GoWhats configured
-          if (!isDuplicate && phoneToUse && phoneToUse !== 'None' && user.gowhatsApiKey) {
+          // Only send WhatsApp DM if phone number detected AND GoWhats configured AND user has autoDM feature (Pro Plan)
+          const canAutoDM = hasFeatureAccess(user, 'autoDM');
+          if (!isDuplicate && phoneToUse && phoneToUse !== 'None' && user.gowhatsApiKey && canAutoDM) {
             // Hide the comment to protect phone number privacy when OAuth write access is available.
             if (!channel.apiKey && youtube) {
               const hideRes = await hideComment(youtube, commentDoc.youtubeId);

@@ -19,6 +19,7 @@ import { decrypt } from '../utils/cryptoHelper.mjs';
 import logger from '../utils/logger.mjs';
 import User from '../models/User.mjs';
 import { processSingleComment } from '../services/commentProcessingService.mjs';
+import { hasFeatureAccess } from '../config/planFeatures.mjs';
 
 /**
  * Helper to verify channel ownership / tenant access

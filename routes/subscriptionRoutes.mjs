@@ -134,7 +134,7 @@ router.post('/verify', authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     let org = null;
-    let targetPlanType = reqPlanType || 'quarterly_pro';
+    const targetPlanType = 'pro';
     const subId = razorpay_subscription_id || razorpay_order_id || `sub_${targetPlanType}_${Date.now()}`;
     const durationDays = 30; // 1 Month = 30 Days for ₹999
     const expiryDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
@@ -144,7 +144,7 @@ router.post('/verify', authMiddleware, async (req, res) => {
       if (org) {
         org.subscription = {
           status: 'active',
-          planType: targetPlanType,
+          planType: 'pro',
           razorpaySubscriptionId: subId,
           currentPeriodEnd: expiryDate
         };
@@ -152,9 +152,12 @@ router.post('/verify', authMiddleware, async (req, res) => {
       }
     }
 
+    user.plan = 'pro';
+    user.subscriptionStatus = 'active';
     user.subscription = {
       id: subId,
-      planId: targetPlanType,
+      planId: 'pro',
+      planType: 'pro',
       status: 'active',
       currentStart: new Date(),
       currentEnd: expiryDate
@@ -167,8 +170,8 @@ router.post('/verify', authMiddleware, async (req, res) => {
         userId: user._id,
         organizationId: org ? org._id : undefined,
         razorpaySubscriptionId: subId,
-        planId: `plan_${targetPlanType}`,
-        planType: targetPlanType,
+        planId: 'plan_pro',
+        planType: 'pro',
         status: 'active',
         currentStart: new Date(),
         currentEnd: expiryDate
@@ -418,19 +421,29 @@ router.post('/webhook', async (req, res) => {
 
     const targetStatus = statusMap[event];
     if (targetStatus) {
+      const isProActive = targetStatus === 'active';
+      const effectivePlan = isProActive ? 'pro' : 'free';
+
       if (org) {
         org.subscription.status = targetStatus;
+        org.subscription.planType = effectivePlan;
         org.subscription.razorpaySubscriptionId = subId;
         org.subscription.currentPeriodEnd = currentEnd;
         await org.save();
-        logger.info(`📬 [Razorpay Webhook] Organization ${org.name} subscription status updated: ${targetStatus}`);
+        logger.info(`📬 [Razorpay Webhook] Organization ${org.name} subscription status updated: ${targetStatus} (${effectivePlan})`);
       }
 
       if (user) {
-        user.subscription.id = subId;
-        user.subscription.status = targetStatus;
-        user.subscription.currentStart = currentStart;
-        user.subscription.currentEnd = currentEnd;
+        user.plan = effectivePlan;
+        user.subscriptionStatus = isProActive ? 'active' : targetStatus;
+        user.subscription = {
+          id: subId,
+          planId: effectivePlan,
+          planType: effectivePlan,
+          status: targetStatus,
+          currentStart,
+          currentEnd
+        };
         await user.save();
       }
 
