@@ -2,23 +2,27 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import logger from '../utils/logger.mjs';
 
-const key_id = process.env.RAZORPAY_KEY_ID;
-const key_secret = process.env.RAZORPAY_KEY_SECRET;
+const getKeyId = () => process.env.RAZORPAY_KEY_ID;
+const getKeySecret = () => process.env.RAZORPAY_KEY_SECRET;
 
-if (!key_id || !key_secret) {
-  throw new Error('Missing Razorpay configuration: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET must be set in environment variables.');
-}
+export const getRazorpayClient = () => {
+  const key_id = getKeyId();
+  const key_secret = getKeySecret();
+  if (!key_id || !key_secret) {
+    logger.warn('Razorpay configuration missing: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are not set in environment.');
+    return null;
+  }
+  return new Razorpay({ key_id, key_secret });
+};
 
-const razorpay = new Razorpay({
-  key_id,
-  key_secret
-});
-logger.info('Razorpay SDK initialized.');
+let razorpay = getRazorpayClient();
+
 /**
  * Creates a subscription in Razorpay
  */
 export const createRazorpaySubscription = async (planId, email) => {
-  if (!razorpay) {
+  const client = getRazorpayClient() || razorpay;
+  if (!client) {
     throw new Error('Razorpay integration is not configured. Please specify RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the .env file.');
   }
 
@@ -29,14 +33,14 @@ export const createRazorpaySubscription = async (planId, email) => {
     if (activePlanId.includes('mock') || !activePlanId.startsWith('plan_')) {
       logger.info(`Plan ID is a mock placeholder (${planId}). Resolving corresponding plan details in Razorpay...`);
       try {
-        const plans = await razorpay.plans.all({ count: 50 });
+        const plans = await client.plans.all({ count: 50 });
         
         let planDetails = {
-          name: 'Premium Pro Plan',
+          name: 'Pro Plan (999)',
           amount: 99900,
           period: 'monthly',
           interval: 1,
-          description: 'Premium Pro Plan - Unlimited YouTube Channels'
+          description: '1 Month Pro Plan - Unlimited YouTube Channels'
         };
         
         if (planId.includes('one_rupee')) {
@@ -63,13 +67,13 @@ export const createRazorpaySubscription = async (planId, email) => {
             interval: 2,
             description: '2 Months Plan - 10 Channels Connection'
           };
-        } else if (planId.includes('three_months_999') || planId === 'quarterly' || planId.includes('professional')) {
+        } else if (planId.includes('three_months_999') || planId === 'quarterly' || planId.includes('professional') || planId.includes('pro')) {
           planDetails = {
-            name: '3 Months Plan (999)',
+            name: 'Pro Plan (999)',
             amount: 99900, // ₹999 in paise
             period: 'monthly',
-            interval: 3,
-            description: '3 Months Plan - Unlimited Channels Connection'
+            interval: 1,
+            description: '1 Month Pro Plan - Unlimited Channels Connection'
           };
         } else if (planId === 'yearly' || planId.includes('yearly_2999')) {
           planDetails = {
@@ -125,12 +129,13 @@ export const createRazorpaySubscription = async (planId, email) => {
  * Cancels a subscription in Razorpay
  */
 export const cancelRazorpaySubscription = async (subscriptionId) => {
-  if (!razorpay) {
+  const client = getRazorpayClient() || razorpay;
+  if (!client) {
     throw new Error('Razorpay integration is not configured.');
   }
 
   try {
-    const cancelled = await razorpay.subscriptions.cancel(subscriptionId, {
+    const cancelled = await client.subscriptions.cancel(subscriptionId, {
       cancel_at_cycle_end: 1 // cancel at end of billing cycle
     });
     return cancelled;
@@ -144,7 +149,8 @@ export const cancelRazorpaySubscription = async (subscriptionId) => {
  * Verify Razorpay payment signature for webhooks
  */
 export const verifyWebhookSignature = (rawBody, signature, secret) => {
-  if (!secret) return false;
+  const webhookSecret = secret || process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!webhookSecret) return false;
   
   let data = rawBody;
   if (typeof rawBody !== 'string' && !Buffer.isBuffer(rawBody)) {
@@ -156,7 +162,7 @@ export const verifyWebhookSignature = (rawBody, signature, secret) => {
   }
   
   const expectedSignature = crypto
-    .createHmac('sha256', secret)
+    .createHmac('sha256', webhookSecret)
     .update(data)
     .digest('hex');
   
@@ -167,11 +173,12 @@ export const verifyWebhookSignature = (rawBody, signature, secret) => {
  * Verify Razorpay subscription payment signature (standard checkout modal verification)
  */
 export const verifySubscriptionSignature = (paymentId, subscriptionId, signature) => {
-  if (!key_secret) return false;
+  const secret = getKeySecret();
+  if (!secret) return false;
   
   const text = `${paymentId}|${subscriptionId}`;
   const generatedSignature = crypto
-    .createHmac('sha256', key_secret)
+    .createHmac('sha256', secret)
     .update(text)
     .digest('hex');
     
@@ -182,8 +189,10 @@ export const verifySubscriptionSignature = (paymentId, subscriptionId, signature
  * Fetch invoices for a subscription
  */
 export const getSubscriptionInvoices = async (subscriptionId) => {
+  const client = getRazorpayClient() || razorpay;
+  if (!client) return [];
   try {
-    const invoices = await razorpay.invoices.all({ subscription_id: subscriptionId });
+    const invoices = await client.invoices.all({ subscription_id: subscriptionId });
     return invoices.items || [];
   } catch (error) {
     logger.error('Error fetching Razorpay invoices:', error);

@@ -816,7 +816,7 @@ export const getAdminSubscriptions = async (req, res) => {
  */
 export const createAdminSubscription = async (req, res) => {
   try {
-    const { userId, plan = 'quarterly_pro', amount, durationDays = 90 } = req.body;
+    const { userId, plan = 'quarterly_pro', amount, durationDays = 30 } = req.body;
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, error: 'User not found.' });
