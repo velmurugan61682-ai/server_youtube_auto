@@ -558,26 +558,40 @@ export const deleteCommentApi = async (req, res) => {
       await ModerationLog.findOneAndUpdate(
         { commentId: comment.youtubeId || comment._id.toString() },
         {
-          userId: comment.userId || req.user.id,
-          organizationId: comment.organizationId || req.user.organizationId || req.user.id,
-          channelId: comment.channelId,
-          videoId: comment.videoId,
-          commentId: comment.youtubeId || comment._id.toString(),
-          authorName: comment.author || comment.username || 'Anonymous',
-          commentText: comment.text || comment.commentText || '',
-          category: comment.sentiment || 'toxic',
-          type: comment.sentiment || 'toxic',
-          confidence: Math.round((comment.confidence || 0.9) * 100),
-          toxicityScore: comment.confidence || 0.9,
-          reason: 'Manual deletion',
-          executedAction: 'delete',
-          action: 'delete',
-          status: 'Success'
+          $set: {
+            userId: comment.userId || req.user.id,
+            organizationId: comment.organizationId || req.user.organizationId || req.user.id,
+            channelId: comment.channelId,
+            videoId: comment.videoId,
+            commentId: comment.youtubeId || comment._id.toString(),
+            authorName: comment.author || comment.username || 'Anonymous',
+            commentText: comment.text || comment.commentText || '',
+            category: comment.sentiment || 'toxic',
+            type: comment.sentiment || 'toxic',
+            confidence: Math.round((comment.confidence || 0.9) * 100),
+            toxicityScore: comment.confidence || 0.9,
+            reason: 'Manual deletion',
+            executedAction: 'delete',
+            action: 'delete',
+            status: 'Success'
+          }
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
+        { upsert: true, new: true }
       );
     } catch (modErr) {
       logger.error(`[deleteCommentApi] Failed to save ModerationLog: ${modErr.message}`);
+    }
+
+    // Emit real-time socket event so Dashboard stats refresh immediately
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        const roomName = (comment.userId || req.user.id).toString();
+        io.to(roomName).emit('stats_updated');
+        debouncedEmit(io, roomName, 'stats_updated');
+      }
+    } catch (socketErr) {
+      logger.warn(`[deleteCommentApi] Socket emit failed: ${socketErr.message}`);
     }
 
     return res.json({ success: true, message: 'Comment deleted successfully' });

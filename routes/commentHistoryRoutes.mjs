@@ -180,20 +180,25 @@ router.get('/', authMiddleware, async (req, res) => {
       };
     });
 
-    // ── 8. Merge + deduplicate by authorName + commentText ──────────────────
-    // Prioritize explicit ModerationLog records and deleted/hidden comments over reply items
+    // ── 8. Merge + deduplicate ───────────────────────────────────────────────
+    // Priority order: ModerationLog (deleted/hidden) → Comment deleted/hidden → AutoReplyLog replies → Comment replies
+    // Deduplicate using each record's own ID so records from different sources are never dropped.
     const deletedOrHiddenComments = commentItems.filter(c => c.type === 'deleted' || c.type === 'hidden');
     const replyComments = commentItems.filter(c => c.type === 'replied');
     const mergedRaw = [...modItems, ...deletedOrHiddenComments, ...replyItems, ...replyComments];
+
+    // First pass: deduplicate same-source duplicates by comment text per type
     const seenHistoryKeys = new Set();
     let merged = [];
     for (const item of mergedRaw) {
-      const authorClean = (item.authorName || '').trim().toLowerCase();
-      const commentClean = (item.commentText || '').trim().toLowerCase();
-      const key = `${authorClean}:${commentClean}`;
-      if (commentClean && !seenHistoryKeys.has(key)) {
-        seenHistoryKeys.add(key);
+      // Use item id for primary dedup — this ensures records from different collections
+      // with the same comment text are not wrongly collapsed.
+      const idKey = item.id;
+      if (idKey && !seenHistoryKeys.has(idKey)) {
+        seenHistoryKeys.add(idKey);
         merged.push(item);
+      } else if (!idKey) {
+        // Fallback for items without id — skip empty
       }
     }
 

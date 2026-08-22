@@ -26,10 +26,11 @@ export const getDashboardStats = async (req, res) => {
     const userFilter = { $in: userIds };
     const channelFilter = { $in: channelIds };
 
-    // Execute all 5 count queries in parallel
+    // Execute all count queries in parallel
     const [
       toxicComments,
-      autoShield,
+      autoShieldMod,
+      autoShieldDeleted,
       autoReplies,
       positiveComments,
       moderateComments
@@ -43,6 +44,11 @@ export const getDashboardStats = async (req, res) => {
         userId: userFilter,
         channelId: channelFilter,
         status: 'Success'
+      }),
+      Comment.countDocuments({
+        userId: userFilter,
+        channelId: channelFilter,
+        status: { $in: ['deleted', 'hidden'] }
       }),
       AutoReplyLog.countDocuments({
         userId: userFilter,
@@ -64,6 +70,10 @@ export const getDashboardStats = async (req, res) => {
         ]
       })
     ]);
+
+    // autoShield = max of (ModerationLog success count, Comment deleted/hidden count)
+    // to avoid double-counting when both records exist for the same deletion
+    const autoShield = Math.max(autoShieldMod, autoShieldDeleted);
 
     logger.info(`[Dashboard Stats] Calculated for user ${req.user.id}: toxicComments=${toxicComments}, autoShield=${autoShield}, autoReplies=${autoReplies}, positiveComments=${positiveComments}, moderateComments=${moderateComments}`);
 

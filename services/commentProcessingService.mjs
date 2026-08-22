@@ -846,7 +846,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
           };
           await ModerationLog.findOneAndUpdate(
             { commentId: commentDoc.youtubeId, userId: channel.userId },
-            { $setOnInsert: modLogData },
+            { $set: modLogData },
             { upsert: true }
           );
           if (!deleteFailed) {
