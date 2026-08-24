@@ -24,6 +24,14 @@ const oauthStateSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  platform: {
+    type: String,
+    default: 'web'
+  },
+  customScheme: {
+    type: String,
+    default: null
+  },
   lastToken: {
     type: String,
     default: null

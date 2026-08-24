@@ -54,6 +54,15 @@ const getFrontendUrl = (req) => {
   return base.replace(/\/dashboard\/?$/, '').replace(/\/+$/, '');
 };
 
+const buildRedirectTarget = (stateRecord, frontendUrl, pathAndQuery) => {
+  // pathAndQuery starts with '/', e.g. '/oauth/callback?token=xxx&status=success'
+  if (stateRecord?.platform && stateRecord.platform !== 'web' && stateRecord.customScheme) {
+    const queryPart = pathAndQuery.split('?')[1] || '';
+    return `${stateRecord.customScheme}${queryPart ? '?' + queryPart : ''}`;
+  }
+  return `${frontendUrl}${pathAndQuery}`;
+};
+
 
 export const initiateAuth = async (req, res) => {
   try {
@@ -61,6 +70,11 @@ export const initiateAuth = async (req, res) => {
     const isExplicitLoginFlow = req.originalUrl?.includes('/auth/google') || req.path?.includes('/auth/google') || req.query.flow === 'login';
     const userId = isExplicitLoginFlow ? null : (req.user ? req.user.id : null);
     const isLoginFlow = isExplicitLoginFlow || !userId;
+
+    const platformQuery = req.query.platform;
+    const isMobilePlatform = ['mobile', 'android', 'ios'].includes(platformQuery);
+    const platform = isMobilePlatform ? platformQuery : 'web';
+    const customScheme = isMobilePlatform ? 'channelbot://oauth/callback' : null;
 
     if (userId) {
       const user = await User.findById(userId).lean();
@@ -125,14 +139,14 @@ export const initiateAuth = async (req, res) => {
 
     const state = crypto.randomUUID();
 
-    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId || 'guest'} (isLoginFlow: ${isLoginFlow})`);
+    console.log(`[OAuth State Gen] ✅ Generated OAuth state for user ${userId || 'guest'} (isLoginFlow: ${isLoginFlow}, platform: ${platform})`);
     console.log(`[OAuth State Gen] TTL: 5 minutes`);
 
     const originFrontendUrl = getFrontendUrl(req);
     // Store state mapping in MongoDB (TTL is 5 minutes as per schema)
     const stateDoc = await OAuthState.findOneAndUpdate(
       { state },
-      { state, userId: userId || null, isLoginFlow, frontendUrl: originFrontendUrl },
+      { state, userId: userId || null, isLoginFlow, frontendUrl: originFrontendUrl, platform, customScheme },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -191,7 +205,7 @@ export const handleCallback = async (req, res) => {
 
   if (oauthError) {
     logger.error(`[OAuth Error] Google OAuth error received: ${oauthError}`);
-    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent(oauthError)}`);
+    return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent(oauthError)}`));
   }
 
   if (!state) {
@@ -202,13 +216,13 @@ export const handleCallback = async (req, res) => {
 
   if (!code) {
     logger.error('[OAuth Error] Missing authorization code from Google');
-    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Missing authorization code')}`);
+    return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('Missing authorization code')}`));
   }
 
   if (!stateRecord) {
     console.log(`[OAuth State Ver] State record NOT found for state: ${state}`);
     logger.error(`[OAuth Error] Invalid or expired OAuth state: ${state}`);
-    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`);
+    return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('Invalid or expired state parameter')}`));
   }
 
   // Handle duplicate callback requests gracefully (e.g. Chrome pre-fetch or double redirects)
@@ -297,7 +311,7 @@ export const handleCallback = async (req, res) => {
       }
 
       if (!googleEmail) {
-        return res.redirect(`${getFrontendUrl(req)}/oauth/callback?status=error&error=${encodeURIComponent('Unable to connect to Google. Please try again.')}`);
+        return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('Unable to connect to Google. Please try again.')}`));
       }
 
       let guestUser = await User.findOne({ email: new RegExp(`^${googleEmail.trim()}$`, 'i') });
@@ -327,7 +341,7 @@ export const handleCallback = async (req, res) => {
       // ── GUARD: explicit JWT_SECRET validation before signing ──
       if (!jwtSecret || jwtSecret.trim() === '') {
         console.error('[OAuth Login] CRITICAL: JWT_SECRET is missing or empty. Cannot sign token.');
-        return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Server configuration error: authentication signing key is not set. Please contact support.')}`);
+        return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('Server configuration error: authentication signing key is not set. Please contact support.')}`));
       }
 
       const token = jwt.sign({
@@ -340,7 +354,7 @@ export const handleCallback = async (req, res) => {
       // ── GUARD: ensure token was actually produced ──
       if (!token) {
         console.error('[OAuth Login] CRITICAL: jwt.sign() returned a falsy value. JWT_SECRET may be invalid.');
-        return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('Server error: failed to generate authentication token. Please try again.')}`);
+        return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('Server error: failed to generate authentication token. Please try again.')}`));
       }
 
       const isProd = process.env.NODE_ENV === 'production';
@@ -351,10 +365,10 @@ export const handleCallback = async (req, res) => {
         maxAge: 7 * 24 * 60 * 60 * 1000
       });
 
-      const targetRedirect = `${frontendUrl}/oauth/callback?token=${token}&status=success`;
+      const targetRedirect = buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?token=${token}&status=success`);
 
       // ── DIAGNOSTIC: log the exact final redirect URL so it appears in Render logs ──
-      console.log(`[OAuth Login] ✅ Redirecting to: ${frontendUrl}/oauth/callback?token=<jwt_redacted>&status=success`);
+      console.log(`[OAuth Login] ✅ Redirecting to: ${targetRedirect}`);
 
       await OAuthState.updateOne({ state }, { $set: { redirectUrl: targetRedirect } });
       return res.redirect(targetRedirect);
@@ -369,7 +383,7 @@ export const handleCallback = async (req, res) => {
 
     if (!items || items.length === 0) {
       logger.error('YouTube Channel Response empty items');
-      return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent('No YouTube channel found on this Google Account. Please create a channel on YouTube and try again.')}`);
+      return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('No YouTube channel found on this Google Account. Please create a channel on YouTube and try again.')}`));
     }
 
     const channelData = items[0];
@@ -458,7 +472,7 @@ export const handleCallback = async (req, res) => {
         if (channelLimit === 0) {
           errorMsg = 'Your 30-day Free Trial has expired. Please subscribe to a plan to connect channels.';
         }
-        return res.redirect(`${frontendUrl}/dashboard?status=error&error=${encodeURIComponent(errorMsg)}`);
+        return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/dashboard?status=error&error=${encodeURIComponent(errorMsg)}`));
       }
     }
 
@@ -541,7 +555,7 @@ export const handleCallback = async (req, res) => {
       logger.error('Initial processComments error:', err)
     );
 
-    const targetRedirect = `${frontendUrl}/oauth/callback?status=success&channelId=${channel.channelId}`;
+    const targetRedirect = buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=success&channelId=${channel.channelId}`);
     await OAuthState.updateOne({ state }, { $set: { redirectUrl: targetRedirect } });
     return res.redirect(targetRedirect);
   } catch (error) {
@@ -589,7 +603,7 @@ export const handleCallback = async (req, res) => {
       console.error('Failed to stringify error object:', error);
     }
 
-    return res.redirect(`${frontendUrl}/oauth/callback?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`);
+    return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent(error.message || 'OAuth Authentication failed')}`));
   }
 };
 
