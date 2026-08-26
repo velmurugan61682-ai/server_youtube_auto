@@ -155,6 +155,10 @@ export const takeAction = async (req, res) => {
         }
       }
       comment.status = 'deleted';
+      comment.isModerated = true;
+      comment.moderationStatus = 'deleted';
+      comment.moderationAction = 'deleted';
+      comment.deletedAt = new Date();
 
       // Always create/update ModerationLog so the delete action appears in Comment History -> Deleted
       try {
@@ -174,8 +178,8 @@ export const takeAction = async (req, res) => {
               confidence: Math.round((comment.confidence || 0.9) * 100),
               toxicityScore: comment.confidence || 0.9,
               reason: ytReason || 'Manual deletion via Comments & Moderation',
-              executedAction: 'delete',
-              action: 'delete',
+              executedAction: 'deleted',
+              action: 'deleted',
               status: 'Success'
             }
           },
@@ -309,19 +313,23 @@ export const reanalyzeComments = async (req, res) => {
 
 export const manualSync = async (req, res) => {
   try {
-    const { videoId } = req.params;
+    let { videoId } = req.params;
     let { channelId } = req.query;
     const allowedChannelIds = await getUserChannelIds(req.user);
 
-    if (!channelId) {
+    if (!channelId || videoId.startsWith('Ugk') || videoId.startsWith('Ugx')) {
       const foundVideo = await Video.findOne({ videoId, channelId: { $in: allowedChannelIds } }).lean();
       if (foundVideo) {
-        channelId = foundVideo.channelId;
+        if (!channelId) channelId = foundVideo.channelId;
       } else {
-        const foundComment = await Comment.findOne({ videoId, channelId: { $in: allowedChannelIds } }).lean();
+        const foundComment = await Comment.findOne({
+          $or: [{ videoId }, { youtubeId: videoId }, { commentId: videoId }],
+          channelId: { $in: allowedChannelIds }
+        }).lean();
         if (foundComment) {
-          channelId = foundComment.channelId;
-        } else if (allowedChannelIds.length > 0) {
+          if (!channelId) channelId = foundComment.channelId;
+          if (foundComment.videoId) videoId = foundComment.videoId;
+        } else if (!channelId && allowedChannelIds.length > 0) {
           channelId = allowedChannelIds[0];
         }
       }
@@ -354,6 +362,7 @@ export const manualSync = async (req, res) => {
 
       const commentDoc = new Comment({
         userId: channel.userId,
+        organizationId: channel.organizationId || null,
         youtubeId: `sim_comment_${Date.now()}`,
         channelId: channel.channelId,
         videoId: videoId,
@@ -368,8 +377,8 @@ export const manualSync = async (req, res) => {
       await commentDoc.save();
 
       const user = await User.findById(channel.userId);
-      const userSettings = user.settings || { autoMod: true, autoLike: true, confidenceThreshold: 85 };
-      const userKey = user.openaiApiKey ? decrypt(user.openaiApiKey) : null;
+      const userSettings = user ? (user.settings || { autoMod: true, autoLike: true, confidenceThreshold: 85 }) : { autoMod: true, autoLike: true, confidenceThreshold: 85 };
+      const userKey = (user && user.openaiApiKey) ? decrypt(user.openaiApiKey) : null;
       
       let youtube = null;
       if (!channel.apiKey) {
@@ -390,26 +399,31 @@ export const manualSync = async (req, res) => {
       return res.status(400).json({ error: 'Channel requires reconnection. Please reconnect your YouTube account in settings.' });
     }
 
-    if (channel.apiKey) {
-      await processComments(channel, null, decrypt(channel.apiKey), io, videoId);
-    } else {
-      const refreshToken = channel.refreshToken ? decrypt(channel.refreshToken) : '';
-      const accessToken = channel.accessToken ? decrypt(channel.accessToken) : '';
+    try {
+      if (channel.apiKey) {
+        await processComments(channel, null, decrypt(channel.apiKey), io, videoId);
+      } else {
+        const refreshToken = channel.refreshToken ? decrypt(channel.refreshToken) : '';
+        const accessToken = channel.accessToken ? decrypt(channel.accessToken) : '';
 
-      if (!refreshToken && !accessToken) {
-        return res.status(400).json({ error: 'Channel access token is missing. Please reconnect your account.' });
+        if (!refreshToken && !accessToken) {
+          return res.status(400).json({ error: 'Channel access token is missing. Please reconnect your account.' });
+        }
+
+        await processComments(channel, {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expiry_date: channel.expiryDate,
+        }, null, io, videoId);
       }
-
-      await processComments(channel, {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expiry_date: channel.expiryDate,
-      }, null, io, videoId);
+    } catch (syncErr) {
+      logger.warn(`[Manual Sync Warning] processComments error for video ${videoId}: ${syncErr.message}`);
     }
-    res.json({ success: true });
+
+    return res.json({ success: true });
   } catch (error) {
     logger.error(`[Manual Sync Error] ${error.message}`);
-    res.status(500).json({ error: error.message || 'Failed to sync comments for video' });
+    return res.status(500).json({ error: error.message || 'Failed to sync comments for video' });
   }
 };
 

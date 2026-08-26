@@ -90,7 +90,9 @@ router.get('/', authMiddleware, async (req, res) => {
     if (searchRegex) {
       modQuery.$or = [
         { authorName: searchRegex },
-        { commentText: searchRegex }
+        { commentText: searchRegex },
+        { category: searchRegex },
+        { reason: searchRegex }
       ];
     }
 
@@ -100,10 +102,25 @@ router.get('/', authMiddleware, async (req, res) => {
       $or: [
         { replyText: { $exists: true, $ne: '' } },
         { aiReply: { $exists: true, $ne: '' } },
-        { status: { $in: ['deleted', 'hidden', 'flagged', 'replied'] } }
+        { status: { $in: ['deleted', 'hidden', 'flagged', 'replied'] } },
+        { moderationStatus: { $in: ['deleted', 'hidden', 'heldForReview'] } },
+        { isModerated: true },
+        { sentiment: 'toxic' }
       ]
     };
     if (channelId) commentQuery.channelId = channelId;
+    if (searchRegex) {
+      commentQuery.$and = [
+        {
+          $or: [
+            { author: searchRegex },
+            { text: searchRegex },
+            { commentText: searchRegex },
+            { replyText: searchRegex }
+          ]
+        }
+      ];
+    }
 
     // Pull all records across all collections (summary is computed on the complete dataset)
     const [allReplies, allMods, allComments] = await Promise.all([
@@ -143,9 +160,9 @@ router.get('/', authMiddleware, async (req, res) => {
 
     // ── 7. Normalize ModerationLog records ──────────────────────────────────
     const modItems = allMods.map(m => {
-      const execAction = m.executedAction || m.action || 'deleted';
-      const historyType = execAction === 'delete' || execAction === 'deleted' ? 'deleted' : 'hidden';
-      const isSuccess = m.status === 'Success' || m.status === 'success';
+      const execAction = (m.executedAction || m.action || 'deleted').toLowerCase();
+      const historyType = (execAction === 'delete' || execAction === 'deleted' || execAction === 'remove' || execAction === 'reject') ? 'deleted' : 'hidden';
+      const isSuccess = m.status !== 'Failed' && m.status !== 'failed' && !m.failureReason;
       return {
         id: m._id.toString(),
         commentId: m.commentId,
@@ -155,31 +172,40 @@ router.get('/', authMiddleware, async (req, res) => {
         commentText: m.commentText || '',
         replyText: null,
         category: m.category || m.type || 'toxic',
-        confidence: m.confidence != null ? m.confidence : (m.toxicityScore != null ? m.toxicityScore * 100 : null),
-        reason: m.reason || m.failureReason || null,
+        confidence: m.confidence != null ? (m.confidence > 1 ? m.confidence : Math.round(m.confidence * 100)) : (m.toxicityScore != null ? Math.round(m.toxicityScore * 100) : 90),
+        reason: m.reason || m.failureReason || 'Toxic comment moderated',
         videoTitle: videoMap[m.videoId] || 'Unknown Video',
         triggerKeyword: null,
-        actionDate: m.createdAt
+        actionDate: m.createdAt || m.updatedAt || new Date()
       };
     });
 
     // ── 7b. Normalize Comment records ───────────────────────────────────────
     const commentItems = allComments.map(c => {
-      const isDeleted = c.status === 'deleted' || c.status === 'hidden';
+      const statusLower = (c.status || '').toLowerCase();
+      const modStatusLower = (c.moderationStatus || '').toLowerCase();
+      const modActionLower = (c.moderationAction || c.actionTaken || '').toLowerCase();
+
+      const isDeleted = statusLower === 'deleted' || modStatusLower === 'deleted' || modActionLower === 'delete' || modActionLower === 'deleted' || c.sentiment === 'toxic' || Boolean(c.deletedAt);
+      const isHidden = statusLower === 'hidden' || modStatusLower === 'heldforreview' || modStatusLower === 'hidden' || modActionLower === 'hold' || modActionLower === 'hide';
+
+      const historyType = isDeleted ? 'deleted' : (isHidden ? 'hidden' : 'replied');
+      const isSuccess = !c.deleteFailed && c.replyStatus !== 'failed';
+
       return {
         id: c._id.toString(),
         commentId: c.youtubeId || c.commentId,
-        type: isDeleted ? (c.status === 'deleted' ? 'deleted' : 'hidden') : 'replied',
-        status: 'success',
+        type: historyType,
+        status: isSuccess ? 'success' : 'failed',
         authorName: c.author || c.authorName || c.username || 'Anonymous',
         commentText: c.text || c.commentText || '',
         replyText: c.replyText || c.aiReply || '',
-        category: c.sentiment || null,
-        confidence: null,
-        reason: null,
+        category: c.sentiment || c.moderationReason || (historyType === 'deleted' ? 'toxic' : null),
+        confidence: c.confidence != null ? (c.confidence > 1 ? c.confidence : Math.round(c.confidence * 100)) : (c.toxicityScore != null ? Math.round(c.toxicityScore * 100) : null),
+        reason: c.deleteReason || c.deleteError || c.moderationReason || (historyType === 'deleted' ? 'Toxic comment removed' : null),
         videoTitle: videoMap[c.videoId] || 'Unknown Video',
         triggerKeyword: null,
-        actionDate: c.updatedAt || c.publishedAt || c.createdAt || new Date()
+        actionDate: c.deletedAt || c.moderatedAt || c.updatedAt || c.publishedAt || c.createdAt || new Date()
       };
     });
 

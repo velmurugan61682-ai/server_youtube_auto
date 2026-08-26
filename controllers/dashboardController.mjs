@@ -43,12 +43,16 @@ export const getDashboardStats = async (req, res) => {
       ModerationLog.countDocuments({
         userId: userFilter,
         channelId: channelFilter,
-        status: 'Success'
+        status: { $ne: 'Failed' }
       }),
       Comment.countDocuments({
         userId: userFilter,
         channelId: channelFilter,
-        status: { $in: ['deleted', 'hidden'] }
+        $or: [
+          { status: { $in: ['deleted', 'hidden'] } },
+          { moderationStatus: { $in: ['deleted', 'hidden', 'heldForReview'] } },
+          { isModerated: true, sentiment: 'toxic' }
+        ]
       }),
       AutoReplyLog.countDocuments({
         userId: userFilter,

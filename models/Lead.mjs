@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const leadSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   // organizationId index defined in schema.index() below — NOT inline to avoid duplicate
-  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
   idempotencyKey: { type: String, unique: true, sparse: true },
   channelId: { type: String, default: 'API' },
   videoId: { type: String, default: 'API' },

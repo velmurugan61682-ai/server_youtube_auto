@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const commentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   // organizationId index is defined in schema.index() below — NOT inline to avoid duplicate
-  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
   youtubeId: { type: String, required: true },
   commentId: { type: String, unique: true, sparse: true }, // unique alias of youtubeId
   channelId: { type: String },
