@@ -9,9 +9,9 @@ export const PLAN_FEATURES = {
     maxChannels: 1,
     autoMod: true,
     commentAutomation: true,
-    liveStreamingCommentReply: false,
-    toxicCommentRemove: false,
-    autoDM: false
+    liveStreamingCommentReply: true,
+    toxicCommentRemove: true,
+    autoDM: true
   },
   pro: {
     name: 'Pro Plan (₹999/month)',
