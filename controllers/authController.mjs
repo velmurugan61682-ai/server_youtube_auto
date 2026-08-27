@@ -169,8 +169,23 @@ import { normalizePlanName } from '../config/planFeatures.mjs';
 
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password -passwordHash').lean();
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    let user = null;
+
+    // Primary lookup by ID from JWT
+    if (req.user.id) {
+      user = await User.findById(req.user.id).select('-password -passwordHash').lean();
+    }
+
+    // Fallback: if not found by ID, try by email from JWT payload
+    if (!user && req.user.email) {
+      logger.warn(`[getMe] User not found by ID (${req.user.id}), falling back to email lookup: ${req.user.email}`);
+      user = await User.findOne({ email: new RegExp(`^${req.user.email.trim()}$`, 'i') }).select('-password -passwordHash').lean();
+    }
+
+    if (!user) {
+      logger.warn(`[getMe] User not found by ID or email. JWT id=${req.user.id}, email=${req.user.email}`);
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     const rawPlan = user.subscription?.planId || user.subscription?.planType || user.plan || 'free';
     const plan = normalizePlanName(rawPlan);
