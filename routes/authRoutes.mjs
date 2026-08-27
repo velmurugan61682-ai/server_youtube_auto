@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import { register, login, getMe, logout, listOrganizations, switchOrganization, updateProfile } from '../controllers/authController.mjs';
 import { handleSsoLogin } from '../controllers/ssoController.mjs';
