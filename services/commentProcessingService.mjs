@@ -40,7 +40,41 @@ const channelBackoffs = new Map();
 // In-memory comment ID deduplication to prevent concurrent duplicate processing
 const activeCommentsProcessing = new Set();
 
+// In-memory per-channel daily quota usage tracking (Default limit: 1000 units/day)
+const channelDailyQuotaUsage = new Map();
+const DAILY_QUOTA_LIMIT_PER_CHANNEL = parseInt(process.env.PER_CHANNEL_DAILY_QUOTA_LIMIT || '1000', 10);
+
+export const recordChannelQuotaUsage = (channelId, units = 1) => {
+  if (!channelId) return;
+  const todayPT = moment().tz('America/Los_Angeles').format('YYYY-MM-DD');
+  const record = channelDailyQuotaUsage.get(channelId) || { count: 0, resetDate: todayPT };
+
+  if (record.resetDate !== todayPT) {
+    record.count = 0;
+    record.resetDate = todayPT;
+  }
+
+  record.count += units;
+  channelDailyQuotaUsage.set(channelId, record);
+};
+
+export const isChannelDailyQuotaExceeded = (channelId) => {
+  if (!channelId) return false;
+  const todayPT = moment().tz('America/Los_Angeles').format('YYYY-MM-DD');
+  const record = channelDailyQuotaUsage.get(channelId);
+  if (!record || record.resetDate !== todayPT) {
+    return false;
+  }
+  return record.count >= DAILY_QUOTA_LIMIT_PER_CHANNEL;
+};
+
 export const getNextSyncTime = (channelId) => {
+  if (isChannelDailyQuotaExceeded(channelId)) {
+    logger.info(`[SYNC] Daily per-channel quota limit (${DAILY_QUOTA_LIMIT_PER_CHANNEL} units) reached for channel ${channelId}. Sync paused until midnight PT reset.`);
+    const midnightPT = moment().tz('America/Los_Angeles').add(1, 'day').startOf('day').toDate();
+    return midnightPT;
+  }
+
   const backoff = channelBackoffs.get(channelId);
   if (!backoff) return null;
 
@@ -1046,6 +1080,7 @@ export const processSingleComment = async (youtube, channel, userKey, userSettin
             ? await postLiveChatMessage(youtube, commentDoc.liveChatId || commentDoc.videoId, liveReplyText)
             : await replyToComment(youtube, commentDoc.youtubeId, replyText);
           if (repRes.success) {
+            recordChannelQuotaUsage(channel._id.toString(), 50);
             replyStatus = 'sent';
             ruleMatchedAndExecuted = true;
 

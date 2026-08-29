@@ -16,7 +16,7 @@ import {
 } from '../services/youtubeService.mjs';
 import { decrypt, encrypt } from '../utils/cryptoHelper.mjs';
 import { acquireLock, releaseLock } from '../utils/lockHelper.mjs';
-import { processSingleComment, getNextSyncTime, handleQuotaError, clearQuotaBackoff } from '../services/commentProcessingService.mjs';
+import { processSingleComment, getNextSyncTime, handleQuotaError, clearQuotaBackoff, recordChannelQuotaUsage } from '../services/commentProcessingService.mjs';
 
 // Main worker task execution
 export const runYouTubeCommentWorker = async (io) => {
@@ -51,7 +51,7 @@ export const runYouTubeCommentWorker = async (io) => {
       // Quota backoff check
       const nextSyncTime = getNextSyncTime(channel._id.toString());
       if (nextSyncTime && new Date() < nextSyncTime) {
-        logger.info(`[YouTube Comment Worker] Skipping channel ${channel.title || channel.channelId} due to active quota backoff. Next sync allowed after ${nextSyncTime.toISOString()}`);
+        logger.info(`[YouTube Comment Worker] Skipping channel ${channel.title || channel.channelId} due to active quota backoff or daily per-client limit. Next sync allowed after ${nextSyncTime.toISOString()}`);
         continue;
       }
 
@@ -88,6 +88,7 @@ export const runYouTubeCommentWorker = async (io) => {
       let comments = [];
       try {
         comments = await fetchLatestComments(youtube, channel.channelId, 20);
+        recordChannelQuotaUsage(channel._id.toString(), 1); // 1 unit for commentThreads.list
       } catch (fetchError) {
         logger.error(`[YouTube Comment Worker] Failed to fetch comments for channel ${channel.channelId}: ${fetchError.message}`);
         if (isQuotaError(fetchError)) {
