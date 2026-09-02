@@ -85,5 +85,7 @@ autoReplyLogSchema.index({ channelId: 1 });
 autoReplyLogSchema.index({ channelId: 1, createdAt: -1 });
 autoReplyLogSchema.index({ userId: 1, channelId: 1, status: 1, createdAt: -1 });
 autoReplyLogSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+autoReplyLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('AutoReplyLog', autoReplyLogSchema);

@@ -87,7 +87,8 @@ commentAutomationLogSchema.index({ userId: 1 });
 commentAutomationLogSchema.index({ channelId: 1 });
 commentAutomationLogSchema.index({ videoId: 1 });
 commentAutomationLogSchema.index({ status: 1 });
-commentAutomationLogSchema.index({ createdAt: 1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+commentAutomationLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 commentAutomationLogSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 commentAutomationLogSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 

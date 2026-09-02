@@ -35,5 +35,7 @@ leadSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 leadSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 leadSchema.index({ userId: 1, createdAt: -1 });
 leadSchema.index({ organizationId: 1, status: 1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+leadSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('Lead', leadSchema);

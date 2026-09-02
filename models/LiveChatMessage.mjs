@@ -61,5 +61,7 @@ const liveChatMessageSchema = new mongoose.Schema({
 // All indexes at schema-level (no inline index:true duplicates)
 liveChatMessageSchema.index({ messageId: 1, organizationId: 1 }, { unique: true });
 liveChatMessageSchema.index({ organizationId: 1, channelId: 1, liveChatId: 1, publishedAt: -1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+liveChatMessageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('LiveChatMessage', liveChatMessageSchema);

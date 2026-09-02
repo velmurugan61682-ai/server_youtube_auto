@@ -172,18 +172,26 @@ export const getMe = async (req, res) => {
     let user = null;
 
     // Primary lookup by ID from JWT
-    if (req.user.id) {
-      user = await User.findById(req.user.id).select('-password -passwordHash').lean();
+    if (req.user?.id) {
+      try {
+        user = await User.findById(req.user.id).select('-password -passwordHash').lean();
+      } catch (idErr) {
+        logger.warn(`[getMe] User lookup by ID (${req.user.id}) failed: ${idErr.message}`);
+      }
     }
 
     // Fallback: if not found by ID, try by email from JWT payload
-    if (!user && req.user.email) {
-      logger.warn(`[getMe] User not found by ID (${req.user.id}), falling back to email lookup: ${req.user.email}`);
-      user = await User.findOne({ email: new RegExp(`^${req.user.email.trim()}$`, 'i') }).select('-password -passwordHash').lean();
+    if (!user && req.user?.email) {
+      const cleanEmail = req.user.email.trim().toLowerCase();
+      logger.warn(`[getMe] User not found by ID (${req.user?.id}), falling back to email lookup: ${cleanEmail}`);
+      user = await User.findOne({ email: cleanEmail }).select('-password -passwordHash').lean();
+      if (!user) {
+        user = await User.findOne({ email: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).select('-password -passwordHash').lean();
+      }
     }
 
     if (!user) {
-      logger.warn(`[getMe] User not found by ID or email. JWT id=${req.user.id}, email=${req.user.email}`);
+      logger.warn(`[getMe] User not found by ID or email. JWT id=${req.user?.id}, email=${req.user?.email}`);
       return res.status(404).json({ error: 'User not found' });
     }
 

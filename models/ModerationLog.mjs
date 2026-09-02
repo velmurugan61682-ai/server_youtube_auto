@@ -90,7 +90,8 @@ moderationLogSchema.index({ channelId: 1 });
 moderationLogSchema.index({ channelId: 1, createdAt: -1 });
 moderationLogSchema.index({ videoId: 1 });
 moderationLogSchema.index({ status: 1 });
-moderationLogSchema.index({ createdAt: 1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+moderationLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 moderationLogSchema.index({ commentId: 1, userId: 1 }); // fast per-comment lookup
 moderationLogSchema.index({ userId: 1, channelId: 1, createdAt: -1 }); // dashboard timeline
 moderationLogSchema.index({ userId: 1, organizationId: 1, channelId: 1 });

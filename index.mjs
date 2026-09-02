@@ -27,6 +27,7 @@ import jwt from 'jsonwebtoken';
 import compression from 'compression';
 import { initCommentJob } from './jobs/commentJob.mjs';
 import { initYouTubeCommentWorker } from './jobs/youtubeCommentWorker.mjs';
+import { initYouTubeDataRefreshWorker } from './jobs/youtubeDataRefreshWorker.mjs';
 import { seedOrganizations } from './utils/tenantSeeder.mjs';
 import { seedSingleAdmin } from './utils/adminSeeder.mjs';
 
@@ -586,6 +587,7 @@ async function startServer() {
 
         initCommentJob(io);
         initYouTubeCommentWorker(io);
+        initYouTubeDataRefreshWorker();
       }
     );
   } catch (err) {

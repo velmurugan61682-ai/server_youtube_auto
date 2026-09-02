@@ -86,6 +86,8 @@ commentSchema.index({ userId: 1, organizationId: 1, channelId: 1 });
 commentSchema.index({ organizationId: 1, channelId: 1, createdAt: -1 });
 commentSchema.index({ userId: 1, organizationId: 1, channelId: 1, videoId: 1, textHash: 1, createdAt: -1 });
 commentSchema.index({ userId: 1, isModerated: 1, createdAt: -1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+commentSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('Comment', commentSchema);
 // [FIX APPLIED] Bug #2 & #3 — Added authorChannelId, isBotReply, hasReplied, repliedAt fields to Comment model (models/Comment.mjs)

@@ -56,5 +56,7 @@ const commentLogSchema = new mongoose.Schema({
 });
 
 commentLogSchema.index({ videoId: 1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+commentLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('CommentLog', commentLogSchema);

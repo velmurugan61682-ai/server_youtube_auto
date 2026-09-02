@@ -14,5 +14,7 @@ const autoLikeLogSchema = new mongoose.Schema({
 autoLikeLogSchema.index({ commentId: 1 }, { unique: true });
 autoLikeLogSchema.index({ userId: 1, channelId: 1 });
 autoLikeLogSchema.index({ userId: 1, channelId: 1, autoLiked: 1, createdAt: -1 });
+// 30-Day TTL Expiration Index per YouTube API Services Policy III.E.4.a-g (30 days = 2592000 seconds)
+autoLikeLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
 
 export default mongoose.model('AutoLikeLog', autoLikeLogSchema);
