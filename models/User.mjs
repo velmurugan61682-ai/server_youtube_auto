@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['admin', 'client', 'superadmin', 'support'], default: 'client' },
   organization: { type: String, default: '' },
   organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
+  googleId: { type: String, default: '' },
   profilePicture: { type: String, default: '' },
   tenantId: { type: String },
   assignedAgent: { type: String, enum: ['AI Agent', 'Human Agent'], default: 'AI Agent' },

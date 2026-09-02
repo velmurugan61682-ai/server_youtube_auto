@@ -314,8 +314,41 @@ export const handleCallback = async (req, res) => {
         return res.redirect(buildRedirectTarget(stateRecord, frontendUrl, `/oauth/callback?status=error&error=${encodeURIComponent('Unable to connect to Google. Please try again.')}`));
       }
 
-      let guestUser = await User.findOne({ email: new RegExp(`^${googleEmail.trim()}$`, 'i') });
+      const cleanEmail = googleEmail.toLowerCase().trim();
+      let guestUser = null;
+
+      // 1. Primary lookup by googleUserId if available
+      if (googleUserId) {
+        guestUser = await User.findOne({ googleId: googleUserId });
+      }
+
+      // 2. Secondary lookup by exact email match
       if (!guestUser) {
+        guestUser = await User.findOne({ email: cleanEmail });
+      }
+
+      // 3. Fallback lookup by case-insensitive escaped regex email
+      if (!guestUser) {
+        const escapedEmail = cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        guestUser = await User.findOne({ email: new RegExp(`^${escapedEmail}$`, 'i') });
+      }
+
+      // If user exists, attach googleId or profilePicture if not set
+      if (guestUser) {
+        let updated = false;
+        if (googleUserId && !guestUser.googleId) {
+          guestUser.googleId = googleUserId;
+          updated = true;
+        }
+        if (picture && !guestUser.profilePicture) {
+          guestUser.profilePicture = picture;
+          updated = true;
+        }
+        if (updated) {
+          await guestUser.save();
+        }
+      } else {
+        // 4. Auto-create new user and workspace on first Google login
         const hashedPassword = await bcrypt.hash(`google_oauth_${Date.now()}_${Math.random()}`, 12);
         const newOrg = new Organization({
           name: `${googleName}'s Workspace`,
@@ -326,14 +359,15 @@ export const handleCallback = async (req, res) => {
 
         guestUser = new User({
           name: googleName,
-          email: googleEmail.toLowerCase().trim(),
+          email: cleanEmail,
           password: hashedPassword,
           role: 'client',
           organizationId: newOrg._id,
-          profilePicture: picture
+          googleId: googleUserId || '',
+          profilePicture: picture || ''
         });
         await guestUser.save();
-        logger.info(`[Google OAuth] Auto-created user: ${guestUser.email}`);
+        logger.info(`[Google OAuth] Auto-created user on first login: ${guestUser.email} (ID: ${guestUser._id})`);
       }
 
       const jwtSecret = process.env.JWT_SECRET;
@@ -345,7 +379,7 @@ export const handleCallback = async (req, res) => {
       }
 
       const token = jwt.sign({
-        id: guestUser._id,
+        id: guestUser._id.toString(),
         email: guestUser.email,
         role: guestUser.role || 'client',
         organizationId: guestUser.organizationId
