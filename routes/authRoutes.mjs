@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
-import { register, login, getMe, logout, listOrganizations, switchOrganization, updateProfile } from '../controllers/authController.mjs';
+import { register, login, getMe, logout, listOrganizations, switchOrganization, updateProfile, purgeYouTubeData } from '../controllers/authController.mjs';
 import { handleSsoLogin } from '../controllers/ssoController.mjs';
 import { authMiddleware } from '../middleware/auth.mjs';
 
@@ -45,6 +45,8 @@ router.post('/sso-login', handleSsoLogin);
 router.get('/organizations', authMiddleware, listOrganizations);
 router.post('/switch-org', authMiddleware, switchOrganization);
 router.put('/profile', authMiddleware, updateProfile);
+router.post('/purge-youtube-data', authMiddleware, purgeYouTubeData);
+router.post('/delete-data', authMiddleware, purgeYouTubeData);
 
 // Google & YouTube OAuth Integration Routes
 const googleAuthHandler = (req, res, next) => {

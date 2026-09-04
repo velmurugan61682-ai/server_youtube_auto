@@ -2,6 +2,10 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.mjs';
 import Organization from '../models/Organization.mjs';
+import Channel from '../models/Channel.mjs';
+import Comment from '../models/Comment.mjs';
+import ModerationLog from '../models/ModerationLog.mjs';
+import Lead from '../models/Lead.mjs';
 import logger from '../utils/logger.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -346,5 +350,41 @@ export const updateProfile = async (req, res) => {
   } catch (error) {
     logger.error('Update Profile Error:', error);
     res.status(500).json({ error: 'Profile update failed.' });
+  }
+};
+
+/**
+ * YouTube API Policy III.I.4 Compliance - Data Deletion Endpoint
+ * Permanently deletes all stored YouTube channel records, comments, logs, and tokens for the authenticated user/organization.
+ */
+export const purgeYouTubeData = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const orgId = user.organizationId;
+
+    // Delete stored YouTube channels, comments, moderation logs, leads for this tenant
+    const deletedChannels = await Channel.deleteMany({ organizationId: orgId });
+    const deletedComments = await Comment.deleteMany({ organizationId: orgId });
+    const deletedLogs = await ModerationLog.deleteMany({ organizationId: orgId });
+    const deletedLeads = await Lead.deleteMany({ organizationId: orgId });
+
+    // Revoke and clear stored OAuth tokens
+    user.youtubeAccessToken = null;
+    user.youtubeRefreshToken = null;
+    user.youtubeTokenExpiry = null;
+    await user.save();
+
+    logger.info(`[purgeYouTubeData] Purged YouTube data for user ${userId} / org ${orgId}: ${deletedChannels.deletedCount} channels, ${deletedComments.deletedCount} comments, ${deletedLogs.deletedCount} logs deleted.`);
+
+    res.json({
+      success: true,
+      message: 'All stored YouTube API data, channels, cached comments, and OAuth tokens have been permanently deleted from our servers in compliance with YouTube API Services Developer Policies (Policy III.I.4).'
+    });
+  } catch (error) {
+    logger.error('Purge YouTube Data Error:', error);
+    res.status(500).json({ error: 'Failed to purge stored YouTube data.' });
   }
 };
